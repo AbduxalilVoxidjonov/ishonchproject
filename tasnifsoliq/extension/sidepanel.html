@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body{font:13px system-ui,sans-serif;margin:10px;color:#222}
+  input{width:100%;box-sizing:border-box;padding:7px;font-size:14px}
+  button{margin:6px 6px 0 0;padding:6px 10px}
+  h4{margin:12px 0 4px} pre{white-space:pre-wrap;background:#f5f5f5;padding:6px;margin:0;max-height:260px;overflow:auto}
+  .ok{color:#0a7a2f}.bad{color:#b3261e}
+</style>
+<h4>Excel (ommaviy tekshiruv) <span id="ver" style="font-weight:normal;color:#888;font-size:11px"></span></h4>
+<textarea id="txtCodes" rows="5" style="width:100%;box-sizing:border-box;font:12px monospace" placeholder="Kodlarni shu yerga qo'ying — har qatorda bitta markirovka kodi"></textarea>
+<button id="txtRun">Matndagi kodlarni tekshirish</button>
+<div style="margin-top:8px">yoki fayl (.xlsx / .txt):</div>
+<input type="file" id="xlsFile" accept=".xlsx,.xls,.csv,.txt">
+<button id="xlsRun" disabled>Tekshirishni boshlash</button>
+<button id="xlsResume" hidden>Davom ettirish</button>
+<button id="xlsStop" disabled>To'xtatish</button>
+<button id="xlsSave" disabled>Natijani yuklash (.xlsx)</button>
+<div id="xlsAsk" hidden style="margin:8px 0;padding:8px;border:1px solid #c7d7f5;background:#eef4ff;border-radius:4px">
+  <div id="xlsAskText" style="margin-bottom:4px">Tekshiruv tugadi. Natijani Excel (.xlsx) qilib yuklab olaymi?</div>
+  <button id="xlsAskYes">Ha, yuklab olish</button><button id="xlsAskNo">Yo'q</button>
+</div>
+<pre id="xlsInfo">Markirovka kodlari bor Excel faylni tanlang (40, 100 va h.k.)</pre>
+<pre id="xlsList" hidden style="margin-top:6px;font-size:11px"></pre>
+<script src="xlsx-style.js"></script>
+<script src="sidepanel.js"></script>

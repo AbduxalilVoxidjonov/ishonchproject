@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "MXIK Qidiruv (soliq.uz)",
+  "version": "0.4.1",
+  "description": "my.soliq.uz markirovka va tasnif.soliq.uz MXIK bo'yicha kodlarni ommaviy tekshirish.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "sidePanel",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://my.soliq.uz/*",
+    "https://tasnif.soliq.uz/*"
+  ],
+  "action": {
+    "default_title": "MXIK Qidiruv (yon panel)"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://my.soliq.uz/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

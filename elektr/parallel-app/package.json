@@ -1,0 +1,55 @@
+{
+  "name": "het-excel-parallel",
+  "version": "1.0.0",
+  "description": "cabinet.het.uz: Kamunalka jadvalini parallel (ko'p oqimli) to'ldiruvchi ilova",
+  "main": "electron/main.js",
+  "author": "ishonchproject",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "serve": "node src/server.js",
+    "test": "node test/run.js",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "uz.ishonch.het-excel-parallel",
+    "productName": "HET Excel Parallel",
+    "files": [
+      "electron/**",
+      "src/**",
+      "lib/**",
+      "ui/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "HET-Excel-Parallel-${version}-${arch}.${ext}"
+  }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HET → Excel (parallel)</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --tx:#1d2330; --mut:#667085; --bd:#d9dde5; --ok:#117a3a; --er:#b42318; --wn:#a15c00; --ac:#1f6feb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --card:#1c2128; --tx:#e6e9ef; --mut:#98a2b3; --bd:#313844; --ok:#4ade80; --er:#f87171; --wn:#fbbf24; --ac:#5b9dff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--mut); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label.file { display:block; border:2px dashed var(--bd); border-radius:10px; padding:18px; text-align:center; cursor:pointer; }
+  label.file:hover { border-color: var(--ac); }
+  input[type=file] { display:none; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+  input[type=number] { width: 72px; padding: 6px 8px; border:1px solid var(--bd); border-radius:8px; background:var(--bg); color:var(--tx); }
+  button { padding: 9px 16px; border-radius: 8px; border: 0; background: var(--ac); color: #fff; font-size: 15px; cursor: pointer; }
+  button.sec { background: transparent; color: var(--tx); border: 1px solid var(--bd); }
+  button:disabled { opacity: .5; cursor: default; }
+  progress { width: 100%; height: 14px; }
+  #msg { margin: 8px 0 0; }
+  ul { list-style: none; margin: 8px 0 0; padding: 0; max-height: 320px; overflow: auto; font-size: 13px; }
+  li { padding: 3px 0; border-bottom: 1px solid var(--bd); }
+  li.ok { color: var(--ok); } li.error { color: var(--er); } li.note { color: var(--wn); }
+  .hint { color: var(--mut); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HET → Excel (parallel)</h1>
+  <p class="sub">Kamunalka jadvalidagi har bir login uchun ma'lumotni bir vaqtda (parallel) yig'ib, jadvalni to'ldirib beradi.</p>
+
+  <div class="card">
+    <label class="file" id="dropC">
+      <input type="file" id="cfile" accept=".xlsx">
+      <span id="cfileLabel">🔑 1) Login va parollar faylini (.xlsx) tanlang</span>
+    </label>
+    <label class="file" id="drop" style="margin-top:10px">
+      <input type="file" id="file" accept=".xlsx">
+      <span id="fileLabel">📂 2) To'ldiriladigan Kamunalka jadvalini (.xlsx) tanlang</span>
+    </label>
+    <div class="row">
+      <label>Parallel oqimlar soni: <input type="number" id="conc" min="1" max="10" value="4"></label>
+      <button id="start" disabled>▶ Boshlash</button>
+      <button id="cancel" class="sec" hidden>■ To'xtatish</button>
+    </div>
+    <p class="hint">Login va parollar 1-fayldan olinadi (ustun sarlavhalari «Логин»/«Парол» yoki A va B ustun), hech qayerga saqlanmaydi. 1-fayl tanlanmasa, ular jadvalning o'zidan olinadi. Oqimlar sonini oshirsangiz tezroq bo'ladi, lekin sayt bloklab qo'yishi mumkin — 3–5 ta tavsiya etiladi.</p>
+  </div>
+
+  <div class="card" id="prog" hidden>
+    <progress id="bar" value="0" max="1"></progress>
+    <p id="msg"></p>
+    <div class="row"><button id="dl" hidden>⬇ To'ldirilgan jadvalni yuklab olish</button></div>
+    <ul id="log"></ul>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let credB64 = null;
+const toB64 = async (f) => { const buf = new Uint8Array(await f.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); return btoa(s); };
+$('cfile').addEventListener('change', async () => { const f = $('cfile').files[0]; if (!f) return; credB64 = await toB64(f); $('cfileLabel').textContent = '🔑 ' + f.name; });
+let fileB64 = null, fileName = '', jobId = null, es = null;
+
+$('file').addEventListener('change', async () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  const buf = new Uint8Array(await f.arrayBuffer());
+  let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  fileB64 = btoa(s); fileName = f.name;
+  $('fileLabel').textContent = '📄 ' + f.name;
+  $('start').disabled = false;
+});
+
+function li(cls, text) { const x = document.createElement('li'); x.className = cls; x.textContent = text; $('log').prepend(x); }
+
+$('start').addEventListener('click', async () => {
+  $('start').disabled = true; $('cancel').hidden = false; $('dl').hidden = true; $('log').replaceChildren();
+  $('prog').hidden = false; $('bar').value = 0; $('msg').textContent = 'Boshlanmoqda…';
+  const r = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: fileName, file: fileB64, creds: credB64, concurrency: Number($('conc').value) || 4 }) });
+  const j = await r.json();
+  if (!r.ok) { $('msg').textContent = 'Xato: ' + (j.error || r.status); $('start').disabled = false; $('cancel').hidden = true; return; }
+  jobId = j.id;
+  es = new EventSource('/api/events?id=' + jobId);
+  const t0 = Date.now();
+  es.onmessage = (m) => {
+    const e = JSON.parse(m.data);
+    if (e.type === 'start') { $('bar').max = e.total; $('msg').textContent = `0 / ${e.total} (${e.concurrency} ta oqim)`; }
+    else if (e.type === 'progress') {
+      $('bar').value = e.done; $('msg').textContent = `${e.done} / ${$('bar').max}`;
+      li(e.status === 'ok' ? 'ok' : 'error', e.login + (e.status === 'ok' ? ' — olindi' : ' — ' + e.message));
+    } else if (e.type === 'done') {
+      es.close(); $('cancel').hidden = true; $('start').disabled = false;
+      const sec = Math.round((Date.now() - t0) / 1000);
+      $('msg').textContent = `Tugadi (${sec} soniya): ${e.ok} ta muvaffaqiyatli, ${e.failed} ta xato. Jadvalga ${e.rows} ta qator yozildi. Summa tekshiruvi: ${e.checked - e.mismatched.length}/${e.checked} ta kabinet jami bilan mos.`;
+      for (const m of e.mismatched) li('error', 'Mos emas — ' + m);
+      for (const n of e.notes) li('note', n);
+      $('dl').hidden = false; $('dl').click();
+    } else if (e.type === 'cancelled') {
+      es.close(); $('cancel').hidden = true; $('start').disabled = false; $('msg').textContent = `To'xtatildi (${e.done} ta ishlandi). Jadval o'zgartirilmadi.`;
+    } else if (e.type === 'error') {
+      es.close(); $('cancel').hidden = true; $('start').disabled = false; $('msg').textContent = 'Xato: ' + e.message;
+    }
+  };
+});
+$('cancel').addEventListener('click', () => { if (jobId) fetch('/api/cancel?id=' + jobId, { method: 'POST' }); $('msg').textContent = "To'xtatilmoqda…"; });
+$('dl').addEventListener('click', () => { if (jobId) location.href = '/api/result?id=' + jobId; });
+</script>
+</body>
+</html>

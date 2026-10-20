@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "1C 4790 to'ldiruvchi",
+  "version": "1.9.1",
+  "description": "ОСВ 4790 dagi qizil qoldiqlarni o'qib, «Операция (введенная вручную)»ga har bir xodim uchun yangi qator qo'shadi. Saqlash va проведение foydalanuvchida qoladi.",
+  "permissions": [
+    "debugger",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://tas-1cbuxapp-01/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://tas-1cbuxapp-01/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "panel.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "4790 to'ldiruvchi panelini ochish/yopish"
+  }
+}

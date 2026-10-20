@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRM Platformasi - Kadrlar Boshqaruvi Tizimi</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col transition-all duration-300 z-30 shadow-xl">
+        <!-- Logo & Brand -->
+        <div class="h-16 flex items-center px-6 bg-slate-950 border-b border-slate-800">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg font-bold text-lg flex items-center justify-center w-10 h-10 shadow-md">
+                    <i class="fa-solid fa-users-gear"></i>
+                </div>
+                <div>
+                    <span class="text-white font-bold text-lg tracking-wide block leading-tight">HRM System</span>
+                    <span class="text-xs text-indigo-400 font-medium">Enterprise v1.0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Asosiy menyu</div>
+            
+            <a href="#" onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium bg-indigo-600 text-white transition-all shadow-sm">
+                <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+                <span>Bosh sahifa (Dashboard)</span>
+            </a>
+            
+            <a href="#" onclick="switchTab('employees')" id="nav-employees" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-user-group w-5 text-center"></i>
+                <span>Xodimlar</span>
+            </a>
+
+            <a href="#" onclick="switchTab('organization')" id="nav-organization" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-sitemap w-5 text-center"></i>
+                <span>Tashkiliy tuzilma</span>
+            </a>
+
+            <a href="#" onclick="switchTab('recruitment')" id="nav-recruitment" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-briefcase w-5 text-center"></i>
+                <span>Rekruting (ATS)</span>
+            </a>
+
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mt-6 mb-2">Operatsiyalar</div>
+
+            <a href="#" onclick="switchTab('attendance')" id="nav-attendance" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-clock-rotate-left w-5 text-center"></i>
+                <span>Davomat va Vaqt</span>
+            </a>
+
+            <a href="#" onclick="switchTab('leaves')" id="nav-leaves" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-calendar-days w-5 text-center"></i>
+                <span>Ta’tillar va so‘rovlar</span>
+            </a>
+
+            <a href="#" onclick="switchTab('payroll')" id="nav-payroll" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-wallet w-5 text-center"></i>
+                <span>Ish haqi (Payroll)</span>
+            </a>
+
+            <a href="#" onclick="switchTab('performance')" id="nav-performance" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                <span>KPI / Performance</span>
+            </a>
+
+            <a href="#" onclick="switchTab('documents')" id="nav-documents" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-folder-open w-5 text-center"></i>
+                <span>Hujjatlar va Buyruqlar</span>
+            </a>
+
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mt-6 mb-2">Tizim</div>
+            <a href="#" onclick="switchTab('reports')" id="nav-reports" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-file-excel w-5 text-center"></i>
+                <span>Hisobotlar</span>
+            </a>
+            <a href="#" onclick="switchTab('settings')" id="nav-settings" class="nav-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+                <i class="fa-solid fa-gears w-5 text-center"></i>
+                <span>Sozlamalar va Audit</span>
+            </a>
+        </nav>
+
+        <!-- User Profile Footer inside Sidebar -->
+        <div class="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow">
+                    AD
+                </div>
+                <div class="overflow-hidden">
+                    <p class="text-sm font-semibold text-white truncate">Anvarbek Director</p>
+                    <p class="text-xs text-indigo-400 truncate">Super Admin</p>
+                </div>
+            </div>
+            <button onclick="alert('Tizimdan chiqish')" class="text-slate-400 hover:text-red-400 transition-colors">
+                <i class="fa-solid fa-right-from-bracket text-lg"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
+        
+        <!-- TOP HEADER BAR -->
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-20">
+            <div class="flex items-center space-x-4">
+                <h1 id="page-title" class="text-xl font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-chart-pie text-indigo-600"></i>
+                    <span>Dashboard / Bosh sahifa</span>
+                </h1>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <!-- Search Bar -->
+                <div class="relative hidden md:block">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                    </span>
+                    <input type="text" placeholder="Xodim, hujjat yoki vakansiya izlash..." class="pl-10 pr-4 py-2 w-72 bg-slate-100 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                </div>
+
+                <!-- Notifications Button -->
+                <div class="relative">
+                    <button onclick="toggleNotifications()" class="relative p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-full transition-all">
+                        <i class="fa-regular fa-bell text-xl"></i>
+                        <span class="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white"></span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- DYNAMIC TAB CONTENT CONTAINER -->
+        <main class="flex-1 overflow-y-auto p-6 custom-scrollbar">
+
+            <!-- TAB 1: DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content space-y-6">
+                <!-- Welcome Banner -->
+                <div class="bg-gradient-to-r from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center">
+                    <div class="space-y-2">
+                        <span class="bg-indigo-500/50 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">HRM Enterprise Core</span>
+                        <h2 class="text-2xl font-bold">Xush kelibsiz, Anvarbek!</h2>
+                        <p class="text-indigo-100 text-sm max-w-xl">Bugungi kadrlar ko‘rsatkichlari, ochiq vakansiyalar va bajarilishi lozim bo‘lgan vazifalar nazorati.</p>
+                    </div>
+                    <div class="mt-4 md:mt-0 flex space-x-3">
+                        <button onclick="openModal('addEmployeeModal')" class="bg-white text-indigo-700 font-semibold px-4 py-2.5 rounded-xl shadow hover:bg-indigo-50 transition-all text-sm flex items-center space-x-2">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>Yangi xodim qo‘shish</span>
+                        </button>
+                        <button onclick="switchTab('recruitment')" class="bg-indigo-500/40 border border-indigo-400 text-white font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-500/60 transition-all text-sm flex items-center space-x-2">
+                            <i class="fa-solid fa-briefcase"></i>
+                            <span>Vakansiyalar</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPI Cards Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Faol xodimlar</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1">248</h3>
+                            <span class="text-xs text-emerald-600 font-semibold flex items-center mt-2"><i class="fa-solid fa-arrow-up mr-1"></i> +4 ta bu oy</span>
+                        </div>
+                        <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ochiq vakansiyalar</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1">12</h3>
+                            <span class="text-xs text-indigo-600 font-semibold flex items-center mt-2"><i class="fa-solid fa-user-clock mr-1"></i> 34 nomzod jarayonda</span>
+                        </div>
+                        <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                            <i class="fa-solid fa-briefcase"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bugungi davomat</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1">96.4%</h3>
+                            <span class="text-xs text-red-500 font-semibold flex items-center mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 5 ta kechikish</span>
+                        </div>
+                        <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                            <i class="fa-solid fa-fingerprint"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sinov muddatidagilar</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1">14</h3>
+                            <span class="text-xs text-amber-600 font-semibold flex items-center mt-2"><i class="fa-solid fa-clock mr-1"></i> 3 ta yakunlanmoqda</span>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center text-xl shadow-inner">
+                            <i class="fa-solid fa-user-graduate"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities & Quick Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Recent Activity Stream -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-slate-800 text-lg">So‘nggi HR Hodisalar (Audit & Workflow)</h3>
+                            <button onclick="switchTab('settings')" class="text-xs text-indigo-600 font-semibold hover:underline">Barchasini ko‘rish</button>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                                        <i class="fa-solid fa-user-plus text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-semibold text-slate-800">Yangi xodim ishga olindi: Rustamov Jamshid</p>
+                                        <p class="text-xs text-slate-500">Backend Developer • Bosh ofis</p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-slate-400 font-medium">10 daqiqa oldin</span>
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                                        <i class="fa-solid fa-file-contract text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-semibold text-slate-800">Mehnat shartnomasi imzolandi</p>
+                                        <p class="text-xs text-slate-500">Karimova Malika • HR Manager</p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-slate-400 font-medium">1 soat oldin</span>
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                                        <i class="fa-solid fa-plane-departure text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-semibold text-slate-800">Xizmat safari tasdiqlandi</p>
+                                        <p class="text-xs text-slate-500">Toshpulatov Aziz • Markaziy bo'lim</p>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-slate-400 font-medium">3 soat oldin</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Required / Quick Widget -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-slate-800 text-lg">E’tibor talab qiladiganlar</h3>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-bold text-red-800">Sinov muddati tugayapti</p>
+                                    <p class="text-xs text-red-600">3 nafar xodim uchun yakuniy baholash</p>
+                                </div>
+                                <button onclick="switchTab('employees')" class="bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow hover:bg-red-700 transition-all">Ko‘rish</button>
+                            </div>
+
+                            <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-bold text-amber-800">Ta’til so‘rovlari</p>
+                                    <p class="text-xs text-amber-600">7 ta tasdiqlanmagan ariza mavjud</p>
+                                </div>
+                                <button onclick="switchTab('leaves')" class="bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow hover:bg-amber-700 transition-all">Boshqarish</button>
+                            </div>
+
+                            <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-bold text-indigo-800">Hujjat muddati tugayapti</p>
+                                    <p class="text-xs text-indigo-600">2 ta xodim pasport nusxasi</p>
+                                </div>
+                                <button onclick="switchTab('documents')" class="bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow hover:bg-indigo-700 transition-all">Yangilash</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: EMPLOYEES -->
+            <div id="tab-employees" class="tab-content hidden space-y-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center space-x-3 w-full sm:w-auto">
+                        <input type="text" placeholder="Ism, lavozim yoki ID bo‘yicha izlash..." class="px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <select class="px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm focus:outline-none">
+                            <option>Barcha departamentlar</option>
+                            <option>IT Department</option>
+                            <option>HR & Management</option>
+                            <option>Finance</option>
+                            <option>Marketing</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-3 w-full sm:w-auto justify-end">
+                        <button onclick="openModal('addEmployeeModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm shadow transition-all flex items-center space-x-2">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>Qo‘shish</span>
+                        </button>
+                        <button onclick="alert('Xodimlar Excel formatiga eksport qilindi!')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm border border-slate-200 transition-all flex items-center space-x-2">
+                            <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                            <span>Eksport</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Employees Table -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    <th class="py-4 px-6">Xodim</th>
+                                    <th class="py-4 px-6">Lavozim / Departament</th>
+                                    <th class="py-4 px-6">Filial</th>
+                                    <th class="py-4 px-6">Holati</th>
+                                    <th class="py-4 px-6">Ishga kirgan sana</th>
+                                    <th class="py-4 px-6 text-right">Amallar</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-sm">
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-4 px-6 flex items-center space-x-3">
+                                        <div class="w-10 h-10 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow">JR</div>
+                                        <div>
+                                            <p class="font-bold text-slate-800">Rustamov Jamshid</p>
+                                            <p class="text-xs text-slate-500">ID: #EMP-1024</p>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-6">
+                                        <p class="font-semibold text-slate-700">Backend Developer</p>
+                                        <p class="text-xs text-slate-500">IT Department</p>
+                                    </td>
+                                    <td class="py-4 px-6 text-slate-600">Bosh ofis (HQ)</td>
+                                    <td class="py-4 px-6"><span class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-200">Faol</span></td>
+                                    <td class="py-4 px-6 text-slate-600">10.01.2026</td>
+                                    <td class="py-4 px-6 text-right space-x-2">
+                                        <button onclick="alert('Employee 360 profiling ochilmoqda: Rustamov Jamshid')" class="text-indigo-600 hover:text-indigo-800 font-semibold p-1.5"><i class="fa-solid fa-eye"></i></button>
+                                        <button onclick="alert('Tahrirlash rejimi')" class="text-slate-500 hover:text-slate-700 font-semibold p-1.5"><i class="fa-solid fa-pen"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-4 px-6 flex items-center space-x-3">
+                                        <div class="w-10 h-10 rounded-full bg-purple-600 text-white font-bold flex items-center justify-center text-sm shadow">KM</div>
+                                        <div>
+                                            <p class="font-bold text-slate-800">Karimova Malika</p>
+                                            <p class="text-xs text-slate-500">ID: #EMP-1025</p>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-6">
+                                        <p class="font-semibold text-slate-700">HR Manager</p>
+                                        <p class="text-xs text-slate-500">HR & Management</p>
+                                    </td>
+                                    <td class="py-4 px-6 text-slate-600">Bosh ofis (HQ)</td>
+                                    <td class="py-4 px-6"><span class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-200">Faol</span></td>
+                                    <td class="py-4 px-6 text-slate-600">15.03.2025</td>
+                                    <td class="py-4 px-6 text-right space-x-2">
+                                        <button onclick="alert('Employee 360 profiling ochilmoqda: Karimova Malika')" class="text-indigo-600 hover:text-indigo-800 font-semibold p-1.5"><i class="fa-solid fa-eye"></i></button>
+                                        <button onclick="alert('Tahrirlash rejimi')" class="text-slate-500 hover:text-slate-700 font-semibold p-1.5"><i class="fa-solid fa-pen"></i></button>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-4 px-6 flex items-center space-x-3">
+                                        <div class="w-10 h-10 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center text-sm shadow">TA</div>
+                                        <div>
+                                            <p class="font-bold text-slate-800">Toshpulatov Aziz</p>
+                                            <p class="text-xs text-slate-500">ID: #EMP-1026</p>
+                                        </div>
+                                    </td>
+                                    <td class="py-4 px-6">
+                                        <p class="font-semibold text-slate-700">Financial Analyst</p>
+                                        <p class="text-xs text-slate-500">Finance</p>
+                                    </td>
+                                    <td class="py-4 px-6 text-slate-600">Bosh ofis (HQ)</td>
+                                    <td class="py-4 px-6"><span class="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold border border-amber-200">Sinov muddati</span></td>
+                                    <td class="py-4 px-6 text-slate-600">01.09.2026</td>
+                                    <td class="py-4 px-6 text-right space-x-2">
+                                        <button onclick="alert('Employee 360 profiling ochilmoqda: Toshpulatov Aziz')" class="text-indigo-600 hover:text-indigo-800 font-semibold p-1.5"><i class="fa-solid fa-eye"></i></button>
+                                        <button onclick="alert('Tahrirlash rejimi')" class="text-slate-500 hover:text-slate-700 font-semibold p-1.5"><i class="fa-solid fa-pen"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: ORGANIZATION -->
+            <div id="tab-organization" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Tashkilot tuzilmasi va Shtat jadvali</h3>
+                    <p class="text-sm text-slate-600">Kompaniyaning departamentlari va lavozimlar bo‘yicha shtat birliklari taqsimoti.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+                        <div class="p-5 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
+                            <span class="text-xs font-bold text-indigo-600 uppercase">Bosh ofis</span>
+                            <h4 class="font-bold text-slate-800 text-lg">IT & Engineering</h4>
+                            <p class="text-sm text-slate-600">Jami shtat: 25 ta • Band: 23 • Bo‘sh: 2</p>
+                        </div>
+                        <div class="p-5 bg-purple-50 border border-purple-100 rounded-xl space-y-2">
+                            <span class="text-xs font-bold text-purple-600 uppercase">Bosh ofis</span>
+                            <h4 class="font-bold text-slate-800 text-lg">Sales & Operation</h4>
+                            <p class="text-sm text-slate-600">Jami shtat: 18 ta • Band: 17 • Bo‘sh: 1</p>
+                        </div>
+                        <div class="p-5 bg-emerald-50 border border-emerald-100 rounded-xl space-y-2">
+                            <span class="text-xs font-bold text-emerald-600 uppercase">Bosh ofis</span>
+                            <h4 class="font-bold text-slate-800 text-lg">Finance & Admin</h4>
+                            <p class="text-sm text-slate-600">Jami shtat: 10 ta • Band: 9 • Bo‘sh: 1</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: RECRUITMENT -->
+            <div id="tab-recruitment" class="tab-content hidden space-y-6">
+                <div class="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 text-lg">Ochiq Vakansiyalar va ATS Pipeline</h3>
+                    <button onclick="alert('Yangi vakansiya qo‘shish oynasi')" class="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-xl text-sm shadow hover:bg-indigo-700 transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Vakansiya ochish</span>
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <div class="flex justify-between items-start">
+                            <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-bold">IT Department</span>
+                            <span class="text-xs text-slate-400">12 ta nomzod</span>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-base">Senior Frontend Developer</h4>
+                        <p class="text-xs text-slate-500">React.js, TypeScript, Tailwind CSS • Bosh ofis</p>
+                        <div class="pt-2 flex justify-between items-center text-xs">
+                            <span class="text-emerald-600 font-semibold">Faol</span>
+                            <button onclick="alert('Nomzodlar kanban taxtasi')" class="text-indigo-600 font-bold hover:underline">Nomzodlarni ko‘rish →</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <div class="flex justify-between items-start">
+                            <span class="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg text-xs font-bold">Marketing</span>
+                            <span class="text-xs text-slate-400">8 ta nomzod</span>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-base">SMM & Content Lead</h4>
+                        <p class="text-xs text-slate-500">Copywriting, Target, Analytics • Bosh ofis</p>
+                        <div class="pt-2 flex justify-between items-center text-xs">
+                            <span class="text-emerald-600 font-semibold">Faol</span>
+                            <button onclick="alert('Nomzodlar kanban taxtasi')" class="text-indigo-600 font-bold hover:underline">Nomzodlarni ko‘rish →</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <div class="flex justify-between items-start">
+                            <span class="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg text-xs font-bold">Finance</span>
+                            <span class="text-xs text-slate-400">14 ta nomzod</span>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-base">Chief Accountant</h4>
+                        <p class="text-xs text-slate-500">1C, Tax, Financial Reporting • Bosh ofis</p>
+                        <div class="pt-2 flex justify-between items-center text-xs">
+                            <span class="text-emerald-600 font-semibold">Faol</span>
+                            <button onclick="alert('Nomzodlar kanban taxtasi')" class="text-indigo-600 font-bold hover:underline">Nomzodlarni ko‘rish →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: ATTENDANCE -->
+            <div id="tab-attendance" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Davomat va Time & Attendance nazorati</h3>
+                    <p class="text-sm text-slate-600">Turniket va Face ID qurilmalaridan kelib tushgan ma’lumotlar asosida kundalik ish vaqti hisobi.</p>
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-fingerprint"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <p class="font-bold text-slate-800">Biometrik ma'lumotlar ko'rsatilmoqda</p>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 animate-pulse">Live</span>
+                                </div>
+                                <p class="text-xs text-slate-500">Oxirgi yangilanish vaqti: <span id="sync-timestamp" class="font-semibold text-slate-700">Hozirgina (2 daqiqa oldin)</span></p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+                            <button onclick="triggerManualSync()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow transition-all flex items-center space-x-2">
+                                <i class="fa-solid fa-rotate" id="sync-icon"></i>
+                                <span>Ma’lumotlarni ko'rsatish</span>
+                            </button>
+                            <button onclick="alert('Davomat hisoboti yuklab olindi')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2 rounded-xl transition-all">Hisobotni yuklash</button>
+                        </div>
+                    </div>
+
+                    <!-- Live Demo Logs Table for Attendance -->
+                    <div class="pt-4 border-t border-slate-100">
+                        <h4 class="font-semibold text-slate-700 mb-3 text-sm">So'nggi kelish va ketish qaydlari (Real-time stream)</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                    <tr>
+                                        <th class="p-3">Xodim</th>
+                                        <th class="p-3">Qurilma / Terminal</th>
+                                        <th class="p-3">Holat</th>
+                                        <th class="p-3">Vaqt</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100" id="live-attendance-log">
+                                    <tr>
+                                        <td class="p-3 font-semibold text-slate-800">Rustamov Jamshid</td>
+                                        <td class="p-3 text-slate-600">Turniket #1 (Lobby)</td>
+                                        <td class="p-3"><span class="text-emerald-600 font-medium">Kirish</span></td>
+                                        <td class="p-3 text-slate-500">08:52:14</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold text-slate-800">Karimova Malika</td>
+                                        <td class="p-3 text-slate-600">FaceID #3 (2-qavat)</td>
+                                        <td class="p-3"><span class="text-emerald-600 font-medium">Kirish</span></td>
+                                        <td class="p-3 text-slate-500">08:58:30</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold text-slate-800">Toshpulatov Aziz</td>
+                                        <td class="p-3 text-slate-600">Turniket #2</td>
+                                        <td class="p-3"><span class="text-amber-600 font-medium">Kechikish (15m)</span></td>
+                                        <td class="p-3 text-slate-500">09:15:02</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: LEAVES -->
+            <div id="tab-leaves" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Ta’tillar va yo‘qlamalar boshqaruvi</h3>
+                    <p class="text-sm text-slate-600">Xodimlar tomonidan yuborilgan yillik ta’til, kasallik va ruxsatnoma so‘rovlari.</p>
+                    <div class="space-y-3">
+                        <div class="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-slate-800">Yillik mehnat ta’tili • 14 kun</p>
+                                <p class="text-xs text-slate-500">Rustamov Jamshid (Backend Developer) • 10.10.2026 dan</p>
+                            </div>
+                            <div class="space-x-2">
+                                <button onclick="alert('Ta’til tasdiqlandi!')" class="bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow hover:bg-emerald-700">Tasdiqlash</button>
+                                <button onclick="alert('Rad etildi')" class="bg-red-100 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-red-200">Rad etish</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 7: PAYROLL -->
+            <div id="tab-payroll" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Ish haqi va Kompensatsiya (Payroll)</h3>
+                    <p class="text-sm text-slate-600">Asosiy maosh, KPI bonuslar, ustamalar va soliq hisob-kitoblari.</p>
+                    <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
+                        <div>
+                            <p class="font-bold text-indigo-900">Sentyabr oyi ish haqi hisob-kitobi tayyor</p>
+                            <p class="text-xs text-indigo-700">Jami to‘lov fondi: 1,450,000,000 UZS • 248 ta xodim</p>
+                        </div>
+                        <button onclick="alert('Payroll 1C buxgalteriya tizimiga yuborildi')" class="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow hover:bg-indigo-700">Buxgalteriyaga yuborish</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 8: PERFORMANCE -->
+            <div id="tab-performance" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">KPI va Performance Review</h3>
+                    <p class="text-sm text-slate-600">Xodimlarning choraklik KPI ko‘rsatkichlari va OKR natijalari.</p>
+                    <div class="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
+                        <div>
+                            <p class="font-bold text-slate-800">Q3 2026 Choraklik baholash sikli</p>
+                            <p class="text-xs text-slate-500">Holat: Manager Review bosqichi (84% yakunlangan)</p>
+                        </div>
+                        <span class="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold border border-purple-200">Faol sikl</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 9: DOCUMENTS -->
+            <div id="tab-documents" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Elektron hujjatlar va Buyruqlar</h3>
+                    <p class="text-sm text-slate-600">Mehnat shartnomalari, ichki buyruqlar va xodimlar arxiv hujjatlari.</p>
+                    <div class="space-y-3">
+                        <div class="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-slate-800">№ 142-k Buyruq: Xodimni ishga qabul qilish</p>
+                                <p class="text-xs text-slate-500">Imzolangan sana: 10.01.2026 • Elektron imzo bilan tasdiqlangan</p>
+                            </div>
+                            <button onclick="alert('Buyruq yuklab olindi')" class="text-indigo-600 text-xs font-bold hover:underline">Yuklab olish</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 10: REPORTS -->
+            <div id="tab-reports" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Analitika va Hisobotlar</h3>
+                    <p class="text-sm text-slate-600">Kadrlar qo‘nimsizligi (Turnover), recruitment funeli va ish haqi tahlillari.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        <div class="p-5 border border-slate-200 rounded-xl space-y-2">
+                            <h4 class="font-bold text-slate-800">Turnover (Qo‘nimsizlik koeffitsiyenti)</h4>
+                            <p class="text-3xl font-bold text-indigo-600">4.2%</p>
+                            <p class="text-xs text-slate-500">O‘tgan chorakka nisbatan 1.1% ga kamaygan.</p>
+                        </div>
+                        <div class="p-5 border border-slate-200 rounded-xl space-y-2">
+                            <h4 class="font-bold text-slate-800">Recruitment Conversion</h4>
+                            <p class="text-3xl font-bold text-emerald-600">18.5%</p>
+                            <p class="text-xs text-slate-500">Nomzod arizasidan to offer qabuligacha bo‘lgan o‘rtacha ko‘rsatkich.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 11: SETTINGS -->
+            <div id="tab-settings" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 text-lg">Tizim Sozlamalari va Audit Log</h3>
+                    <p class="text-sm text-slate-600">Rollar va ruxsatlar (RBAC), xavfsizlik va audit jurnali yozuvlari.</p>
+                    <div class="space-y-3">
+                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                            <div>
+                                <p class="font-bold text-slate-800">User: Anvarbek Director (Super Admin)</p>
+                                <p class="text-slate-500">Action: Salary Updated for #EMP-1024 • IP: 192.168.1.55</p>
+                            </div>
+                            <span class="text-slate-400">28.09.2026 14:20</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL: ADD EMPLOYEE -->
+    <div id="addEmployeeModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg">Yangi xodim qo‘shish</h3>
+                <button onclick="closeModal('addEmployeeModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">F.I.Sh</label>
+                    <input type="text" placeholder="Masalan: Aliyev Behzod" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Lavozim</label>
+                        <input type="text" placeholder="Frontend Developer" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Departament</label>
+                        <select class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
+                            <option>IT Department</option>
+                            <option>HR & Management</option>
+                            <option>Finance</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Ishga kirish sanasi</label>
+                    <input type="date" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button onclick="closeModal('addEmployeeModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl">Bekor qilish</button>
+                <button onclick="alert('Yangi xodim muvaffaqiyatli qo‘shildi!'); closeModal('addEmployeeModal');" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow">Saqlash</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        function switchTab(tabId) {
+            // Hide all tab contents
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(el => el.classList.0 && el.classList.add('hidden') || el.classList.add('hidden'));
+
+            // Show selected tab content
+            const activeContent = document.getElementById('tab-' + tabId);
+            if (activeContent) {
+                activeContent.classList.remove('hidden');
+            }
+
+            // Update navigation styles
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(el => {
+                el.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+                el.classList.add('text-slate-300', 'hover:bg-slate-800', 'hover:text-white');
+            });
+
+            const activeNav = document.getElementById('nav-' + tabId);
+            if (activeNav) {
+                activeNav.classList.remove('text-slate-300', 'hover:bg-slate-800', 'hover:text-white');
+                activeNav.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+            }
+
+            // Update top header title
+            const titles = {
+                'dashboard': 'Dashboard / Bosh sahifa',
+                'employees': 'Xodimlar moduli',
+                'organization': 'Tashkiliy tuzilma va shtat jadvali',
+                'recruitment': 'Rekruting va ATS',
+                'attendance': 'Davomat va Vaqt nazorati',
+                'leaves': 'Ta’tillar va so‘rovlar',
+                'payroll': 'Ish haqi va Kompensatsiya',
+                'performance': 'KPI va Performance Review',
+                'documents': 'Hujjatlar va Buyruqlar boshqaruvi',
+                'reports': 'Hisobotlar va Analitika',
+                'settings': 'Sozlamalar va Audit Log'
+            };
+            document.getElementById('page-title').innerHTML = `<i class="fa-solid fa-folder-open text-indigo-600"></i><span>${titles[tabId] || 'HRM Tizimi'}</span>`;
+        }
+
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+            document.getElementById(modalId).classList.add('flex');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            document.getElementById(modalId).classList.remove('flex');
+        }
+
+        function toggleNotifications() {
+            alert('Bildirishnomalar oynasi: 3 ta yangi eslatma mavjud (Sinov muddati, Hujjat muddati).');
+        }
+
+        // Live manual sync demonstration function with time update
+        function triggerManualSync() {
+            const icon = document.getElementById('sync-icon');
+            const timestamp = document.getElementById('sync-timestamp');
+            
+            icon.classList.add('fa-spin');
+            timestamp.innerText = "Ma'lumotlar ko'rsatilmoqda...";
+
+            setTimeout(() => {
+                icon.classList.remove('fa-spin');
+                const now = new Date();
+                const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                timestamp.innerText = `Yangilandi (${timeString})`;
+                
+                // Show subtle feedback
+                const logBody = document.getElementById('live-attendance-log');
+                if(logBody) {
+                    const newRow = document.createElement('tr');
+                    newRow.className = 'bg-indigo-50/50 transition-all';
+                    newRow.innerHTML = `
+                        <td class="p-3 font-semibold text-slate-800">Aliyev Behzod</td>
+                        <td class="p-3 text-slate-600">Turniket #1 (Lobby)</td>
+                        <td class="p-3"><span class="text-emerald-600 font-medium">Kirish (Ko'rsatildi)</span></td>
+                        <td class="p-3 text-slate-500">${timeString}</td>
+                    `;
+                    logBody.insertBefore(newRow, logBody.firstChild);
+                }
+            }, 800);
+        }
+    </script>
+</body>
+</html>

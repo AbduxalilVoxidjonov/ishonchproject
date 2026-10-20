@@ -1,0 +1,30 @@
+#u4790-panel {
+  position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
+  width: 460px; max-height: 80vh; display: flex; flex-direction: column;
+  background: #fff; color: #222; border: 1px solid #c9c9c9; border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); font: 12px/1.4 Arial, sans-serif;
+}
+#u4790-panel .u4790-head { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; background: #fbe156; border-radius: 8px 8px 0 0; }
+#u4790-panel .u4790-x { cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
+#u4790-panel .u4790-body { padding: 8px 12px 12px; overflow: auto; }
+#u4790-panel .u4790-step { margin: 10px 0 4px; font-weight: bold; }
+#u4790-panel .u4790-hint { color: #666; margin: 4px 0; }
+#u4790-panel button { margin: 2px 4px 2px 0; padding: 4px 10px; border: 1px solid #aaa;
+  border-radius: 4px; background: #f4f4f4; cursor: pointer; font: inherit; }
+#u4790-panel button.primary { background: #fbe156; border-color: #d8bd2c; font-weight: bold; }
+#u4790-panel button.link { border: none; background: none; color: #0b5cad; padding: 2px 0; margin-right: 12px; }
+#u4790-panel textarea { width: 100%; box-sizing: border-box; font: 11px monospace; }
+#u4790-panel details { margin: 4px 0; }
+#u4790-panel .u4790-tbl { width: 100%; border-collapse: collapse; margin-top: 8px; }
+#u4790-panel .u4790-tbl th, #u4790-panel .u4790-tbl td { border: 1px solid #e2e2e2; padding: 2px; text-align: left; }
+#u4790-panel .u4790-tbl input:not([type=checkbox]) { width: 100%; box-sizing: border-box; border: none; font: inherit; background: transparent; }
+#u4790-panel .u4790-tbl input.num { text-align: right; }
+#u4790-panel .u4790-tbl tr.done { background: #e9f7e9; color: #777; }
+#u4790-panel .u4790-total { text-align: right; margin-top: 4px; font-weight: bold; }
+#u4790-panel .u4790-log { margin: 8px 0 0; padding: 6px; height: 140px; overflow: auto; background: #f7f7f7;
+  border: 1px solid #e2e2e2; white-space: pre-wrap; font: 11px/1.35 monospace; }
+#u4790-panel .u4790-kt { margin: 4px 0; color: #555; }
+#u4790-panel .u4790-kt label { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
+#u4790-panel .u4790-kt label span { width: 95px; flex: none; }
+#u4790-panel .u4790-kt label input { flex: 1; font: inherit; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
