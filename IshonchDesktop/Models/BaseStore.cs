@@ -95,6 +95,8 @@ public sealed class UnmarkedPrefs
     public decimal Target { get; set; } = 300_000_000m;
     public int Count { get; set; } = 3;
     public int Lines { get; set; } = 10;
+    /// <summary>Bitta chekda bir tovardan ko'pi bilan necha dona (0 — cheklovsiz).</summary>
+    public int MaxPerItem { get; set; }
     public decimal Percent { get; set; } = 10m;
     public string Warehouse { get; set; } = "";
     public bool Post { get; set; } = true;

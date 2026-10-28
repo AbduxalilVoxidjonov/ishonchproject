@@ -17,6 +17,9 @@ public sealed record UnmarkedOptions(decimal Target, int Count, int Lines, decim
 
     /// <summary>Cheklar summasi o'rtachadan qancha farq qilishi mumkin (0,25 = ±25%); 0 — hammasi teng.</summary>
     public decimal Variation { get; init; } = 0.25m;
+
+    /// <summary>Bitta chekda bir tovardan ko'pi bilan necha dona (0 — cheklovsiz).</summary>
+    public int MaxPerItem { get; init; }
 }
 
 public sealed record RunSummary(int Created, int Requested, decimal Sum, bool Stopped, string? Error);
@@ -98,7 +101,7 @@ public sealed class UnmarkedRunner
                 if (left[i] >= 1) idx.Add(i);
             }
             idx.Sort(); // jadval tartibida (o'chirish shunga tayanadi)
-            var plan = Planner.Distribute(idx.Select((i, j) => new StockItem(j, full[i].Name, left[i], Unit(i))).ToList(), targets[k]);
+            var plan = Planner.Distribute(idx.Select((i, j) => new StockItem(j, full[i].Name, opt.MaxPerItem > 0 ? Math.Min(left[i], opt.MaxPerItem) : left[i], Unit(i))).ToList(), targets[k]);
             if (plan.Lines.Count == 0) break; // qoldiq tugadi
             var chosen = plan.Lines.Select(l => idx[l.Index]).ToList();
             for (var j = 0; j < chosen.Count; j++) left[chosen[j]] -= plan.Lines[j].Qty;

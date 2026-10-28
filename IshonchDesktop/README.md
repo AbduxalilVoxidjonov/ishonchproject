@@ -43,3 +43,20 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 
 - 1C paneldagi **E-POS orqali sotish** tugmasi (Bosh sahifadagi alohida E-POS tabi olib tashlandi).
 - Xato markirovkalar doimiy bazasi (kengaytma 1.1.9).
+
+## 0.6.0
+- **Elektr** bo'limi: HET kabinetlari login/parollari (shifrlangan), parallel yig'ish, oylik tarix.
+- **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
+- Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
+
+## 0.7.0 — Markirovkasiz sotish
+Bosh sahifada bazani tanlab **«Markirovkasiz sotish»** — 1C tabining o'ng tomonida panel ochiladi (har baza uchun sozlamalar alohida saqlanadi):
+- **Umumiy summa** va **cheklar soni** — summa cheklarga har xil (±25%) bo'linadi, yig'indisi aynan umumiy summa.
+- **Har chekda tovar qatorlari soni** va **bir tovardan ko'pi bilan necha dona**.
+- **Narxga foiz**, **sklad** nomi, **provesti qilish** va **inventarizatsiyani yangilash** belgilari.
+
+Jarayon: boshida skladning oxirgi «Инвентаризация товаров» hujjati «Заполнить по остаткам на складе» bilan to'ldirilib provesti qilinadi;
+har chek uchun Реализация (накладная) → Изменить → Добавить из документа → Без НДС → +foiz → NDS 12% → rejadagi qatorlar qoldiriladi
+(qolgani bloklab o'chiriladi) → miqdorlar → Перенести → Провести и закрыть. 1C «Остаток» xatosi bersa o'sha qator o'chirilib qayta provesti qilinadi.
+Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
+Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).

@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Ishonch</AssemblyName>
     <RootNamespace>IshonchDesktop</RootNamespace>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <Product>Ishonch</Product>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <NoWarn>MSB3277</NoWarn>

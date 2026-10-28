@@ -17,6 +17,7 @@ public sealed class UnmarkedPanel : UserControl
     readonly TextBox target = new() { Dock = DockStyle.Fill };
     readonly NumericUpDown count = new() { Minimum = 1, Maximum = 500, Dock = DockStyle.Left, Width = 90 };
     readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Dock = DockStyle.Left, Width = 90 };
+    readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Dock = DockStyle.Left, Width = 90 };
     readonly TextBox percent = new() { Dock = DockStyle.Left, Width = 90 };
     readonly TextBox warehouse = new() { Dock = DockStyle.Fill };
     readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true };
@@ -44,6 +45,7 @@ public sealed class UnmarkedPanel : UserControl
         ThousandsInput.Attach(target);
         count.Value = Math.Clamp(prefs.Count, 1, 500);
         lines.Value = Math.Clamp(prefs.Lines, 1, 500);
+        maxPerItem.Value = Math.Clamp(prefs.MaxPerItem, 0, 100000);
         percent.Text = prefs.Percent.ToString("0.##", ru);
         warehouse.Text = prefs.Warehouse;
         post.Checked = prefs.Post;
@@ -70,6 +72,7 @@ public sealed class UnmarkedPanel : UserControl
         Row("Umumiy summa — hamma cheklar uchun (NDS bilan, so'm):", target);
         Row("Cheklar soni:", count);
         Row("Har chekda tovar qatorlari soni (tepadan):", lines);
+        Row("Bir tovardan ko'pi bilan, dona (0 — cheklovsiz):", maxPerItem);
         Row("Narxga qo'shiladigan foiz (%):", percent);
         Row("Sklad (1C dagi nomi; bo'sh — o'zgartirilmaydi):", warehouse);
         form.Controls.Add(new Label { Height = 4 });
@@ -138,7 +141,7 @@ public sealed class UnmarkedPanel : UserControl
     }
 
     public string Describe() =>
-        $"{BaseTitle}: jami {Parse(target.Text):N0} so'm = {count.Value} ta chek × ≈{Parse(target.Text) / count.Value:N0} so'm, {lines.Value} ta qatordan, +{percent.Text}%" +
+        $"{BaseTitle}: jami {Parse(target.Text):N0} so'm = {count.Value} ta chek × ≈{Parse(target.Text) / count.Value:N0} so'm, {lines.Value} ta qatordan" + (maxPerItem.Value > 0 ? $", bir tovardan ≤{maxPerItem.Value} dona" : "") + $", +{percent.Text}%" +
         (post.Checked ? ", provesti" : ", provesti qilinmaydi");
 
     public async Task StartAsync(bool confirm)
@@ -157,6 +160,7 @@ public sealed class UnmarkedPanel : UserControl
         prefs.Target = sum;
         prefs.Count = (int)count.Value;
         prefs.Lines = (int)lines.Value;
+        prefs.MaxPerItem = (int)maxPerItem.Value;
         prefs.Percent = pct;
         prefs.Warehouse = warehouse.Text.Trim();
         prefs.Post = post.Checked;
@@ -172,7 +176,7 @@ public sealed class UnmarkedPanel : UserControl
         {
             if (prefs.RefreshInventory && prefs.Warehouse.Length == 0)
                 Log("Inventarizatsiyani yangilash uchun sklad nomini kiriting (hozir yangilanmaydi).", "warn");
-            var options = new UnmarkedOptions(Math.Round(sum / prefs.Count, 2), prefs.Count, prefs.Lines, pct, prefs.Warehouse, prefs.Post) { RefreshInventory = prefs.RefreshInventory, InventoryNumber = prefs.InventoryNumber };
+            var options = new UnmarkedOptions(Math.Round(sum / prefs.Count, 2), prefs.Count, prefs.Lines, pct, prefs.Warehouse, prefs.Post) { RefreshInventory = prefs.RefreshInventory, InventoryNumber = prefs.InventoryNumber, MaxPerItem = prefs.MaxPerItem };
             var runner = new UnmarkedRunner(tab.Core!, options, Log, cts.Token);
             var r = await runner.RunAsync();
             if (runner.InventoryNumber is { } inv && inv != prefs.InventoryNumber) { prefs.InventoryNumber = inv; settings.Save(); }
