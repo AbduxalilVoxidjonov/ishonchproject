@@ -1,0 +1,66 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Ishonch</AssemblyName>
+    <RootNamespace>IshonchDesktop</RootNamespace>
+    <Version>0.6.0</Version>
+    <Product>Ishonch</Product>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <NoWarn>MSB3277</NoWarn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Release exe hajmi: siqilgan, nosozliklarsiz (publish buyrug'i docs/RELEASE.md da) -->
+    <DebugType>none</DebugType>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test loyihasi (tests\UzposTests) o'z papkasida yig'iladi, asosiy dasturga kirmaydi -->
+    <Compile Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+    <None Remove="tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Data\bases.json" LogicalName="bases.json" />
+
+    <!-- Markirovka kengaytmasi fayllari o'zgarishsiz exe ichiga joylanadi: mantiq bitta joyda qoladi -->
+    <EmbeddedResource Include="Marking\shim.js" LogicalName="shim.js" />
+    <EmbeddedResource Include="Marking\keepactive.js" LogicalName="keepactive.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\manifest.json" LogicalName="mk/manifest.json" />
+    <EmbeddedResource Include="..\markirovkani togirlash\receipt-math.js" LogicalName="mk/receipt-math.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\stock-ledger.js" LogicalName="mk/stock-ledger.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\receipt-pair.js" LogicalName="mk/receipt-pair.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\markup-driver.js" LogicalName="mk/markup-driver.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\state-migration.js" LogicalName="mk/state-migration.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\work-clock.js" LogicalName="mk/work-clock.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\content.js" LogicalName="mk/content.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\sidepanel.js" LogicalName="mk/sidepanel.js" />
+    <EmbeddedResource Include="..\markirovkani togirlash\sidepanel.html" LogicalName="mk/sidepanel.html" />
+    <EmbeddedResource Include="..\tasnifsoliq\extension\content.js" LogicalName="soliq/content.js" />
+    <EmbeddedResource Include="..\tasnifsoliq\extension\page-active.js" LogicalName="soliq/page-active.js" />
+
+    <!-- Elektr bo'limi: interfeys + parallel-app mantiqi o'zgarishsiz -->
+    <EmbeddedResource Include="Elektr\web\index.html" LogicalName="elektr/index.html" />
+    <EmbeddedResource Include="Elektr\web\app.js" LogicalName="elektr/app.js" />
+    <EmbeddedResource Include="Elektr\web\boot.js" LogicalName="elektr/boot.js" />
+    <EmbeddedResource Include="Elektr\web\xlsx.full.min.js" LogicalName="elektr/xlsx.full.min.js" />
+    <EmbeddedResource Include="Elektr\web\cabinet-fill.js" LogicalName="elektr/cabinet-fill.js" />
+    <EmbeddedResource Include="..\elektr\parallel-app\lib\jadval.js" LogicalName="elektr/jadval.js" />
+    <EmbeddedResource Include="..\elektr\parallel-app\lib\batchlib.js" LogicalName="elektr/batchlib.js" />
+    <EmbeddedResource Include="..\elektr\parallel-app\src\het.js" LogicalName="elektr/het.js" />
+    <EmbeddedResource Include="..\elektr\parallel-app\src\convert.js" LogicalName="elektr/convert.js" />
+    <EmbeddedResource Include="..\elektr\parallel-app\src\engine.js" LogicalName="elektr/engine.js" />
+  </ItemGroup>
+
+</Project>
+

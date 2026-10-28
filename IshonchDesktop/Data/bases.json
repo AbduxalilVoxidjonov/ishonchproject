@@ -1,0 +1,1012 @@
+[
+ {
+  "id": 1,
+  "no": 46,
+  "sector": "",
+  "firm": "OBIDJON OPEN TRADE",
+  "inn": "307813525",
+  "accountant": "Қодиров Зохид",
+  "server": "192.168.10.156",
+  "db": "ishonchbaza"
+ },
+ {
+  "id": 2,
+  "no": 36,
+  "sector": "",
+  "firm": "MODERN TRANSFORMATIONS",
+  "inn": "310043337",
+  "accountant": "Анастасия",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza99"
+ },
+ {
+  "id": 3,
+  "no": 41,
+  "sector": "",
+  "firm": "TRUST FINANCE MARKET",
+  "inn": "308941248",
+  "accountant": "Баходиров Рамзбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza98"
+ },
+ {
+  "id": 4,
+  "no": 20,
+  "sector": "",
+  "firm": "BIZNESTRUST GROUP",
+  "inn": "312646731",
+  "accountant": "Ашурова Шахноза + Азизхон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza97"
+ },
+ {
+  "id": 5,
+  "no": 5,
+  "sector": "",
+  "firm": "BUYNOW MARKET",
+  "inn": "312667745",
+  "accountant": "Акбаралиев Тўлқинжон + Азизхон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza96"
+ },
+ {
+  "id": 6,
+  "no": 91,
+  "sector": "",
+  "firm": "MONTHLYBUY",
+  "inn": "312674104",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza92"
+ },
+ {
+  "id": 7,
+  "no": 90,
+  "sector": "",
+  "firm": "NOVA APPLIANCES",
+  "inn": "312674262",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza91"
+ },
+ {
+  "id": 8,
+  "no": 80,
+  "sector": "",
+  "firm": "PURCHASE DREAM (JALAQUDUQ)",
+  "inn": "307829679",
+  "accountant": "Артамонов Амир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza9"
+ },
+ {
+  "id": 9,
+  "no": 88,
+  "sector": "",
+  "firm": "PRIMEHOME TECH",
+  "inn": "312674286",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza89"
+ },
+ {
+  "id": 10,
+  "no": 87,
+  "sector": "",
+  "firm": "FLEXIBUY",
+  "inn": "312674326",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza88"
+ },
+ {
+  "id": 11,
+  "no": 86,
+  "sector": "",
+  "firm": "PAYEASE TECH",
+  "inn": "312674319",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza87"
+ },
+ {
+  "id": 12,
+  "no": 85,
+  "sector": "",
+  "firm": "EASYPAY APPLIANCES",
+  "inn": "312674341",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza86"
+ },
+ {
+  "id": 13,
+  "no": 84,
+  "sector": "",
+  "firm": "SMARTINSTALL",
+  "inn": "312674334",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza85"
+ },
+ {
+  "id": 14,
+  "no": 83,
+  "sector": "",
+  "firm": "EASYHOME MARKET",
+  "inn": "312674057",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza84"
+ },
+ {
+  "id": 15,
+  "no": 82,
+  "sector": "",
+  "firm": "FLEXHOME",
+  "inn": "312674254",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza83"
+ },
+ {
+  "id": 16,
+  "no": 77,
+  "sector": "",
+  "firm": "PRIZMA TECH IT SERVICE",
+  "inn": "312744483",
+  "accountant": "Артамонов Амир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza81"
+ },
+ {
+  "id": 17,
+  "no": 79,
+  "sector": "",
+  "firm": "BUSINESS NEVER WALK ALONE",
+  "inn": "308468645",
+  "accountant": "Артамонов Амир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza8"
+ },
+ {
+  "id": 18,
+  "no": 92,
+  "sector": "",
+  "firm": "ANTIK GOLD JEWERLY",
+  "inn": "312185135",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza78"
+ },
+ {
+  "id": 19,
+  "no": 47,
+  "sector": "",
+  "firm": "WALK TO THE GREEN GARDEN",
+  "inn": "310100677",
+  "accountant": "Қодиров Зохид",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza77"
+ },
+ {
+  "id": 20,
+  "no": 48,
+  "sector": "4",
+  "firm": "BESHARIQ ISHONCH SAVDO",
+  "inn": "304269018",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza74"
+ },
+ {
+  "id": 21,
+  "no": 23,
+  "sector": "",
+  "firm": "FIRSTSTEP RETAIL (BULOQBOSHI TRADE)",
+  "inn": "307711146",
+  "accountant": "Назирова Наргиза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza7"
+ },
+ {
+  "id": 22,
+  "no": 25,
+  "sector": "",
+  "firm": "MANDARIN MARKET COMPANY",
+  "inn": "307650168",
+  "accountant": "Назирова Наргиза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza68"
+ },
+ {
+  "id": 23,
+  "no": 9,
+  "sector": "",
+  "firm": "YOURS TRADE LTD",
+  "inn": "307097665",
+  "accountant": "Шерматов Баходир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza65"
+ },
+ {
+  "id": 24,
+  "no": 59,
+  "sector": "",
+  "firm": "UNEXPECTED PURCHASES (YANGIYOL)",
+  "inn": "307711028",
+  "accountant": "Мирзакаримова Гулнорахон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza64"
+ },
+ {
+  "id": 25,
+  "no": 64,
+  "sector": "",
+  "firm": "WORK WITH LEADERS",
+  "inn": "308662999",
+  "accountant": "Муйдинова Дилрабохон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza63"
+ },
+ {
+  "id": 26,
+  "no": 34,
+  "sector": "",
+  "firm": "WITH US FOREVER",
+  "inn": "308679976",
+  "accountant": "Анастасия",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza62"
+ },
+ {
+  "id": 27,
+  "no": 63,
+  "sector": "",
+  "firm": "WITH THE GREAT FAMILY",
+  "inn": "308807340",
+  "accountant": "Муйдинова Дилрабохон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza61"
+ },
+ {
+  "id": 28,
+  "no": 81,
+  "sector": "",
+  "firm": "WE ONLY HAVE BRANDS",
+  "inn": "308676309",
+  "accountant": "Артамонов Амир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza60"
+ },
+ {
+  "id": 29,
+  "no": 22,
+  "sector": "",
+  "firm": "BETTER WITH LEADERS",
+  "inn": "308679629",
+  "accountant": "Назирова Наргиза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza6"
+ },
+ {
+  "id": 30,
+  "no": 53,
+  "sector": "",
+  "firm": "UNIVERSAL INSTALLMENTS",
+  "inn": "307650437",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza72"
+ },
+ {
+  "id": 31,
+  "no": 54,
+  "sector": "",
+  "firm": "WE ARE OPENED (Next level trade)",
+  "inn": "308060925",
+  "accountant": "Зияталиев Рамонали + Бекзод",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza59"
+ },
+ {
+  "id": 32,
+  "no": 70,
+  "sector": "",
+  "firm": "WE ARE HAPPY WITH OUR CHOICE",
+  "inn": "308683656",
+  "accountant": "Рустамов Мухаммадбобур",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza58"
+ },
+ {
+  "id": 33,
+  "no": 45,
+  "sector": "",
+  "firm": "VALLEY PRODUCTS CENTRE",
+  "inn": "308059956",
+  "accountant": "Қодиров Зохид",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza57"
+ },
+ {
+  "id": 34,
+  "no": 62,
+  "sector": "",
+  "firm": "VALLEY PRODUCTS AND SERVICE",
+  "inn": "308059458",
+  "accountant": "Муйдинова Дилрабохон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza56"
+ },
+ {
+  "id": 35,
+  "no": 8,
+  "sector": "",
+  "firm": "RELIABLE PURCHASE (UCHKURGAN RETAIL)",
+  "inn": "307499774",
+  "accountant": "Шерматов Баходир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza55"
+ },
+ {
+  "id": 36,
+  "no": 12,
+  "sector": "",
+  "firm": "TURIST BIZNES TRADE",
+  "inn": "305684499",
+  "accountant": "Мамажонов Шохрухбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza53"
+ },
+ {
+  "id": 37,
+  "no": 73,
+  "sector": "",
+  "firm": "TRUST TRADE PARTNER",
+  "inn": "306344445",
+  "accountant": "Юсупов Маьмуржон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza52"
+ },
+ {
+  "id": 38,
+  "no": 68,
+  "sector": "",
+  "firm": "TRUST TRADE ASIA",
+  "inn": "306175774",
+  "accountant": "Рустамов Мухаммадбобур",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza51"
+ },
+ {
+  "id": 39,
+  "no": 52,
+  "sector": "",
+  "firm": "TECH MAGNET STORE",
+  "inn": "308060394",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza50"
+ },
+ {
+  "id": 40,
+  "no": 15,
+  "sector": "2",
+  "firm": "BEST RETAIL TRADE COMPANY",
+  "inn": "308060878",
+  "accountant": "Ашурова Шахноза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza5"
+ },
+ {
+  "id": 41,
+  "no": 35,
+  "sector": "",
+  "firm": "TRADE NETWORK FUTURE",
+  "inn": "308263839",
+  "accountant": "Анастасия",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza49"
+ },
+ {
+  "id": 42,
+  "no": 19,
+  "sector": "",
+  "firm": "TRADE MARKET COMPANY",
+  "inn": "308060284",
+  "accountant": "Ашурова Шахноза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza48"
+ },
+ {
+  "id": 43,
+  "no": 29,
+  "sector": "",
+  "firm": "TOWARDS A HAPPY FUTURE",
+  "inn": "308060538",
+  "accountant": "Мамадалиева Мушарраф",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza47"
+ },
+ {
+  "id": 44,
+  "no": 39,
+  "sector": "",
+  "firm": "TOGETHER TO OUR DREAMS",
+  "inn": "306939503",
+  "accountant": "Баходиров Рамзбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza46"
+ },
+ {
+  "id": 45,
+  "no": 58,
+  "sector": "",
+  "firm": "THE PLACE OF DREAMS",
+  "inn": "308469485",
+  "accountant": "Мирзакаримова Гулнорахон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza45"
+ },
+ {
+  "id": 46,
+  "no": 38,
+  "sector": "",
+  "firm": "THE PEARL OF THE GOLDEN VALLEY",
+  "inn": "308068225",
+  "accountant": "Баходиров Рамзбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza44"
+ },
+ {
+  "id": 47,
+  "no": 11,
+  "sector": "",
+  "firm": "THE LARGE TRADE NETWORK",
+  "inn": "308070454",
+  "accountant": "Мамажонов Шохрухбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza43"
+ },
+ {
+  "id": 48,
+  "no": 40,
+  "sector": "",
+  "firm": "THE EASY TRADE NETWORK",
+  "inn": "308070540",
+  "accountant": "Баходиров Рамзбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza42"
+ },
+ {
+  "id": 49,
+  "no": 61,
+  "sector": "",
+  "firm": "THE BEST OPTION TRADE",
+  "inn": "306630493",
+  "accountant": "Муйдинова Дилрабохон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza41"
+ },
+ {
+  "id": 50,
+  "no": 69,
+  "sector": "",
+  "firm": "TECHNOLOGY TRADE MARKET",
+  "inn": "308082296",
+  "accountant": "Рустамов Мухаммадбобур",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza40"
+ },
+ {
+  "id": 51,
+  "no": 28,
+  "sector": "",
+  "firm": "SUPER NETWORK SAIL",
+  "inn": "308060743",
+  "accountant": "Мамадалиева Мушарраф",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza39"
+ },
+ {
+  "id": 52,
+  "no": 66,
+  "sector": "5",
+  "firm": "STEP TOWARDS A BRIGHTER FUTURE",
+  "inn": "308808782",
+  "accountant": "Рустамов Мухаммадбобур",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza38"
+ },
+ {
+  "id": 53,
+  "no": 10,
+  "sector": "",
+  "firm": "STEP INTO THE BRIGHT FUTURE",
+  "inn": "308426396",
+  "accountant": "Мамажонов Шохрухбек + Азизхон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza37"
+ },
+ {
+  "id": 54,
+  "no": 13,
+  "sector": "",
+  "firm": "SOFT TRADE LTD",
+  "inn": "306344374",
+  "accountant": "Мамажонов Шохрухбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza36"
+ },
+ {
+  "id": 55,
+  "no": 51,
+  "sector": "",
+  "firm": "SALES MASTER NETWORK",
+  "inn": "308262870",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza35"
+ },
+ {
+  "id": 56,
+  "no": 18,
+  "sector": "",
+  "firm": "RETAIL NETWORK COMPANY",
+  "inn": "306891154",
+  "accountant": "Ашурова Шахноза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza34"
+ },
+ {
+  "id": 57,
+  "no": 3,
+  "sector": "",
+  "firm": "PROSPEROUS LARGE FUTURE",
+  "inn": "308469264",
+  "accountant": "Акбаралиев Тўлқинжон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza33"
+ },
+ {
+  "id": 58,
+  "no": 44,
+  "sector": "",
+  "firm": "PERFECT NETWORK",
+  "inn": "308469762",
+  "accountant": "Қодиров Зохид",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza32"
+ },
+ {
+  "id": 59,
+  "no": 37,
+  "sector": "",
+  "firm": "NEXT YELLOW STEP",
+  "inn": "308602652",
+  "accountant": "Баходиров Рамзбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza31"
+ },
+ {
+  "id": 60,
+  "no": 27,
+  "sector": "",
+  "firm": "NEW RETAIL TRADE MARKET",
+  "inn": "308059157",
+  "accountant": "Мамадалиева Мушарраф",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza30"
+ },
+ {
+  "id": 61,
+  "no": 57,
+  "sector": "",
+  "firm": "THE MILLENNIUM RETAIL (BALIKCHI RETAIL)",
+  "inn": "307500091",
+  "accountant": "Мирзакаримова Гулнорахон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza3"
+ },
+ {
+  "id": 62,
+  "no": 2,
+  "sector": "",
+  "firm": "NETWORK LARGE TRADE",
+  "inn": "308311058",
+  "accountant": "Акбаралиев Тўлқинжон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza29"
+ },
+ {
+  "id": 63,
+  "no": 4,
+  "sector": "",
+  "firm": "SHARE HAPPINESS (MINGBULOQ)",
+  "inn": "307711408",
+  "accountant": "Акбаралиев Тўлқинжон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza28"
+ },
+ {
+  "id": 64,
+  "no": 74,
+  "sector": "",
+  "firm": "MARKET BEAUTIFUL TRADE",
+  "inn": "308060102",
+  "accountant": "Юсупов Маьмуржон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza27"
+ },
+ {
+  "id": 65,
+  "no": 78,
+  "sector": "",
+  "firm": "MAKRO NETWORK SAIL",
+  "inn": "308060664",
+  "accountant": "Артамонов Амир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza26"
+ },
+ {
+  "id": 66,
+  "no": 76,
+  "sector": "6",
+  "firm": "LOOK INTO INFINITY",
+  "inn": "308807586",
+  "accountant": "Артамонов Амир + Бекзод",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza25"
+ },
+ {
+  "id": 67,
+  "no": 56,
+  "sector": "",
+  "firm": "FAVORITE PURCHASE (KURGANTEPA RETAIL)",
+  "inn": "307499917",
+  "accountant": "Мирзакаримова Гулнорахон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza24"
+ },
+ {
+  "id": 68,
+  "no": 1,
+  "sector": "1",
+  "firm": "BEST FOR GOOD FUTURE",
+  "inn": "307830275",
+  "accountant": "Акбаралиев Тўлқинжон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza23"
+ },
+ {
+  "id": 69,
+  "no": 72,
+  "sector": "",
+  "firm": "ISHONCH KREDIT SAVDO",
+  "inn": "302590974",
+  "accountant": "Юсупов Маьмуржон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza22"
+ },
+ {
+  "id": 70,
+  "no": 17,
+  "sector": "",
+  "firm": "ISHONCH BISINESS COMPANY",
+  "inn": "306938719",
+  "accountant": "Ашурова Шахноза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza21"
+ },
+ {
+  "id": 71,
+  "no": 67,
+  "sector": "",
+  "firm": "IMPERIAL MARKET TRADE",
+  "inn": "308068114",
+  "accountant": "Рустамов Мухаммадбобур + Азизхон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza20"
+ },
+ {
+  "id": 72,
+  "no": 14,
+  "sector": "",
+  "firm": "TEAM RETAIL (ASAKA NETWORK)",
+  "inn": "306931174",
+  "accountant": "Мамажонов Шохрухбек",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza2"
+ },
+ {
+  "id": 73,
+  "no": 43,
+  "sector": "",
+  "firm": "HARD SOFT TRADE LTD",
+  "inn": "307097333",
+  "accountant": "Қодиров Зохид",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza19"
+ },
+ {
+  "id": 74,
+  "no": 16,
+  "sector": "",
+  "firm": "GOLD VALLEY TRADEMARKS",
+  "inn": "308264077",
+  "accountant": "Ашурова Шахноза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza18"
+ },
+ {
+  "id": 75,
+  "no": 49,
+  "sector": "",
+  "firm": "FAROVON HAYOT IFODASI",
+  "inn": "304282311",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza17"
+ },
+ {
+  "id": 76,
+  "no": 42,
+  "sector": "",
+  "firm": "FARGONA ISHONCH SAVDO",
+  "inn": "303471702",
+  "accountant": "Қодиров Зохид",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza16"
+ },
+ {
+  "id": 77,
+  "no": 33,
+  "sector": "",
+  "firm": "EXCELLENT SERVICE AND TRADE",
+  "inn": "308061060",
+  "accountant": "Анастасия",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza15"
+ },
+ {
+  "id": 78,
+  "no": 26,
+  "sector": "",
+  "firm": "EXCELLENT SERVICE TRADE",
+  "inn": "308059584",
+  "accountant": "Мамадалиева Мушарраф",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza14"
+ },
+ {
+  "id": 79,
+  "no": 50,
+  "sector": "",
+  "firm": "DREAM PRODUCTS AND SERVICE",
+  "inn": "308059806",
+  "accountant": "Зияталиев Рамонали",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza13"
+ },
+ {
+  "id": 80,
+  "no": 7,
+  "sector": "",
+  "firm": "EVOLUTION NETWORKS (DONT WASTE TIME)",
+  "inn": "308472340",
+  "accountant": "Шерматов Баходир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza12"
+ },
+ {
+  "id": 81,
+  "no": 24,
+  "sector": "",
+  "firm": "LIVE BETTER MARKET (CHIRCHIQ)",
+  "inn": "307814190",
+  "accountant": "Назирова Наргиза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza11"
+ },
+ {
+  "id": 82,
+  "no": 6,
+  "sector": "",
+  "firm": "URBANTRADE SOLUTIONS",
+  "inn": "312648412",
+  "accountant": "Шерматов Баходир",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza108"
+ },
+ {
+  "id": 83,
+  "no": 75,
+  "sector": "",
+  "firm": "GOLDENTRUST BIZNES",
+  "inn": "312653114",
+  "accountant": "Юсупов Маьмуржон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza107"
+ },
+ {
+  "id": 84,
+  "no": 71,
+  "sector": "",
+  "firm": "ECOTRADE HUB",
+  "inn": "312653881",
+  "accountant": "Рустамов Мухаммадбобур",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza106"
+ },
+ {
+  "id": 85,
+  "no": 21,
+  "sector": "",
+  "firm": "SALEBRIDGE TRADING",
+  "inn": "312653304",
+  "accountant": "Назирова Наргиза",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza105"
+ },
+ {
+  "id": 86,
+  "no": 65,
+  "sector": "",
+  "firm": "SMARTTRUST SALES",
+  "inn": "312653676",
+  "accountant": "Муйдинова Дилрабохон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza104"
+ },
+ {
+  "id": 87,
+  "no": 60,
+  "sector": "",
+  "firm": "SALEBRIDGE BIZNES",
+  "inn": "312660644",
+  "accountant": "Мирзакаримова Гулнорахон + Бекзод",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza103"
+ },
+ {
+  "id": 88,
+  "no": 31,
+  "sector": "",
+  "firm": "MIRACLESALE MARKET",
+  "inn": "312647864",
+  "accountant": "Мамадалиева Мушарраф",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza102"
+ },
+ {
+  "id": 89,
+  "no": 30,
+  "sector": "",
+  "firm": "MIRACLESALE BIZNES",
+  "inn": "312660573",
+  "accountant": "Мамадалиева Мушарраф + Бекзод",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza101"
+ },
+ {
+  "id": 90,
+  "no": 32,
+  "sector": "3",
+  "firm": "CENTRAL AZIA TRADE MARKET",
+  "inn": "308082454",
+  "accountant": "Анастасия",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza10"
+ },
+ {
+  "id": 91,
+  "no": 55,
+  "sector": "",
+  "firm": "BIG WORLD RETAIL (ANDIJAN RETAIL)",
+  "inn": "307500210",
+  "accountant": "Мирзакаримова Гулнорахон",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza1"
+ },
+ {
+  "id": 92,
+  "no": 89,
+  "sector": "",
+  "firm": "TRUSTPAY HOME",
+  "inn": "312674302",
+  "accountant": "Жавлонбек Расулов",
+  "server": "tas-1cbuxapp-01",
+  "db": "baz90"
+ },
+ {
+  "id": 93,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza200)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza200"
+ },
+ {
+  "id": 94,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza73)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza73"
+ },
+ {
+  "id": 95,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza72)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza72"
+ },
+ {
+  "id": 96,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza76)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza76"
+ },
+ {
+  "id": 97,
+  "no": null,
+  "sector": "",
+  "firm": "Мастер база (baza80)",
+  "inn": "",
+  "accountant": "Мастер база",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza80"
+ },
+ {
+  "id": 98,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza95)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza95"
+ },
+ {
+  "id": 99,
+  "no": null,
+  "sector": "",
+  "firm": "Шукуржон(Лойиха фирмалар) (baza79)",
+  "inn": "",
+  "accountant": "Шукуржон(Лойиха фирмалар)",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza79"
+ },
+ {
+  "id": 100,
+  "no": null,
+  "sector": "",
+  "firm": "Лойиха фирмалар (sello)",
+  "inn": "",
+  "accountant": "Лойиха фирмалар",
+  "server": "tas-1cbuxapp-01",
+  "db": "sello"
+ },
+ {
+  "id": 101,
+  "no": null,
+  "sector": "",
+  "firm": "COMFORTDRIVE (baza95)",
+  "inn": "",
+  "accountant": "COMFORTDRIVE",
+  "server": "tas-1cbuxapp-01",
+  "db": "baza95"
+ }
+]

@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MXIK Qidiruv (soliq.uz)",
-  "version": "0.4.1",
+  "version": "0.4.6",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtwkF/XgB1XKL93EGs714fzwTmDoIex0xdEjF0IAnwNAP0DUQYivzYq2YZeVMWZcgd9t1dEE84T5PJ5/UckWmzOMS3AXzkNkbu8I+IG24jYBgZlTur1cZJ3GpO3RqBuyW2LRc1hpedOAib9ecuFjgUwKQyIuKjZISW5J1TYsXeYUW2Iw942v7IUDoamvG8iuy2GhipzpUVb3lhNDNLj+ochc1JWgR8w4TaDVdMvKvfwKfP+AaajM79Abg22F5OgeZd92OxsFs+xHQrJfNarPV6diTlkPErYT9WMU2BKeGAR/iw6P0gKpF/xlWb8JQQMuMl3R87HxLGIwcqzBKcW8kPQIDAQAB",
   "description": "my.soliq.uz markirovka va tasnif.soliq.uz MXIK bo'yicha kodlarni ommaviy tekshirish.",
   "permissions": [
     "tabs",
@@ -13,6 +14,14 @@
     "https://my.soliq.uz/*",
     "https://tasnif.soliq.uz/*"
   ],
+  "externally_connectable": {
+    "matches": [
+      "http://tas-1cbuxapp-01/*"
+    ],
+    "ids": [
+      "iimlgpfdhffcigknhggakccmgbljiloj"
+    ]
+  },
   "action": {
     "default_title": "MXIK Qidiruv (yon panel)"
   },
@@ -25,6 +34,16 @@
         "content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://my.soliq.uz/*"
+      ],
+      "js": [
+        "page-active.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "side_panel": {

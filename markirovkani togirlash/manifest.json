@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Markirovkali chek tayyorlash",
+  "description": "Inventarizatsiyadan markirovkali tovarlarni olib, Подбор kodlari orqali bitta hujjat tayyorlaydi, natsenka va ichki qoldiqni hisoblaydi.",
+  "version": "1.1.9",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5uJ+EERchsWwVgQYYrYpWyhHApfR8vWZ44cQM+iOMzYZPrcuYanW+LAa55QSx9v1TJ4q6dg87EEvBRCsojK65Y+ynn82MVkPVZzjX7fBd/+6NMJ0MdPK64gk71PVc+FNt57iU71Tb0py4kD6v7ZDaYCd4ylgnhEmlfzfW4wt2pbIBdJwEHvgJFvOUa/yGDwv8f+A3xC2EibyhFOiGZlaKl+fVCH3r66lIaeqP52AhLWsedHnJoWNJ/EhFZMkuF447e5qWWevcYsgBnZbQD6ZngfHAFZyp41PzkHldhRU+uiynHemhoqWNS+M0fMa881oLNPwBbobMPqTjmxXhKovuQIDAQAB",
+  "permissions": [
+    "storage",
+    "debugger",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://tas-1cbuxapp-01/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://tas-1cbuxapp-01/*"
+      ],
+      "js": [
+        "receipt-math.js",
+        "stock-ledger.js",
+        "receipt-pair.js",
+        "markup-driver.js",
+        "state-migration.js",
+        "work-clock.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Markirovkali chek panelini yon tomonda ochish"
+  }
+}

@@ -2,8 +2,14 @@ const $ = id => document.getElementById(id);
 $("ver").textContent = "v" + chrome.runtime.getManifest().version;
 const MARK_URL = "https://my.soliq.uz/remotes-services/markirovka/product_markirovka";
 
-function verdictOf(operation) {
-  const op = (operation || "").toLowerCase();
+// our STIR: a code is sellable only when its last operation is wholesale to this STIR
+const cleanStir = v => String(v == null ? "" : v).replace(/\D/g, "");
+chrome.storage.local.get("mxik_stir").then(d => { $("stir").value = d.mxik_stir || ""; });
+$("stir").oninput = () => chrome.storage.local.set({ mxik_stir: cleanStir($("stir").value) });
+
+function verdictOf(last, stir) {
+  const op = (last && last.operation || "").toLowerCase(), ours = cleanStir(stir);
+  if (ours && cleanStir(last && last.stir) !== ours) return { text: "SOTIB BO'LMAYDI (boshqa STIR)", cls: "bad" };
   if (/ulgurji|улгуржи|оптов/.test(op)) return { text: "SOTSA BO'LADI", cls: "ok" };
   if (/chakana|чакана|розн/.test(op)) return { text: "SOTIB BO'LMAYDI", cls: "bad" };
   return { text: "Holat noma'lum", cls: "" };
@@ -15,7 +21,11 @@ async function markirovka(code) {
   let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true, url: "https://my.soliq.uz/*" });
   if (!tab) [tab] = await chrome.tabs.query({ url: MARK_URL + "*" });
   if (!tab) tab = await chrome.tabs.create({ url: MARK_URL });
-  if (!tab.url || !tab.url.startsWith(MARK_URL)) {
+  await chrome.tabs.update(tab.id, { autoDiscardable: false }).catch(() => {});   // Memory Saver must not unload it
+  if (tab.discarded) {
+    await chrome.tabs.reload(tab.id);
+    await new Promise(r => setTimeout(r, 1500));
+  } else if (!tab.url || !tab.url.startsWith(MARK_URL)) {
     await chrome.tabs.update(tab.id, { url: MARK_URL, active: true });
     await new Promise(r => setTimeout(r, 1500));
   }
@@ -124,7 +134,7 @@ async function checkOne(raw) {
     const h = r.history, l = h && h.last;
     if (h) Object.assign(res, { product: h.product, size: h.size, importer: h.importer, stir: h.stir, mxik: h.mxik, barcode: h.barcode });
     if (l) Object.assign(res, { operation: l.operation, company: l.company, opStir: l.stir, date: l.date, address: l.address });
-    res.Natija = l ? verdictOf(l.operation).text : "Tarix topilmadi";
+    res.Natija = l ? verdictOf(l, $("stir").value).text : "Tarix topilmadi";
   } catch (e) { res.Natija = "Xato"; res.Izoh = e.message; }
   await tasnifP;
   res.mxikMatch = MXIK_MATCH(res);
@@ -135,6 +145,7 @@ async function checkOne(raw) {
 const INFO_COLS = [
   ["product", "Mahsulot nomi", 45], ["size", "Hajmi", 18], ["importer", "Importyor nomi", 32],
   ["mxik", "MXIK", 19], ["barcode", "Shtrix kodi", 16], ["operation", "Oxirgi operatsiya", 22],
+  ["opStir", "Oxirgi egasi STIR", 14], ["company", "Oxirgi egasi", 32],
   ["tBarcode", "Tasnif: shtrix-kod", 16], ["tStatus", "Tasnifda", 12], ["tMxik", "Tasnif: MXIK", 19],
   ["tName", "Tasnif: MXIK nomi", 45], ["mxikMatch", "MXIK mosligi", 14],
 ];

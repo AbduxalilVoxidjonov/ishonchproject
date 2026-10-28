@@ -1,0 +1,48 @@
+name: Release
+
+# `v0.6.1` kabi teg (tag) yuborilganda Ishonch.exe yig'iladi va GitHub Release sifatida chiqariladi.
+# Dastur ichidagi «Yangilanishni tekshirish» aynan shu release dagi Ishonch.exe ni topadi.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Versiya (tegdan)
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Teg v1.2.3 ko'rinishida bo'lishi kerak: ${{ github.ref_name }}" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Testlar
+        run: dotnet run -c Release --project IshonchDesktop/tests/AppTests/AppTests.csproj
+
+      - name: Yig'ish (bitta Ishonch.exe)
+        run: >
+          dotnet publish IshonchDesktop/IshonchDesktop.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.ver.outputs.version }} -o out
+
+      - name: Kontrol yig'indisi
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash out/Ishonch.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  Ishonch.exe" | Set-Content -NoNewline -Encoding ascii out/Ishonch.exe.sha256
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" out/Ishonch.exe out/Ishonch.exe.sha256 --title "Ishonch ${{ steps.ver.outputs.version }}" --generate-notes
