@@ -177,6 +177,9 @@ public sealed class MarkedAutoBar : UserControl
                 await PanelClickAsync("start");
                 Status($"{k + 1}/{n}-chek: Подбор (≈{targets[k]:N0} so'm)…");
 
+                // Oldingi chekning «tayyor» holatidan chiqib, jarayon boshlanganini kutamiz (aks holda darhol «tayyor» deb o'qilardi)
+                await WaitAsync(async () => Str(await PanelStateAsync(), "start") != "Yangi chekni boshlash", TimeSpan.FromMinutes(2), $"{k + 1}-chek boshlanishi", ct);
+
                 // Panel jarayoni tugashini kutamiz: «Yangi chekni boshlash» — tayyor; «Davom» — to'xtab qoldi
                 var stoppedSince = (DateTime?)null;
                 await WaitAsync(async () =>

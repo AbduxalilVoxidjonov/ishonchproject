@@ -119,7 +119,8 @@ public static class SoliqBridge
                         ["company"] = S(s, "companyName"),
                         ["operation"] = S(s, "type") is { Length: > 0 } t ? t : S(s, "operationType"),
                         ["operationType"] = S(s, "operationType"),
-                        ["stir"] = Digits(S(s, "companyTin")),
+                        // Ulgurji savdoda kodni oluvchi — buyerTin; boshqa operatsiyalarda bajaruvchi kompaniya
+                        ["stir"] = Digits(S(s, "buyerTin")) is { Length: > 0 } bt ? bt : Digits(S(s, "companyTin")),
                         ["date"] = S(s, "operationDate"),
                         ["address"] = S(s, "address"),
                     });
@@ -144,9 +145,19 @@ public static class SoliqBridge
                 ["barcode"] = S(data, "barCode"), ["steps"] = steps, ["last"] = last,
             };
             var lastEl = JsonSerializer.SerializeToElement(last);
-            var verdict = VerdictOf(lastEl, ours);
-            // Tekst noma'lum bo'lsa, operatsiya turi kodidan: muomaladan chiqarilgan (chakana sotilgan) — sotilgan
-            if (verdict == "unknown" && last["operationType"].Contains("WITHDRAWAL", StringComparison.OrdinalIgnoreCase)) verdict = "sold";
+            // Eng ishonchlisi — kodning hozirgi holati va egasi: muomalada (INTRODUCED) va egasi biz bo'lsa — sotsa bo'ladi
+            var owner = Digits(S(data, "ownerTin"));
+            var cisStatus = S(data, "cisStatus");
+            string verdict;
+            if (ours.Length > 0 && owner.Length > 0 && owner != ours) verdict = "sold";
+            else if (cisStatus.Equals("INTRODUCED", StringComparison.OrdinalIgnoreCase)) verdict = "available";
+            else if (Regex.IsMatch(cisStatus, "WITHDRAW|RETIRE|OUT|SOLD", RegexOptions.IgnoreCase)) verdict = "sold";
+            else
+            {
+                verdict = VerdictOf(lastEl, ours);
+                if (verdict == "unknown" && last["operationType"].Contains("WITHDRAWAL", StringComparison.OrdinalIgnoreCase)) verdict = "sold";
+            }
+            if (owner.Length > 0) last["stir"] = owner;
             return new
             {
                 ok = true,
@@ -155,6 +166,7 @@ public static class SoliqBridge
                 lastStir = last["stir"],
                 stir = ours,
                 stirMatch = ours.Length > 0 ? (bool?)(last["stir"] == ours) : null,
+                cisStatus,
                 history = JsonSerializer.SerializeToElement(history),
                 fast = true,
             };
