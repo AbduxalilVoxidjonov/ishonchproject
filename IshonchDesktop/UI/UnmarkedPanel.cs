@@ -14,17 +14,17 @@ public sealed class UnmarkedPanel : UserControl
     readonly WebTab tab;
     readonly Settings settings;
     readonly UnmarkedPrefs prefs;
-    readonly TextBox target = new() { Dock = DockStyle.Fill };
-    readonly NumericUpDown count = new() { Minimum = 1, Maximum = 500, Dock = DockStyle.Left, Width = 90 };
-    readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Dock = DockStyle.Left, Width = 90 };
-    readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Dock = DockStyle.Left, Width = 90 };
-    readonly TextBox percent = new() { Dock = DockStyle.Left, Width = 90 };
-    readonly TextBox warehouse = new() { Dock = DockStyle.Fill };
-    readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true };
-    readonly CheckBox refresh = new() { Text = "Boshlashdan oldin inventarizatsiyani yangilash (sklad qoldig'i bo'yicha)", AutoSize = true };
-    readonly Button start = new() { Text = "▶ Boshlash", Height = 34, Dock = DockStyle.Fill };
-    readonly Button stop = new() { Text = "■ To'xtatish", Height = 34, Dock = DockStyle.Fill, Enabled = false };
-    readonly Button close = new() { Text = "✕", Width = 30, Dock = DockStyle.Right };
+    readonly TextBox target = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
+    readonly NumericUpDown count = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
+    readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
+    readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Width = 80, TextAlign = HorizontalAlignment.Right };
+    readonly TextBox percent = new() { Width = 80, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
+    readonly TextBox warehouse = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
+    readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true, Dock = DockStyle.Top };
+    readonly CheckBox refresh = new() { Text = "Boshlashdan oldin inventarizatsiyani yangilash", AutoSize = true, Dock = DockStyle.Top };
+    readonly Button start = PanelStyle.Primary(new Button { Text = "▶  Boshlash", Height = 36, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) });
+    readonly Button stop = PanelStyle.Secondary(new Button { Text = "■  To'xtatish", Height = 36, Dock = DockStyle.Fill, Enabled = false, Margin = new Padding(4, 0, 0, 0) }, danger: true);
+    readonly Button close = PanelStyle.Secondary(new Button { Text = "✕", Width = 32, Dock = DockStyle.Right });
     readonly RichTextBox logBox = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = Color.White, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
     CancellationTokenSource? cts;
 
@@ -37,8 +37,6 @@ public sealed class UnmarkedPanel : UserControl
         this.settings = settings;
         BaseTitle = baseTitle;
         prefs = settings.GetUnmarked(baseKey);
-        Font = new Font("Segoe UI", 9.5f);
-        BackColor = SystemColors.Control;
 
         var ru = CultureInfo.GetCultureInfo("ru-RU");
         target.Text = prefs.Target.ToString("0.##", CultureInfo.InvariantCulture);
@@ -51,54 +49,80 @@ public sealed class UnmarkedPanel : UserControl
         post.Checked = prefs.Post;
         refresh.Checked = prefs.RefreshInventory;
 
-        var title = new Label
-        {
-            Text = "Markirovkasiz sotish", Dock = DockStyle.Fill, Font = new Font("Segoe UI", 12f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 0, 0),
-        };
-        var header = new Panel { Dock = DockStyle.Top, Height = 36 };
+        BackColor = PanelStyle.Back;
+        Font = PanelStyle.Base;
+        Padding = new Padding(8);
+
+        // Sarlavha
+        var header = new Panel { Dock = DockStyle.Top, Height = 46 };
+        var title = new Label { Text = "Markirovkasiz sotish", Dock = DockStyle.Top, Height = 24, Font = PanelStyle.Title, ForeColor = Color.FromArgb(15, 23, 42) };
+        var baseLabel = new Label { Text = baseTitle, Dock = DockStyle.Top, Height = 18, ForeColor = PanelStyle.Muted, AutoEllipsis = true };
+        header.Controls.Add(baseLabel);
         header.Controls.Add(title);
         header.Controls.Add(close);
-        var baseLabel = new Label { Text = baseTitle, Dock = DockStyle.Top, Height = 22, Padding = new Padding(10, 0, 10, 0), ForeColor = Color.DimGray };
 
-        var form = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(10, 2, 10, 0) };
-        void Row(string label, Control c)
+        // Parametrlar kartasi: chapda nom, o'ngda maydon
+        var card = PanelStyle.CardPanel(new Padding(12, 10, 12, 10));
+        card.Dock = DockStyle.Top;
+        var grid = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, BackColor = PanelStyle.Card };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        void Row(string label, Control c, bool wide = false)
         {
-            form.Controls.Add(new Label { Text = label, AutoSize = true, Padding = new Padding(0, 6, 0, 2) });
-            var cell = new Panel { Height = 28, Dock = DockStyle.Top };
-            cell.Controls.Add(c);
-            form.Controls.Add(cell);
+            var l = new Label { Text = label, AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.FromArgb(51, 65, 85), Height = 28 };
+            if (wide)
+            {
+                grid.Controls.Add(l);
+                grid.SetColumnSpan(l, 2);
+                c.Dock = DockStyle.Fill;
+                grid.Controls.Add(c);
+                grid.SetColumnSpan(c, 2);
+                return;
+            }
+            c.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            grid.Controls.Add(l);
+            grid.Controls.Add(c);
         }
-        Row("Umumiy summa — hamma cheklar uchun (NDS bilan, so'm):", target);
-        Row("Cheklar soni:", count);
-        Row("Har chekda tovar qatorlari soni (tepadan):", lines);
-        Row("Bir tovardan ko'pi bilan, dona (0 — cheklovsiz):", maxPerItem);
-        Row("Narxga qo'shiladigan foiz (%):", percent);
-        Row("Sklad (1C dagi nomi; bo'sh — o'zgartirilmaydi):", warehouse);
-        form.Controls.Add(new Label { Height = 4 });
-        form.Controls.Add(post);
-        form.Controls.Add(refresh);
-        foreach (Control c in form.Controls) c.Dock = DockStyle.Top;
+        Row("Umumiy summa (NDS bilan, so'm)", target, wide: true);
+        Row("Cheklar soni", count);
+        Row("Qatorlar soni (har chekda)", lines);
+        Row("Bir tovardan ko'pi bilan, dona", maxPerItem);
+        Row("Narxga foiz, %", percent);
+        Row("Sklad (1C dagi nomi)", warehouse, wide: true);
+        var checks = new Panel { Dock = DockStyle.Top, Height = 50, Padding = new Padding(0, 6, 0, 0), BackColor = PanelStyle.Card };
+        checks.Controls.Add(refresh);
+        checks.Controls.Add(post);
+        card.Controls.Add(checks);
+        card.Controls.Add(grid);
+        card.Height = 330;
 
-        var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 46, ColumnCount = 2, Padding = new Padding(10, 8, 10, 4) };
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
         buttons.Controls.Add(start, 0, 0);
         buttons.Controls.Add(stop, 1, 0);
 
         var hint = new Label
         {
-            Dock = DockStyle.Top, Height = 62, Padding = new Padding(10, 2, 10, 0), ForeColor = Color.DimGray,
-            Text = "Inventarizatsiyadan tovarlar olinadi, Без НДС → foiz → NDS 12%, tepadan N ta qator qoldirilib (qolgani o'chiriladi) " +
-                   "miqdorlar summaga moslanadi va provesti qilinadi. Ish paytida 1C oynasiga tegmang.",
+            Dock = DockStyle.Top, Height = 48, Padding = new Padding(2, 0, 2, 4), ForeColor = PanelStyle.Muted,
+            Text = "Summa cheklarga har xil bo'linadi. Inventarizatsiya → Без НДС → foiz → 12% → tepadan N qator → miqdorlar → provesti. Ish paytida 1C ga tegmang.",
         };
 
-        Controls.Add(logBox);
+        // Jurnal kartasi
+        var logCard = PanelStyle.CardPanel(new Padding(8));
+        logCard.Dock = DockStyle.Fill;
+        logCard.Controls.Add(logBox);
+        logCard.Controls.Add(new Label { Text = "Jurnal", Dock = DockStyle.Top, Height = 20, Font = PanelStyle.Bold, ForeColor = Color.FromArgb(51, 65, 85) });
+
+        Controls.Add(logCard);
         Controls.Add(hint);
         Controls.Add(buttons);
-        Controls.Add(form);
-        Controls.Add(baseLabel);
+        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8 });
+        Controls.Add(card);
         Controls.Add(header);
+
+        // Kartaning balandligi ichidagiga moslanadi
+        Load += (_, _) => card.Height = grid.PreferredSize.Height + checks.Height + card.Padding.Vertical + 4;
 
         close.Click += (_, _) =>
         {

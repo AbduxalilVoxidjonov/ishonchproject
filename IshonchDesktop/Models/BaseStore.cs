@@ -64,6 +64,11 @@ public sealed class Settings
     /// <summary>«Markirovkasiz sotish» qiymatlari — har baza (ProfileKey) uchun alohida.</summary>
     public Dictionary<string, UnmarkedPrefs> UnmarkedByBase { get; set; } = new();
 
+    public Dictionary<string, MarkedPrefs> MarkedByBase { get; set; } = new();
+
+    public MarkedPrefs GetMarked(string baseKey) =>
+        MarkedByBase.TryGetValue(baseKey, out var p) ? p : MarkedByBase[baseKey] = new MarkedPrefs();
+
     public UnmarkedPrefs GetUnmarked(string baseKey) =>
         UnmarkedByBase.TryGetValue(baseKey, out var p) ? p : UnmarkedByBase[baseKey] = new UnmarkedPrefs();
 
@@ -103,4 +108,13 @@ public sealed class UnmarkedPrefs
     public bool RefreshInventory { get; set; } = true;
     /// <summary>Dastur yangilab turadigan «Инвентаризация товаров» hujjati raqami.</summary>
     public string? InventoryNumber { get; set; }
+}
+
+/// <summary>Bitta baza uchun markirovkali chek avtomatikasi sozlamalari.</summary>
+public sealed class MarkedPrefs
+{
+    public decimal Total { get; set; } = 300_000_000m;
+    public int Count { get; set; } = 3;
+    public string Warehouse { get; set; } = "";
+    public bool Post { get; set; } = true;
 }

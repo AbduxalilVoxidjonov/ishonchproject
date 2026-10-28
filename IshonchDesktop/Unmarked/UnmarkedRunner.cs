@@ -284,7 +284,35 @@ public sealed class UnmarkedRunner
         }
         if (item is { } it) await d.ClickAsync(it);
         else await d.KeyAsync("Tab");
-        await d.WaitTrueAsync(async () => Norm(await d.ValueAsync("_Склад_i0")) == Norm(opt.Warehouse), 8000, "sklad qiymati");
+
+        // Qiymat qabul qilinishini kutamiz. 1C nomni aniqlay olmasa «Склады» tanlash oynasini ochadi — undan o'zimiz tanlaymiz.
+        var want = Norm(opt.Warehouse);
+        var lastPick = 0L;
+        var seen = "";
+        try
+        {
+            await d.WaitTrueAsync(async () =>
+            {
+                var v = Norm(await d.ValueAsync("_Склад_i0"));
+                seen = v;
+                if (v == want || v.StartsWith(want + " (")) return await d.HasAsync("_ФормаВыбрать") is false;
+                if (Environment.TickCount64 - lastPick > 3000 && await d.HasAsync("_ФормаВыбрать") && await d.GridAsync("Список") is { Rows.Count: > 0 } g)
+                {
+                    lastPick = Environment.TickCount64;
+                    foreach (var r in g.Rows)
+                        if (r.Cells.Values.FirstOrDefault(c => Norm(c.Text) == want) is { Text: { Length: > 0 } } cell)
+                        {
+                            await d.ClickAsync(cell.At, 2); // ikki marta bosish — tanlash
+                            break;
+                        }
+                }
+                return false;
+            }, 15000, "sklad qiymati");
+        }
+        catch (OneCException e)
+        {
+            throw new OneCException($"{e.Message} (maydonda: «{seen}», kerak: «{opt.Warehouse}»). Sklad nomi 1C dagidek yozilganini tekshiring.");
+        }
         await d.DelayAsync(250);
         log($"Sklad: {opt.Warehouse}", "info");
     }
@@ -309,7 +337,7 @@ public sealed class UnmarkedRunner
 
     const string InventoryListTitle = "Инвентаризация товаров";
 
-    async Task RefreshInventoryAsync()
+    async Task RefreshInventoryAsync(bool keepOpen = false)
     {
         await WaitNoModalAsync();
         var tabs = await TabsAsync();
@@ -394,6 +422,7 @@ public sealed class UnmarkedRunner
         invNumber = (await d.ValueAsync("_Номер_i0"))?.Trim();
         log($"Inventarizatsiya № {invNumber} sklad qoldig'i bo'yicha to'ldirildi va provesti qilindi (summa {sumText})", "info");
 
+        if (keepOpen) return; // markirovkali chek uchun hujjat ochiq qoladi («Olish» shu jadvaldan o'qiydi)
         // Hujjat tabini yopamiz (saqlangan)
         var active = (await TabsAsync()).FirstOrDefault(t => t.Selected && t.Text.StartsWith(InventoryListTitle + " ") && t.Close is not null);
         if (active?.Close is { } close)
@@ -836,7 +865,42 @@ public sealed class UnmarkedRunner
         }
     }
 
-    sealed record PostResult(bool Ok, List<string> Messages);
+    public sealed record PostResult(bool Ok, List<string> Messages);
+
+    // ---- markirovkali chek avtomatikasi uchun ochiq qadamlar ------------------------------------
+
+    /// <summary>1C sahifasiga ulanish (bosishlar va o'qish uchun).</summary>
+    public async Task InitAsync()
+    {
+        d = new OneCDriver(core, ct) { Waiting = m => log(m, "warn") };
+        await d.InitAsync();
+    }
+
+    /// <summary>Skladning oxirgi inventarizatsiyasini qoldiq bo'yicha to'ldirib provesti qiladi va ochiq qoldiradi.</summary>
+    public Task RefreshInventoryKeepOpenAsync() => RefreshInventoryAsync(keepOpen: true);
+
+    /// <summary>Yangi Реализация (накладная): sklad qo'yiladi va «Товар маркирован» belgilanadi.</summary>
+    public async Task CreateMarkedDocumentAsync()
+    {
+        await CreateDocumentAsync();
+        await SetWarehouseAsync();
+        var lastClick = 0L;
+        await d.WaitTrueAsync(async () =>
+        {
+            var cls = (await d.EvalAsync("(()=>{const l=[...document.querySelectorAll('[id$=\"_ЕстьМаркировка\"]')].filter(e=>e.getBoundingClientRect().width>0);const e=l[l.length-1];return e?e.className:null})()")).ToString();
+            if (cls.Contains("select")) return true;
+            if (Environment.TickCount64 - lastClick > 3000)
+            {
+                lastClick = Environment.TickCount64;
+                await d.ClickSuffixAsync("_ЕстьМаркировка", "«Товар маркирован» belgisi");
+            }
+            return false;
+        }, 15000, "«Товар маркирован» belgisi", 200);
+        log("Yangi Реализация: sklad qo'yildi, «Товар маркирован» belgilandi", "info");
+    }
+
+    /// <summary>Ochiq Реализация ni «Провести и закрыть».</summary>
+    public Task<PostResult> PostCurrentAsync() => PostAsync();
 
     async Task<PostResult> PostAsync()
     {

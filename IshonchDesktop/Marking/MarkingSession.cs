@@ -65,7 +65,11 @@ public sealed class MarkingSession : IDisposable
         // Panel: dastur ichidagi sidepanel.html (kengaytmadagi bilan bir xil)
         Log.Write("1C sahifasi ulandi, panel yaratilmoqda");
         panelView = new WebView2 { Dock = DockStyle.Fill };
-        oneC.AttachSidePanel(panelView, PanelWidth);
+        // Panel ustida avtomatika qatori (umumiy summa → cheklar), pastida kengaytmaning o'z paneli
+        var host = new Panel { Dock = DockStyle.Fill };
+        host.Controls.Add(panelView);
+        if (ZoomStore.Settings is { } st) host.Controls.Add(new MarkedAutoBar(oneC, panelView, st, baseEntry.ProfileKey));
+        oneC.AttachSidePanel(host, PanelWidth);
         var env = await WebTab.GetEnvironmentAsync("panel");
         await panelView.EnsureCoreWebView2Async(env);
         var pcore = panelView.CoreWebView2;
