@@ -49,6 +49,8 @@
     <EmbeddedResource Include="..\tasnifsoliq\extension\content.js" LogicalName="soliq/content.js" />
     <EmbeddedResource Include="..\tasnifsoliq\extension\page-active.js" LogicalName="soliq/page-active.js" />
 
+    <EmbeddedResource Include="Unmarked\driver.js" LogicalName="unmarked/driver.js" />
+
     <!-- Elektr bo'limi: interfeys + parallel-app mantiqi o'zgarishsiz -->
     <EmbeddedResource Include="Elektr\web\index.html" LogicalName="elektr/index.html" />
     <EmbeddedResource Include="Elektr\web\app.js" LogicalName="elektr/app.js" />

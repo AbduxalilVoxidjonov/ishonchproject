@@ -186,17 +186,30 @@ public sealed class WebTab : UserControl
 
     // ---- o'ng tomondagi yon panel --------------------------------------------------------
 
-    public void AttachSidePanel(Control panel, int width)
+    readonly Dictionary<string, Control> sidePanels = new();
+
+    public bool HasSidePanel(string key) => sidePanels.TryGetValue(key, out var p) && !p.IsDisposed;
+
+    public Control? GetSidePanel(string key) => sidePanels.TryGetValue(key, out var p) && !p.IsDisposed ? p : null;
+
+    /// <summary>Yon panel qo'shadi (kalit bo'yicha: "marking", "unmarked"); bir vaqtda bittasi ko'rinadi.</summary>
+    public void AttachSidePanel(Control panel, int width, string key = "marking")
     {
         panel.Dock = DockStyle.Fill;
-        split.Panel2.Controls.Clear();
-        split.Panel2.Controls.Add(panel);
-        ShowSidePanel(width);
+        sidePanels[key] = panel;
+        ShowSidePanel(width, key);
     }
 
+    public void HideSidePanel() => split.Panel2Collapsed = true;
+
     /// <summary>Panel kengligi oyna kengligiga mos: 1/3 ga yaqin, lekin 340-560 px (DPI ga moslanadi) oralig'ida.</summary>
-    public void ShowSidePanel(int width)
+    public void ShowSidePanel(int width, string key = "marking")
     {
+        if (sidePanels.TryGetValue(key, out var panel) && !split.Panel2.Controls.Contains(panel))
+        {
+            split.Panel2.Controls.Clear();
+            split.Panel2.Controls.Add(panel);
+        }
         split.Panel2Collapsed = false;
         BeginInvoke(() =>
         {

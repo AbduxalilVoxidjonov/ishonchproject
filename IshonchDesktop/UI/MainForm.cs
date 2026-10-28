@@ -44,6 +44,7 @@ public sealed class MainForm : Form
         home.OpenOneC += b => OpenBase(b);
         home.OpenSoliq += b => OpenSoliqTab(b);
         home.OpenMarking += async b => await OpenMarkingAsync(b);
+        home.OpenUnmarked += b => OpenUnmarked(b);
         home.OpenElektr += () => OpenElektrTab();
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
@@ -82,6 +83,10 @@ public sealed class MainForm : Form
         help.DropDownItems.Add("Ishonch haqida", null, (_, _) =>
             MessageBox.Show(this, $"Ishonch {AppInfo.Text}\nYangilanishlar: github.com/{settings.UpdateRepo}\nMa'lumotlar: {Paths.AppData}",
                 "Ishonch haqida", MessageBoxButtons.OK, MessageBoxIcon.Information));
+        var unmarked = new ToolStripMenuItem("Markirovkasiz sotish");
+        unmarked.DropDownItems.Add("Barcha ochiq panellarda boshlash", null, async (_, _) => await StartAllUnmarkedAsync());
+        unmarked.DropDownItems.Add("Hammasini to'xtatish", null, (_, _) => { foreach (var p in UnmarkedPanels()) p.Stop(); });
+        menu.Items.Add(unmarked);
         menu.Items.Add(help);
         MainMenuStrip = menu;
         Controls.Add(menu);
@@ -116,6 +121,39 @@ public sealed class MainForm : Form
             }
         }
         catch (Exception e) { Log.Error("RestoreOpenTabs", e); }
+    }
+
+    // ---- Markirovkasiz sotish ---------------------------------------------------------------
+
+    IEnumerable<UnmarkedPanel> UnmarkedPanels() => tabs.TabPages.Cast<TabPage>()
+        .Select(p => p.Controls.OfType<WebTab>().FirstOrDefault()?.GetSidePanel("unmarked") as UnmarkedPanel)
+        .Where(p => p is not null)!;
+
+    /// <summary>Ochiq bazalarning hammasida (har biri o'z paneli qiymatlari bilan) bir vaqtda ishga tushiradi.</summary>
+    async Task StartAllUnmarkedAsync()
+    {
+        var panels = UnmarkedPanels().Where(p => !p.Running).ToList();
+        if (panels.Count == 0)
+        {
+            MessageBox.Show(this, "Ochiq «Markirovkasiz sotish» paneli yo'q. Bosh sahifada bazani tanlab panelni oching.", "Ishonch");
+            return;
+        }
+        var bad = panels.Select(p => (p, err: p.ValidateInput())).Where(x => x.err is not null).ToList();
+        if (bad.Count > 0)
+        {
+            MessageBox.Show(this, string.Join("\n", bad.Select(x => x.p.BaseTitle + ": " + x.err)), "Ishonch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        var text = string.Join("\n", panels.Select(p => "• " + p.Describe()));
+        if (MessageBox.Show(this, text + "\n\nHammasi bir vaqtda boshlansinmi?", "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        await Task.WhenAll(panels.Select(p => p.StartAsync(confirm: false)));
+    }
+
+    void OpenUnmarked(BaseEntry b)
+    {
+        var tab = OpenBase(b);
+        if (tab.HasSidePanel("unmarked")) { tab.ShowSidePanel(450, "unmarked"); return; }
+        tab.AttachSidePanel(new UnmarkedPanel(tab, settings, b.ProfileKey, b.Db + " — " + b.Firm), 450, "unmarked");
     }
 
     // ---- Elektr -------------------------------------------------------------------------------

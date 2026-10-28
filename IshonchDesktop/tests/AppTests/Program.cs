@@ -213,6 +213,57 @@ hs.Save("{\"2026-10\":{}}");
 File.WriteAllBytes(hpath, new byte[] { 9, 9, 9 });
 Check(new ElektrHistoryStore(hpath).Load().Contains("2026-09"), "buzilgan tarix — zaxiradan tiklandi");
 
+Console.WriteLine("Markirovkasiz sotish: reja");
+{
+    // 1C dagi haqiqiy ko'rinishga yaqin: narx (foiz qo'shilgan) × 1,12
+    var items = new[]
+    {
+        new IshonchDesktop.Unmarked.StockItem(0, "A", 101, 1_602_514.85m * 1.12m),
+        new IshonchDesktop.Unmarked.StockItem(1, "B", 6, 1_657_241.66m * 1.12m),
+        new IshonchDesktop.Unmarked.StockItem(2, "C", 28, 2_298_595.21m * 1.12m),
+        new IshonchDesktop.Unmarked.StockItem(3, "D", 254, 2_008_654.35m * 1.12m),
+        new IshonchDesktop.Unmarked.StockItem(4, "E", 5, 17_855_902.87m * 1.12m),
+    };
+    var plans = IshonchDesktop.Unmarked.Planner.Plan(items, 100_000_000m, 3);
+    Check(plans.Count == 3 && plans.All(p => p.Total <= 100_000_000m && p.Total >= 100_000_000m - 2_100_000m * 1.12m), "har chek summaga yaqin va undan oshmaydi: " + string.Join(", ", plans.Select(p => p.Total.ToString("N0"))));
+    Check(items.All(i => plans.Sum(p => p.Lines.Where(l => l.Index == i.Index).Sum(l => l.Qty)) <= i.Available), "hech bir tovar qoldig'idan ko'p olinmaydi");
+    Check(plans.All(p => p.Lines.All(l => l.Qty == Math.Floor(l.Qty) && l.Qty > 0)), "miqdorlar butun va musbat");
+    var tight = IshonchDesktop.Unmarked.Planner.Plan(new[] { new IshonchDesktop.Unmarked.StockItem(0, "X", 3, 10_000_000m) }, 100_000_000m, 3);
+    Check(tight[0].Total == 30_000_000m && tight[1].Lines.Count == 0, "qoldiq yetmasa keyingi cheklar bo'sh (to'xtatish belgisi)");
+    Check(IshonchDesktop.Unmarked.Planner.Plan(items, 100_000_000m, 1, offset: 1)[0].Lines.Select(l => l.Index).SequenceEqual(
+          IshonchDesktop.Unmarked.Planner.Plan(items, 100_000_000m, 1, offset: 0)[0].Lines.Select(l => l.Index)) is false, "har chek boshqa tovardan boshlanadi (xilma-xillik)");
+
+    // Umumiy summani har xil bo'lib taqsimlash
+    var parts = IshonchDesktop.Unmarked.Planner.SplitTotal(300_000_000m, 3, 0.25m, new Random(7));
+    Check(parts.Sum() == 300_000_000m && parts.Distinct().Count() == 3 && parts.All(p => p >= 70_000_000m && p <= 130_000_000m),
+        "300 mln 3 chekka har xil bo'linadi: " + string.Join(", ", parts.Select(p => p.ToString("N0"))));
+    var many = IshonchDesktop.Unmarked.Planner.SplitTotal(1_000_000_000m, 10, 0.25m, new Random(1));
+    Check(many.Sum() == 1_000_000_000m && many.All(p => p % 1000 == 0 || p == many[^1]), "yig'indi aniq, summalar 1000 ga yaxlit");
+
+    // Tepadagi N qatorga taqsimlash
+    var top = items.Take(4).ToList();
+    var dist = IshonchDesktop.Unmarked.Planner.Distribute(top, 100_000_000m);
+    Check(dist.Lines.Count == 4 && dist.Lines.All(l => l.Qty >= 1), "N ta qatorning har biriga kamida 1 dona: " + string.Join(", ", dist.Lines.Select(l => l.Qty)));
+    Check(dist.Total <= 100_000_000m && dist.Total > 100_000_000m - top.Min(i => i.UnitGross), "jami summadan oshmaydi va eng arzon tovar narxidan kam farq qiladi: " + dist.Total.ToString("N0"));
+    Check(dist.Lines.All(l => l.Qty <= top[l.Index].Available), "qoldiqdan oshmaydi");
+    var spread = dist.Lines.Select(l => l.Qty * top[l.Index].UnitGross).ToList();
+    Check(spread.Min() > 10_000_000m, "pul qatorlar orasida taqsimlanadi (bittasiga yig'ilmaydi)");
+    var big = IshonchDesktop.Unmarked.Planner.Distribute(items.Take(3).ToList(), 3_000_000m);
+    Check(big.Lines.Count == 1 && big.Total <= 3_000_000m, "1 donadan ham sig'masa ortiqcha qatorlar tashlanadi");
+    var shortStock = IshonchDesktop.Unmarked.Planner.Distribute(new[] { new IshonchDesktop.Unmarked.StockItem(0, "X", 2, 10_000_000m) }, 100_000_000m);
+    Check(shortStock.Lines[0].Qty == 2 && shortStock.Total == 20_000_000m, "qoldiq kam bo'lsa — bori olinadi");
+
+    Check(IshonchDesktop.UI.ThousandsInput.Format("100000000") == "100 000 000" && IshonchDesktop.UI.ThousandsInput.Format("1234,567") == "1 234,56"
+          && IshonchDesktop.UI.ThousandsInput.Format("12 3456") == "123 456" && IshonchDesktop.UI.ThousandsInput.Format("") == "", "summa minglarga ajratiladi");
+
+    var err = "Некорректно заполнена колонка \"Количество\" в строке 3 списка \"Товары\".\nУказанное количество превышает остаток. Остаток: 12; Не хватает: 242";
+    Check(IshonchDesktop.Unmarked.Planner.ParseStockError(err) is (3, 12), "1C «Остаток» xatosi o'qiladi");
+    var err2 = "Некорректно заполнена колонка \"Количество\" в строке 7 списка \"Товары\".\nУказанное количество превышает остаток. Остаток: 1 234,5; Не хватает: 3";
+    Check(IshonchDesktop.Unmarked.Planner.ParseStockError(err2) is (7, 1234.5m), "mingliklar ajratilgan qoldiq");
+    Check(IshonchDesktop.Unmarked.Planner.ParseStockError("Не заполнена колонка \"Количество\" в строке 3") is null, "boshqa xato qoldiq xatosi deb olinmaydi");
+    Check(IshonchDesktop.Unmarked.OneCDriver.ParseNumber("1 602 514,85") == 1602514.85m && IshonchDesktop.Unmarked.OneCDriver.ParseNumber("") is null, "1C sonlari o'qiladi");
+}
+
 Console.WriteLine("Elektr URL ruxsati");
 Check(ElektrHost.IsAllowedUrl(new Uri("https://cabinet-api.het.uz/api/x")), "cabinet-api.het.uz ruxsat");
 Check(!ElektrHost.IsAllowedUrl(new Uri("https://evil.example/api")), "boshqa host taqiqlangan");

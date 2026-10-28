@@ -104,7 +104,10 @@ function applyView(view) {
       node.disabled = !!v.disabled;
       // Never overwrite what the user is typing right now
       const typing = document.activeElement === node && Date.now() - lastTyped < 1500;
-      if (!typing && node.value !== v.value) node.value = v.value;
+      if (!typing && node.value !== v.value) {
+        node.value = v.value;
+        if (name === 'target' && document.activeElement !== node) groupThousands(node);
+      }
       continue;
     }
     if (v.style !== undefined) {
@@ -140,9 +143,28 @@ app.addEventListener('click', (e) => {
   if (!target || target.disabled || !port) return;
   port.postMessage({ type: 'click', a: target.dataset.a });
 });
+// Summa yozilayotganda minglarga ajratiladi: 100000000 → 100 000 000 (kursor raqamlar orasidagi joyida qoladi)
+function groupThousands(input) {
+  const raw = input.value;
+  const caret = input.selectionStart ?? raw.length;
+  const before = raw.slice(0, caret).replace(/[^\d.,]/g, '').length;
+  const s = raw.replace(/[\s ]/g, '').replace('.', ',');
+  const comma = s.indexOf(',');
+  let int = (comma >= 0 ? s.slice(0, comma) : s).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  const frac = comma >= 0 ? ',' + s.slice(comma + 1).replace(/\D/g, '').slice(0, 2) : '';
+  if (!int && frac) int = '0';
+  const out = int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + frac;
+  if (out === raw) return;
+  input.value = out;
+  let pos = 0;
+  for (let seen = 0; pos < out.length && seen < before; pos++) if (/[\d,]/.test(out[pos])) seen++;
+  input.setSelectionRange(pos, pos);
+}
+
 app.addEventListener('input', (e) => {
   const name = e.target.dataset?.el;
   if (!name || e.target.tagName !== 'INPUT' || !port) return;
+  if (name === 'target') groupThousands(e.target);
   lastTyped = Date.now();
   port.postMessage({ type: 'input', name, value: e.target.value });
 });

@@ -61,6 +61,12 @@ public sealed class Settings
     public List<string> OpenTabs { get; set; } = new();
     public bool RestoreTabs { get; set; } = true;
 
+    /// <summary>«Markirovkasiz sotish» qiymatlari — har baza (ProfileKey) uchun alohida.</summary>
+    public Dictionary<string, UnmarkedPrefs> UnmarkedByBase { get; set; } = new();
+
+    public UnmarkedPrefs GetUnmarked(string baseKey) =>
+        UnmarkedByBase.TryGetValue(baseKey, out var p) ? p : UnmarkedByBase[baseKey] = new UnmarkedPrefs();
+
     public bool WindowMaximized { get; set; }
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
@@ -80,4 +86,19 @@ public sealed class Settings
     {
         try { File.WriteAllText(Paths.SettingsFile, JsonSerializer.Serialize(this, Json)); } catch { /* sozlama yozilmasa ham ish davom etadi */ }
     }
+}
+
+/// <summary>Bitta baza uchun «Markirovkasiz sotish» sozlamalari.</summary>
+public sealed class UnmarkedPrefs
+{
+    /// <summary>Umumiy summa (hamma cheklar uchun); har chek = Target / Count.</summary>
+    public decimal Target { get; set; } = 300_000_000m;
+    public int Count { get; set; } = 3;
+    public int Lines { get; set; } = 10;
+    public decimal Percent { get; set; } = 10m;
+    public string Warehouse { get; set; } = "";
+    public bool Post { get; set; } = true;
+    public bool RefreshInventory { get; set; } = true;
+    /// <summary>Dastur yangilab turadigan «Инвентаризация товаров» hujjati raqami.</summary>
+    public string? InventoryNumber { get; set; }
 }
