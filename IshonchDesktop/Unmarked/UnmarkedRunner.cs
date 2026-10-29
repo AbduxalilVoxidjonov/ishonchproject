@@ -356,8 +356,7 @@ public sealed class UnmarkedRunner
 
         // Yangi hujjat yaratilmaydi: shu skladning oxirgi inventarizatsiyasi ochiladi (yo'q bo'lsagina yangisi yaratiladi)
         await d.DelayAsync(500);
-        var g = await d.GridAsync("Список");
-        var row = g is null ? null : LatestFor(g, opt.Warehouse);
+        var row = await FindLatestAsync(opt.Warehouse);
         if (row is not null)
             await d.ClickAsync(row.Cells.Values.Skip(1).First().At, 2);
         else
@@ -368,6 +367,8 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () => await d.HasAsync("_ТоварыПодменюЗаполнить"), 40000, "inventarizatsiya hujjati");
 
         await SetWarehouseAsync();
+        // Sana doim bugun 23:59:59 — qoldiq kun oxiri holatida olinadi va bu hujjat ro'yxatda eng oxirgisi bo'ladi
+        await SetDateEndOfDayAsync();
         // Sklad maydonidan fokus chiqishi bilan birinchi bosish yutilib ketishi mumkin: menyu ochilguncha qayta bosiladi
         var lastClick = 0L;
         var fillItem = await d.WaitAsync(async () =>
@@ -434,27 +435,105 @@ public sealed class UnmarkedRunner
     }
 
     /// <summary>Ro'yxatdagi (ko'rinib turgan) inventarizatsiyalardan shu skladning eng oxirgisi.</summary>
-    static OneCDriver.GridRow? LatestFor(OneCDriver.GridView g, string warehouse)
+    static OneCDriver.GridRow? LatestFor(OneCDriver.GridView g, string warehouse) => LatestKey(g, warehouse)?.Row;
+
+    static (OneCDriver.GridRow Row, DateTime Date, string Num)? LatestKey(OneCDriver.GridView g, string warehouse)
     {
         var dateCol = g.ColIndex("Дата");
         var whCol = g.ColIndex("Склад");
         var numCol = g.ColIndex("Номер");
-        OneCDriver.GridRow? best = null;
-        (DateTime, string) bestKey = (DateTime.MinValue, "");
+        (OneCDriver.GridRow Row, DateTime Date, string Num)? best = null;
         foreach (var r in g.Rows)
         {
             var wh = whCol is not null && r.Cells.TryGetValue(whCol, out var wc) ? wc.Text.Trim() : "";
             if (!string.Equals(wh, warehouse.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
             var dt = dateCol is not null && r.Cells.TryGetValue(dateCol, out var dc)
                 && DateTime.TryParse(dc.Text, CultureInfo.GetCultureInfo("ru-RU"), DateTimeStyles.None, out var p) ? p : DateTime.MinValue;
-            var num = numCol is not null && r.Cells.TryGetValue(numCol, out var nc) ? nc.Text : "";
-            if (best is null || dt > bestKey.Item1 || (dt == bestKey.Item1 && string.CompareOrdinal(num, bestKey.Item2) > 0))
-            {
-                best = r;
-                bestKey = (dt, num);
-            }
+            var num = numCol is not null && r.Cells.TryGetValue(numCol, out var nc) ? nc.Text.Trim() : "";
+            if (best is null || Newer((dt, num), (best.Value.Date, best.Value.Num))) best = (r, dt, num);
         }
         return best;
+    }
+
+    static bool Newer((DateTime Date, string Num) a, (DateTime Date, string Num) b) =>
+        a.Date > b.Date || (a.Date == b.Date && string.CompareOrdinal(a.Num, b.Num) > 0);
+
+    /// <summary>
+    /// «Список» ro'yxatidan shu skladning eng oxirgi (sana, vaqt, raqam bo'yicha) hujjati. Ekranda faqat bir qismi ko'rinadi,
+    /// shuning uchun ro'yxatning boshi (Ctrl+Home) va oxiri (Ctrl+End) ko'riladi; topilgan qator ko'rinib turgan holda qaytariladi.
+    /// </summary>
+    async Task<OneCDriver.GridRow?> FindLatestAsync(string warehouse)
+    {
+        var g = await d.GridAsync("Список");
+        if (g is null || g.Rows.Count == 0) return null;
+        // Qatorni bir marta bosib ro'yxatga fokus beramiz (bir marta bosish hujjatni ochmaydi)
+        await d.ClickAsync(g.Rows[0].Cells.Values.First().At);
+        await d.DelayAsync(200);
+
+        async Task<(OneCDriver.GridRow Row, DateTime Date, string Num)?> At(string key)
+        {
+            await d.KeyAsync(key, 2);
+            await d.DelayAsync(700);
+            var view = await d.WaitRefAsync(async () => (await d.GridAsync("Список")) is { Rows.Count: > 0 } v ? v : null, 10000, "hujjatlar ro'yxati");
+            return LatestKey(view, warehouse);
+        }
+
+        var bottom = await At("End");
+        var top = await At("Home");
+        if (bottom is { } b && (top is not { } t || Newer((b.Date, b.Num), (t.Date, t.Num))))
+            return (await At("End"))?.Row;
+        return top?.Row;
+    }
+
+    /// <summary>Ochiq hujjatning sanasini bugun 23:59:59 qilib yozadi (inventarizatsiya kun oxiri holatida bo'lishi uchun).</summary>
+    async Task SetDateEndOfDayAsync()
+    {
+        var want = DateTime.Today.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) + " 23:59:59";
+        if (Norm(await d.ValueAsync("_Дата_i0")) == want) return;
+        // Faqat raqamlar: maska «.», «:» va bo'sh joyni o'zi qo'yadi; belgilar bilan yozilsa ortiqchasi keyingi (Склад) maydonga tushadi
+        var digits = new string(want.Where(char.IsDigit).ToArray());
+        for (var attempt = 1; ; attempt++)
+        {
+            await d.ClickSuffixAsync("_Дата_i0", "Sana maydoni", "input");
+            await d.SelectAllAsync();
+            await d.TypeAsync(digits);
+            await d.KeyAsync("Tab");
+            try
+            {
+                await d.WaitTrueAsync(async () => Norm(await d.ValueAsync("_Дата_i0")) == want, 5000, "sana qiymati");
+                break;
+            }
+            catch (OneCException) when (attempt < 3) { await AnswerRefillAsync(); }
+            catch (OneCException)
+            {
+                throw new OneCException($"Inventarizatsiya sanasini «{want}» qilib bo'lmadi (maydonda: «{await d.ValueAsync("_Дата_i0")}»)");
+            }
+        }
+        await AnswerRefillAsync();
+        log($"Inventarizatsiya sanasi: {want}", "info");
+
+        // 1C vaqtni « 2:00:00» kabi ikki bo'shliq bilan ko'rsatishi mumkin
+        static string Norm(string? s) => string.Join(' ', (s ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>
+    /// Sana o'zgargach 1C «Перезаполнить данные табличной части?» deb so'raydi — «Нет»: jadval baribir keyin
+    /// «Заполнить по остаткам на складе» bilan to'ldiriladi.
+    /// </summary>
+    async Task AnswerRefillAsync()
+    {
+        var until = Environment.TickCount64 + 2000;
+        while (Environment.TickCount64 < until)
+        {
+            await d.DelayAsync(200);
+            if (await d.ModalTextAsync() is { } q && q.Contains("Перезаполнить", StringComparison.OrdinalIgnoreCase)
+                && await d.ModalButtonAsync("Нет") is { } no)
+            {
+                await d.ClickAsync(no);
+                await d.DelayAsync(300);
+                return;
+            }
+        }
     }
 
     // ---- 2: «Изменить» → inventarizatsiyadan yuklash --------------------------------------------
@@ -505,24 +584,19 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () => await d.HasAsync("_ФормаВыбрать"), 30000, "inventarizatsiya ro'yxati");
         await d.DelayAsync(100);
         var grid = await d.WaitRefAsync(async () => (await d.GridAsync("Список")) is { Rows.Count: > 0 } g ? g : null, 20000, "inventarizatsiya hujjatlari");
-        var dateCol = grid.ColIndex("Дата");
-        var whCol = grid.ColIndex("Склад");
-        var numCol = grid.ColIndex("Номер");
-        OneCDriver.GridRow? pick = !string.IsNullOrWhiteSpace(opt.Warehouse) ? LatestFor(grid, opt.Warehouse) : null;
-        DateTime best = DateTime.MinValue;
-        foreach (var r in pick is null ? grid.Rows : new())
-        {
-            var dt = DateTime.MinValue;
-            if (dateCol is not null && r.Cells.TryGetValue(dateCol, out var dc)
-                && DateTime.TryParse(dc.Text, CultureInfo.GetCultureInfo("ru-RU"), DateTimeStyles.None, out var parsed)) dt = parsed;
-            var wh = whCol is not null && r.Cells.TryGetValue(whCol, out var wc) ? wc.Text : "";
-            var matches = string.IsNullOrWhiteSpace(opt.Warehouse) || string.Equals(wh.Trim(), opt.Warehouse.Trim(), StringComparison.OrdinalIgnoreCase);
-            if (matches && dt >= best) { best = dt; pick = r; }
-        }
+        // Ro'yxatning boshi va oxiri ko'riladi: skladning sana/vaqt bo'yicha eng oxirgisi
+        var pick = !string.IsNullOrWhiteSpace(opt.Warehouse) ? await FindLatestAsync(opt.Warehouse) : null;
         if (pick is null)
         {
             log($"«{opt.Warehouse}» skladi uchun inventarizatsiya topilmadi — eng oxirgisi olinadi", "warn");
+            await d.KeyAsync("End", 2);
+            await d.DelayAsync(700);
+            grid = await d.WaitRefAsync(async () => (await d.GridAsync("Список")) is { Rows.Count: > 0 } g ? g : null, 10000, "inventarizatsiya hujjatlari");
             pick = grid.Rows.Last();
+        }
+        else
+        {
+            log("Tanlangan inventarizatsiya: " + string.Join(" | ", pick.Cells.Values.Select(c => c.Text.Trim()).Where(t => t.Length > 0).Take(3)), "info");
         }
         var anyCell = pick!.Cells.Values.First();
         await d.ClickAsync(anyCell.At);
