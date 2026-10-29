@@ -275,6 +275,25 @@ var wu = ElektrHost.WriteUnique(Path.Combine(tmp, "out"), "natija.xlsx", new byt
 var wu2 = ElektrHost.WriteUnique(Path.Combine(tmp, "out"), "natija.xlsx", new byte[] { 2 });
 Check(wu != wu2 && File.ReadAllBytes(wu)[0] == 1, "natija fayli ustiga yozilmaydi");
 
+// ---- pauza ----
+{
+    var gate = new IshonchDesktop.Unmarked.PauseGate();
+    Check(gate.WaitAsync(CancellationToken.None).IsCompleted, "pauzasiz — kutilmaydi");
+    var t0 = gate.Now;
+    gate.Pause();
+    var waiting = gate.WaitAsync(CancellationToken.None);
+    await Task.Delay(300);
+    Check(!waiting.IsCompleted, "pauzada amal kutadi");
+    gate.Resume();
+    await Task.WhenAny(waiting, Task.Delay(1000));
+    Check(waiting.IsCompleted, "davom etilganda amal o'tadi");
+    Check(gate.Now - t0 < 200, "pauza vaqti soatga qo'shilmaydi");
+    gate.Pause();
+    using var cancel = new CancellationTokenSource(100);
+    await Throws<OperationCanceledException>(() => gate.WaitAsync(cancel.Token), "pauzada to'xtatish ishlaydi");
+    gate.Resume();
+}
+
 // ---- bazalar ro'yxati: keyin qo'shilgan TestDB11 ----
 {
     var bf = Path.Combine(tmp, "bases.json");

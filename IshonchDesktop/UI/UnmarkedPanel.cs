@@ -23,7 +23,12 @@ public sealed class UnmarkedPanel : UserControl
     readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true, Dock = DockStyle.Top };
     readonly CheckBox refresh = new() { Text = "Boshlashdan oldin inventarizatsiyani yangilash", AutoSize = true, Dock = DockStyle.Top };
     readonly Button start = PanelStyle.Primary(new Button { Text = "▶  Boshlash", Height = 36, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) });
+    readonly Button pause = PanelStyle.Secondary(new Button { Text = "⏸  Pauza", Height = 36, Dock = DockStyle.Fill, Enabled = false, Margin = new Padding(4, 0, 4, 0) });
     readonly Button stop = PanelStyle.Secondary(new Button { Text = "■  To'xtatish", Height = 36, Dock = DockStyle.Fill, Enabled = false, Margin = new Padding(4, 0, 0, 0) }, danger: true);
+    /// <summary>Hozir ishlayotgan jarayon (pauza shu orqali).</summary>
+    UnmarkedRunner? runner;
+    /// <summary>To'xtatilgan yoki xato bilan tugagan jarayon — «Boshlash» uni qolgan cheklardan davom ettiradi.</summary>
+    UnmarkedRunner? resumable;
     readonly Button close = PanelStyle.Secondary(new Button { Text = "✕", Width = 32, Dock = DockStyle.Right });
     readonly RichTextBox logBox = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = Color.White, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
     CancellationTokenSource? cts;
@@ -96,11 +101,13 @@ public sealed class UnmarkedPanel : UserControl
         card.Controls.Add(grid);
         card.Height = 330;
 
-        var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 3, Padding = new Padding(0, 8, 0, 4) };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 29));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 29));
         buttons.Controls.Add(start, 0, 0);
-        buttons.Controls.Add(stop, 1, 0);
+        buttons.Controls.Add(pause, 1, 0);
+        buttons.Controls.Add(stop, 2, 0);
 
         var hint = new Label
         {
@@ -130,7 +137,13 @@ public sealed class UnmarkedPanel : UserControl
             Stop();
             tab.HideSidePanel();
         };
-        start.Click += async (_, _) => await StartAsync(confirm: true);
+        start.Click += async (_, _) =>
+        {
+            // Pauzada «Boshlash» — shu joydan davom etish
+            if (Running && runner?.Gate.Paused == true) { runner.Gate.Resume(); return; }
+            await StartAsync(confirm: true);
+        };
+        pause.Click += (_, _) => runner?.Gate.Pause();
         stop.Click += (_, _) => Stop();
     }
 
@@ -138,6 +151,18 @@ public sealed class UnmarkedPanel : UserControl
     {
         cts?.Cancel();
         stop.Enabled = false;
+        pause.Enabled = false;
+    }
+
+    /// <summary>Pauza holati o'zgarganda tugmalar: pauzada «Boshlash» — «Davom etish».</summary>
+    void OnPauseChanged(bool paused)
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired) { try { BeginInvoke(() => OnPauseChanged(paused)); } catch { } return; }
+        start.Text = paused ? "▶  Davom etish" : "▶  Boshlash";
+        start.Enabled = paused;
+        pause.Enabled = !paused;
+        Log(paused ? "Pauza — keyingi 1C amalidan oldin to'xtab turadi. Davom etish uchun «▶ Davom etish» ni bosing (pauzada 1C ga tegmang)." : "Davom etilmoqda…", "warn");
     }
 
     void Log(string text, string level)
@@ -175,7 +200,20 @@ public sealed class UnmarkedPanel : UserControl
         if (ValidateInput() is { } problem) { Log(problem, "err"); if (confirm) MessageBox.Show(owner, problem, "Ishonch"); return; }
         var sum = Parse(target.Text)!.Value;
         var pct = Parse(percent.Text)!.Value;
-        if (confirm)
+        var options = new UnmarkedOptions(Math.Round(sum / (int)count.Value, 2), (int)count.Value, (int)lines.Value, pct, warehouse.Text.Trim(), post.Checked)
+            { RefreshInventory = refresh.Checked, InventoryNumber = prefs.InventoryNumber, MaxPerItem = (int)maxPerItem.Value };
+
+        // Oldingi to'xtatilgan jarayon (sozlamalar o'zgarmagan bo'lsa) qolgan cheklardan davom ettiriladi
+        var resume = resumable is { CanResume: true } prev && prev.Options with { InventoryNumber = null } == options with { InventoryNumber = null };
+        if (resume && confirm)
+        {
+            var ans = MessageBox.Show(owner,
+                $"Oldingi ish {resumable!.Done} / {options.Count} ta chekda to'xtagan.\n\nHa — qolgan cheklardan davom etish (inventarizatsiya qayta yangilanmaydi).\nYo'q — hammasini boshidan boshlash.",
+                "Ishonch", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (ans == DialogResult.Cancel) return;
+            resume = ans == DialogResult.Yes;
+        }
+        else if (confirm)
         {
             var msg = Describe() + "\n\n" + (post.Checked ? "Hujjatlar PROVESTI QILINADI (omborda va hisobda aks etadi).\n" : "") + "Davom etilsinmi?";
             if (MessageBox.Show(owner, msg, "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
@@ -193,19 +231,28 @@ public sealed class UnmarkedPanel : UserControl
 
         Running = true;
         start.Enabled = false;
+        pause.Enabled = true;
         stop.Enabled = true;
         cts = new CancellationTokenSource();
-        logBox.Clear();
+        if (!resume) logBox.Clear();
         try
         {
             if (prefs.RefreshInventory && prefs.Warehouse.Length == 0)
                 Log("Inventarizatsiyani yangilash uchun sklad nomini kiriting (hozir yangilanmaydi).", "warn");
-            var options = new UnmarkedOptions(Math.Round(sum / prefs.Count, 2), prefs.Count, prefs.Lines, pct, prefs.Warehouse, prefs.Post) { RefreshInventory = prefs.RefreshInventory, InventoryNumber = prefs.InventoryNumber, MaxPerItem = prefs.MaxPerItem };
-            var runner = new UnmarkedRunner(tab.Core!, options, Log, cts.Token);
-            var r = await runner.RunAsync();
+            runner = resume ? resumable! : new UnmarkedRunner(tab.Core!, options, Log, cts.Token);
+            resumable = null;
+            runner.Gate.Changed += OnPauseChanged;
+            var r = await runner.RunAsync(cts.Token);
+            runner.Gate.Changed -= OnPauseChanged;
             if (runner.InventoryNumber is { } inv && inv != prefs.InventoryNumber) { prefs.InventoryNumber = inv; settings.Save(); }
             Log($"Natija: {r.Created} / {r.Requested} ta chek, jami ≈ {r.Sum:N0}" + (r.Error is null ? "" : " — xato bilan to'xtadi"),
                 r.Error is null && !r.Stopped ? "ok" : "warn");
+            // To'xtatilgan yoki xato bilan tugagan bo'lsa — keyingi «Boshlash» qolgan cheklardan davom ettira oladi
+            if (options.Post && (r.Error is not null || cts.IsCancellationRequested) && runner.CanResume)
+            {
+                resumable = runner;
+                Log($"Qayta «▶ Boshlash» bosilsa {runner.Done + 1}-chekdan davom etadi.", "info");
+            }
         }
         catch (Exception e)
         {
@@ -215,9 +262,13 @@ public sealed class UnmarkedPanel : UserControl
         finally
         {
             Running = false;
+            if (runner is not null) runner.Gate.Changed -= OnPauseChanged;
+            runner = null;
             if (!IsDisposed)
             {
+                start.Text = "▶  Boshlash";
                 start.Enabled = true;
+                pause.Enabled = false;
                 stop.Enabled = false;
             }
             cts?.Dispose();

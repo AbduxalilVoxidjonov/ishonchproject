@@ -26,11 +26,18 @@ public sealed class OneCDriver
     readonly CancellationToken ct;
     double scale = 1;
 
-    public OneCDriver(CoreWebView2 core, CancellationToken ct)
+    public OneCDriver(CoreWebView2 core, CancellationToken ct, PauseGate? gate = null)
     {
         this.core = core;
         this.ct = ct;
+        Gate = gate ?? new PauseGate();
     }
+
+    /// <summary>Pauza: har bir 1C amalidan oldin tekshiriladi, shuning uchun jarayon aynan to'xtagan joyidan davom etadi.</summary>
+    public PauseGate Gate { get; }
+
+    /// <summary>Pauzada o'tgan vaqtni hisobga olmaydigan soat (ms) — kutish muddatlari pauza paytida tugab qolmaydi.</summary>
+    public long Now => Gate.Now;
 
     public static string Q(string s) => JsonSerializer.Serialize(s);
 
@@ -79,6 +86,7 @@ public sealed class OneCDriver
     public async Task<JsonElement> EvalAsync(string expr)
     {
         ct.ThrowIfCancellationRequested();
+        await Gate.WaitAsync(ct);
         var raw = await core.ExecuteScriptAsync(expr);
         if (string.IsNullOrWhiteSpace(raw) || raw == "undefined") return default;
         using var doc = JsonDocument.Parse(raw);
@@ -112,7 +120,11 @@ public sealed class OneCDriver
 
     // ---- kutish ---------------------------------------------------------------------------------
 
-    public Task DelayAsync(int ms) => Task.Delay(ms, ct);
+    public async Task DelayAsync(int ms)
+    {
+        await Task.Delay(ms, ct);
+        await Gate.WaitAsync(ct);
+    }
 
     /// <summary>Uzoq kutilganda (1C sekin javob bersa) jurnalga xabar berish uchun.</summary>
     public Action<string>? Waiting { get; set; }
@@ -123,21 +135,21 @@ public sealed class OneCDriver
     /// </summary>
     async Task<bool> PatientAsync(Func<Task<bool>> probe, int timeoutMs, string what, int pollMs)
     {
-        var start = Environment.TickCount64;
+        var start = Now;
         var hard = start + Math.Max(timeoutMs, 300_000);
         var nextNote = start + Math.Max(timeoutMs, 10_000);
         while (true)
         {
             ct.ThrowIfCancellationRequested();
             if (await probe()) return true;
-            var now = Environment.TickCount64;
+            var now = Now;
             if (now > hard) throw new OneCException("1C 5 daqiqa ichida javob bermadi: " + what);
             if (now > nextNote)
             {
                 Waiting?.Invoke($"1C javobi kutilmoqda: {what} ({(now - start) / 1000} s)");
                 nextNote = now + 15_000;
             }
-            await Task.Delay(pollMs, ct);
+            await DelayAsync(pollMs);
         }
     }
 
@@ -163,6 +175,7 @@ public sealed class OneCDriver
     async Task RunInput(string json)
     {
         ct.ThrowIfCancellationRequested();
+        await Gate.WaitAsync(ct);
         using var doc = JsonDocument.Parse(json);
         await CdpInput.RunAsync(core, doc.RootElement);
     }
@@ -189,6 +202,7 @@ public sealed class OneCDriver
     public async Task WheelAsync(Pt at, double deltaY)
     {
         ct.ThrowIfCancellationRequested();
+        await Gate.WaitAsync(ct);
         var p = new Dictionary<string, object?>
         {
             ["type"] = "mouseWheel", ["x"] = Math.Round(at.X / scale), ["y"] = Math.Round(at.Y / scale), ["deltaX"] = 0, ["deltaY"] = deltaY,
@@ -206,6 +220,7 @@ public sealed class OneCDriver
         string Sig(GridView? v) => v is { Rows.Count: > 0 } ? string.Join("|", v.Rows.Select(r => string.Join("/", r.Cells.Values.Select(c => c.Text)))) : "";
         var before = Sig(g);
         var dy = rows < 0 ? -120 : 120;
+        await Gate.WaitAsync(ct);
         for (var i = 0; i < Math.Abs(rows); i++)
         {
             ct.ThrowIfCancellationRequested();

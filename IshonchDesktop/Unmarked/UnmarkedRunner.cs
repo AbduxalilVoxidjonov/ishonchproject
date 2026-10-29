@@ -40,8 +40,23 @@ public sealed class UnmarkedRunner
     readonly CoreWebView2 core;
     readonly UnmarkedOptions opt;
     readonly Action<string, string> log;
-    readonly CancellationToken ct;
+    CancellationToken ct;
     OneCDriver d = null!;
+
+    /// <summary>Pauza tugmasi shu darvozani boshqaradi: jarayon keyingi 1C amalidan oldin to'xtab turadi.</summary>
+    public PauseGate Gate { get; } = new();
+
+    /// <summary>Provesti qilingan cheklar (to'xtatilib qayta boshlansa shundan keyingisidan davom etiladi).</summary>
+    int done;
+    decimal doneSum;
+    bool refreshed;
+
+    public UnmarkedOptions Options => opt;
+
+    /// <summary>To'xtatilgan jarayonni qolgan cheklardan davom ettirish mumkinmi.</summary>
+    public bool CanResume => done < opt.Count && (refreshed || full is not null || done > 0);
+
+    public int Done => done;
 
     string docPrefix = "";
     string editPrefix = "";
@@ -110,31 +125,58 @@ public sealed class UnmarkedRunner
         }
     }
 
-    public async Task<RunSummary> RunAsync()
+    /// <summary>
+    /// Ishga tushiradi. Shu runner oldin to'xtatilgan bo'lsa (yangi `ct` bilan) qolgan cheklardan davom etadi:
+    /// inventarizatsiya qayta yangilanmaydi, tayyor cheklar qayta qilinmaydi, chala qolgan hujjat saqlanmasdan yopiladi.
+    /// </summary>
+    public async Task<RunSummary> RunAsync(CancellationToken? newCt = null)
     {
-        var created = 0;
-        decimal sum = 0;
+        if (newCt is { } nc) ct = nc;
+        if (Gate.Paused) Gate.Resume(); // pauzada to'xtatilgan bo'lsa
+        var resuming = done > 0 || refreshed || full is not null;
+        var created = done;
+        var sum = doneSum;
         try
         {
-            d = new OneCDriver(core, ct) { Waiting = m => log(m, "warn") };
+            d = new OneCDriver(core, ct, Gate) { Waiting = m => log(m, "warn") };
             await d.InitAsync();
 
-            // Boshida bir marta: inventarizatsiya sklad qoldig'i bo'yicha yangilanadi
-            if (opt.RefreshInventory && !string.IsNullOrWhiteSpace(opt.Warehouse))
-                await RefreshInventoryAsync();
+            if (resuming)
+            {
+                log($"Davom etilmoqda: {done} ta chek tayyor, {done + 1}-chekdan boshlanadi", "head");
+                await WaitNoModalAsync();
+                await CancelEditFormAsync();
+                if ((await TabsAsync()).FirstOrDefault(t => t.Selected) is { } cur && cur.Text.StartsWith("Реализация") && !cur.Text.StartsWith(TargetListTitle))
+                {
+                    log("Chala qolgan Реализация saqlanmasdan yopildi", "warn");
+                    await DiscardDocumentAsync();
+                }
+            }
 
-            for (var k = 0; k < opt.Count; k++)
+            // Boshida bir marta: inventarizatsiya sklad qoldig'i bo'yicha yangilanadi
+            if (!refreshed && opt.RefreshInventory && !string.IsNullOrWhiteSpace(opt.Warehouse))
+                await RefreshInventoryAsync();
+            refreshed = true;
+
+            for (var k = done; k < opt.Count; k++)
             {
                 log($"— {k + 1}/{opt.Count}-chek —", "head");
                 var posted = false;
                 for (var attempt = 1; attempt <= MaxAttempts && !posted; attempt++)
                 {
                     if (attempt > 1) log($"{attempt}-urinish (qoldiq hisobga olinib qayta quriladi)", "warn");
+                    // Har qadam vaqti (pauzasiz) — qaysi qadam sekinligini jurnaldan ko'rish uchun
+                    var times = new List<string>();
+                    var mark = d.Now;
+                    void Took(string step) { var now = d.Now; times.Add($"{step} {(now - mark) / 1000.0:0.0}s"); mark = now; }
                     await CreateDocumentAsync();
                     await SetWarehouseAsync();
+                    Took("hujjat");
                     await OpenEditFormAsync();
                     await LoadInventoryAsync();
+                    Took("inventarizatsiya");
                     await ApplyPricingAsync();
+                    Took("narx");
 
                     if (full is null)
                     {
@@ -146,6 +188,7 @@ public sealed class UnmarkedRunner
                         if (plans.Count < opt.Count) log($"Diqqat: qoldiq faqat {plans.Count} ta chekka yetadi.", "warn");
                     }
                     else await VerifyTableAsync();
+                    Took("o'qish");
 
                     if (k >= plans.Count)
                     {
@@ -157,11 +200,15 @@ public sealed class UnmarkedRunner
                     var (idx, plan) = plans[k];
                     table = full.ToList();
                     await KeepOnlyAsync(idx);
+                    Took("tanlash");
                     var kept = idx.Select(i => full[i]).ToList();
                     await WriteQuantitiesAsync(kept, plan);
+                    Took("miqdor");
                     var total = await TotalTextAsync();
                     log($"{kept.Count} ta tovar, jami {total} so'm (maqsad ≈{Fmt(targets![k])})", "info");
                     await TransferAsync();
+                    Took("o'tkazish");
+                    log("Vaqt: " + string.Join(", ", times), "info");
 
                     if (!opt.Post)
                     {
@@ -193,8 +240,10 @@ public sealed class UnmarkedRunner
                     {
                         posted = true;
                         created++;
+                        done = created;
                         var realTotal = docRows.Sum(j => plan.Lines[j].Qty * Unit(idx[j]));
                         sum += realTotal;
+                        doneSum = sum;
                         foreach (var j in docRows) used[idx[j]] = used.GetValueOrDefault(idx[j]) + plan.Lines[j].Qty;
                         log($"{k + 1}-chek provesti qilindi ✓ ({docRows.Count} ta tovar, ≈{Fmt(realTotal)} so'm)", "ok");
                         if (docRows.Count < idx.Count) PlanFrom(k + 1); // o'chirilgan qatorlar qoldig'i bilan keyingilar qayta rejalanadi
@@ -272,8 +321,8 @@ public sealed class UnmarkedRunner
         // 1C mos keladigan skladlarni ro'yxat qilib ko'rsatadi
         // Odatda 1C mos skladlarni ro'yxat qilib ko'rsatadi; 4 soniyada chiqmasa Tab — 1C yozilgan nomni o'zi tanlaydi
         Pt? item = null;
-        var until = Environment.TickCount64 + 4000;
-        while (item is null && Environment.TickCount64 < until)
+        var until = d.Now + 4000;
+        while (item is null && d.Now < until)
         {
             await d.DelayAsync(200);
             var e = await d.EvalAsync("window.__ish.listItems()");
@@ -296,9 +345,9 @@ public sealed class UnmarkedRunner
                 var v = Norm(await d.ValueAsync("_Склад_i0"));
                 seen = v;
                 if (v == want || v.StartsWith(want + " (")) return await d.HasAsync("_ФормаВыбрать") is false;
-                if (Environment.TickCount64 - lastPick > 3000 && await d.HasAsync("_ФормаВыбрать") && await d.GridAsync("Список") is { Rows.Count: > 0 } g)
+                if (d.Now - lastPick > 3000 && await d.HasAsync("_ФормаВыбрать") && await d.GridAsync("Список") is { Rows.Count: > 0 } g)
                 {
-                    lastPick = Environment.TickCount64;
+                    lastPick = d.Now;
                     foreach (var r in g.Rows)
                         if (r.Cells.Values.FirstOrDefault(c => Norm(c.Text) == want) is { Text: { Length: > 0 } } cell)
                         {
@@ -324,9 +373,9 @@ public sealed class UnmarkedRunner
         return await d.WaitAsync(async () =>
         {
             if (await d.PosLeafAsync(item) is { } p) return p;
-            if (Environment.TickCount64 - lastClick > 4000 && await d.ModalTextAsync() is null)
+            if (d.Now - lastClick > 4000 && await d.ModalTextAsync() is null)
             {
-                lastClick = Environment.TickCount64;
+                lastClick = d.Now;
                 if (await d.PosSectionAsync(section) is { } sec) await d.ClickAsync(sec);
             }
             return (Pt?)null;
@@ -374,18 +423,18 @@ public sealed class UnmarkedRunner
         var fillItem = await d.WaitAsync(async () =>
         {
             if (await d.MenuItemAsync("Заполнить по остаткам на складе") is { } p) return p;
-            if (Environment.TickCount64 - lastClick > 3000 && !await d.HasAsync("_ТоварыПодменюЗаполнить_submenu") && await d.ModalTextAsync() is null)
+            if (d.Now - lastClick > 3000 && !await d.HasAsync("_ТоварыПодменюЗаполнить_submenu") && await d.ModalTextAsync() is null)
             {
-                lastClick = Environment.TickCount64;
+                lastClick = d.Now;
                 await d.ClickSuffixAsync("_ТоварыПодменюЗаполнить", "Заполнить");
             }
             return (Pt?)null;
         }, 20000, "«Заполнить» menyusi", 150);
         await d.ClickAsync(fillItem);
         // Jadval bo'sh bo'lmasa 1C «табличная часть будет очищена» deb so'raydi
-        var end = Environment.TickCount64 + 60000;
+        var end = d.Now + 60000;
         var asked = false;
-        while (Environment.TickCount64 < end)
+        while (d.Now < end)
         {
             await d.DelayAsync(250);
             if (!asked && await d.ModalTextAsync() is { } q && q.Contains("очищена", StringComparison.OrdinalIgnoreCase) && await d.ModalButtonAsync("Да") is { } yes)
@@ -470,19 +519,39 @@ public sealed class UnmarkedRunner
         await d.ClickAsync(g.Rows[0].Cells.Values.First().At);
         await d.DelayAsync(200);
 
+        var descending = false;
         async Task<(OneCDriver.GridRow Row, DateTime Date, string Num)?> At(string key)
         {
             await d.KeyAsync(key, 2);
-            await d.DelayAsync(700);
-            var view = await d.WaitRefAsync(async () => (await d.GridAsync("Список")) is { Rows.Count: > 0 } v ? v : null, 10000, "hujjatlar ro'yxati");
+            await d.DelayAsync(500);
+            // Dinamik ro'yxat Ctrl+End/Home dan keyin qatorlarni g'ildirak aylantirilmaguncha chizmasligi mumkin:
+            // 1,5 soniyada qator ko'rinmasa bir qatorga aylantirib turtamiz
+            var lastNudge = d.Now;
+            var view = await d.WaitRefAsync(async () =>
+            {
+                if ((await d.GridAsync("Список")) is { Rows.Count: > 0 } v) return v;
+                if (d.Now - lastNudge > 1500 && await d.GridAsync("Список") is { } empty)
+                {
+                    lastNudge = d.Now;
+                    await d.ScrollRowsAsync("Список", empty, key == "End" ? -1 : 1);
+                }
+                return null;
+            }, 10000, "hujjatlar ro'yxati");
+            var dateCol = view.ColIndex("Дата");
+            var dates = view.Rows.Select(r => dateCol is not null && r.Cells.TryGetValue(dateCol, out var c)
+                && DateTime.TryParse(c.Text, CultureInfo.GetCultureInfo("ru-RU"), DateTimeStyles.None, out var p) ? p : (DateTime?)null)
+                .OfType<DateTime>().ToList();
+            descending = dates.Count >= 2 && dates[0] > dates[^1];
             return LatestKey(view, warehouse);
         }
 
+        // Odatda ro'yxat sana bo'yicha o'sib boradi: eng yangisi oxirida. Teskari tartiblangan bo'lsa yoki oxirida
+        // bu sklad bo'lmasa — boshiga qaraladi.
         var bottom = await At("End");
+        if (bottom is not null && !descending) return bottom.Value.Row;
         var top = await At("Home");
-        if (bottom is { } b && (top is not { } t || Newer((b.Date, b.Num), (t.Date, t.Num))))
-            return (await At("End"))?.Row;
-        return top?.Row;
+        if (top is not null) return top.Value.Row;
+        return bottom is null ? null : (await At("End"))?.Row;
     }
 
     /// <summary>Ochiq hujjatning sanasini bugun 23:59:59 qilib yozadi (inventarizatsiya kun oxiri holatida bo'lishi uchun).</summary>
@@ -522,8 +591,8 @@ public sealed class UnmarkedRunner
     /// </summary>
     async Task AnswerRefillAsync()
     {
-        var until = Environment.TickCount64 + 2000;
-        while (Environment.TickCount64 < until)
+        var until = d.Now + 2000;
+        while (d.Now < until)
         {
             await d.DelayAsync(200);
             if (await d.ModalTextAsync() is { } q && q.Contains("Перезаполнить", StringComparison.OrdinalIgnoreCase)
@@ -545,9 +614,9 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () =>
         {
             if (await d.HasAsync("_ДобавитьИзДокумента")) return true;
-            if (Environment.TickCount64 - lastClick > 6000 && await d.ModalTextAsync() is null && !await d.HasAsync("_ФормаПеренестиВДокумент"))
+            if (d.Now - lastClick > 6000 && await d.ModalTextAsync() is null && !await d.HasAsync("_ФормаПеренестиВДокумент"))
             {
-                lastClick = Environment.TickCount64;
+                lastClick = d.Now;
                 await d.ClickSuffixAsync("_ТоварыИзменитьТовары", "Изменить tugmasi");
             }
             return false;
@@ -615,7 +684,7 @@ public sealed class UnmarkedRunner
         // Tartib: Без НДС → foizga o'zgartirish → NDS 12% qaytariladi
         await SetActionAsync("Установить ставку НДС");
         await SetVatAsync("Без НДС");
-        await ExecuteAsync();
+        await ExecuteAsync("Без НДС");
         if (opt.Percent != 0)
         {
             await SetActionAsync("Изменить цены на процент");
@@ -623,8 +692,9 @@ public sealed class UnmarkedRunner
             await ExecuteAsync();
         }
         await SetActionAsync("Установить ставку НДС");
-        await SetVatAsync(opt.VatRate.ToString("0", CultureInfo.InvariantCulture) + "%");
-        await ExecuteAsync();
+        var vat = opt.VatRate.ToString("0", CultureInfo.InvariantCulture) + "%";
+        await SetVatAsync(vat);
+        await ExecuteAsync(vat);
         log($"Narx: +{opt.Percent}% va NDS {opt.VatRate:0}% qo'yildi", "info");
     }
 
@@ -662,18 +732,25 @@ public sealed class UnmarkedRunner
         if (v != percent) throw new OneCException($"Foiz maydoniga {percent} yozilmadi (1C: {v})");
     }
 
-    async Task ExecuteAsync()
+    /// <param name="vatTarget">NDS qo'yilayotgan bo'lsa uning matni («Без НДС», «12%»): qatorlar allaqachon shunday bo'lsa
+    /// jami o'zgarmaydi, shuning uchun uzoq kutilmaydi.</param>
+    async Task ExecuteAsync(string? vatTarget = null)
     {
-        var before = await TotalTextAsync();
+        async Task<string> Sig() => await TotalTextAsync() + "#" + ((await d.GridAsync("Товары")) is { } g
+            ? string.Join("|", g.Rows.Select(r => string.Join("/", r.Cells.Values.Select(c => c.Text)))) : "");
+        var already = false;
+        if (vatTarget is not null && await d.GridAsync("Товары") is { Rows.Count: > 0 } vg && vg.ColIndex("% НДС") is { } vc)
+            already = vg.Rows.All(r => r.Cells.TryGetValue(vc, out var c) && c.Text.Trim() == vatTarget);
+        var before = await Sig();
         var msgs = (await d.MessagesAsync()).Count;
         await d.ClickSuffixAsync("_Выполнить", "Выполнить");
-        // Jadval qayta hisoblanishini kutamiz (jami o'zgaradi yoki 4 soniya)
-        // Odatda jami o'zgaradi; o'zgarmasa ham (masalan qiymat allaqachon shunday bo'lsa) 8 soniyadan keyin davom etiladi
-        var end = Environment.TickCount64 + 8000;
-        while (Environment.TickCount64 < end)
+        // Jadval qayta hisoblanishini kutamiz: jami yoki ko'rinib turgan qatorlar o'zgarsa — tayyor. Qiymat allaqachon
+        // shunday bo'lsa (o'zgarish bo'lmaydi) 1,5 soniyada, aks holda ko'pi bilan 8 soniyada davom etiladi.
+        var end = d.Now + (already ? 1500 : 8000);
+        while (d.Now < end)
         {
             await d.DelayAsync(150);
-            if (await TotalTextAsync() != before) break;
+            if (await Sig() != before) break;
         }
         await d.DelayAsync(250);
         var now = await d.MessagesAsync();
@@ -724,9 +801,9 @@ public sealed class UnmarkedRunner
         {
             var now = await GridAsync();
             if (lastClick != 0 && now.Rows is { Count: > 0 } r && r[0].Selected && WindowOf(now)[0] is var w0 && table.Count > 0 && SameItem(w0, table[0])) return true;
-            if (Environment.TickCount64 - lastClick > 2500)
+            if (d.Now - lastClick > 2500)
             {
-                lastClick = Environment.TickCount64;
+                lastClick = d.Now;
                 if (now.Rows.Count > 0) cell = now.VisibleCell(now.Rows[0], "Всего", "НДС", "% НДС", "Сумма") ?? cell;
                 await d.ClickAsync(cell.At);
                 await d.KeyAsync("Home", 2); // Ctrl+Home
@@ -742,26 +819,55 @@ public sealed class UnmarkedRunner
         await d.ClickAsync((g.VisibleCell(g.Rows[0], "Всего", "НДС", "% НДС", "Сумма") ?? g.Cell(g.Rows[0], "Номенклатура"))!.Value.At);
         await d.KeyAsync("Home", 2);
         await d.DelayAsync(300);
-        var all = new List<Row>();
-        List<Row>? prev = null;
-        for (var page = 0; page < 5000; page++)
-        {
-            g = await GridAsync();
-            var win = WindowOf(g);
-            if (win.Count == 0) break;
-            if (prev is null) all.AddRange(win);
-            else
-            {
-                var s = ShiftBetween(prev, win);
-                if (s == 0) break;
-                if (s < 0) throw new OneCException("Jadvalni o'qishda joy yo'qoldi (aylantirish mos kelmadi)");
-                all.AddRange(win.Skip(win.Count - s));
-            }
-            prev = win;
-            if (!await d.ScrollRowsAsync("Товары", g, Math.Max(1, win.Count - 1))) break;
-        }
+        var all = await ReadDownAsync(int.MaxValue);
         if (all.Count == 0) throw new OneCException("Jadvalda tovar topilmadi");
         log($"Tovarlar o'qildi: {all.Count} ta qator, jami qoldiq {all.Sum(r => r.Qty):N0} dona", "info");
+        return all;
+    }
+
+    /// <summary>
+    /// Oyna `all` ning qayeridan boshlanadi: eng uzun ustma-ust tushgan qismi bo'yicha (1C bir hodisada bir nechta qator surib
+    /// yuborsa ham joy topiladi). Oyna `all` dan butunlay pastda (ustma-ust qism yo'q) bo'lsa -1.
+    /// </summary>
+    static int OverlapStart(List<Row> all, List<Row> win)
+    {
+        for (var p = Math.Max(0, all.Count - win.Count - 60); p < all.Count; p++)
+        {
+            var n = Math.Min(win.Count, all.Count - p);
+            var ok = true;
+            for (var j = 0; j < n && ok; j++) ok = SameItem(win[j], all[p + j]);
+            if (ok && (n >= 2 || win.Count == 1 || p == all.Count - 1)) return p;
+        }
+        return -1;
+    }
+
+    /// <summary>Hozirgi joydan pastga `max` tagacha qatorni o'qiydi. Aylantirish ortiqcha ketsa biroz tepaga qaytib qayta o'qiydi.</summary>
+    async Task<List<Row>> ReadDownAsync(int max)
+    {
+        var all = new List<Row>();
+        var misses = 0;
+        for (var page = 0; page < 5000 && all.Count < max; page++)
+        {
+            var g = await GridAsync();
+            var win = WindowOf(g);
+            if (win.Count == 0) break;
+            if (all.Count == 0) all.AddRange(win);
+            else
+            {
+                var p = OverlapStart(all, win);
+                if (p < 0)
+                {
+                    if (++misses > 8) throw new OneCException("Jadvalni o'qishda joy yo'qoldi (aylantirish mos kelmadi)");
+                    await d.ScrollRowsAsync("Товары", g, -Math.Max(1, win.Count / 2));
+                    continue;
+                }
+                misses = 0;
+                all.AddRange(win.Skip(all.Count - p));
+            }
+            if (all.Count >= max) break;
+            // Ikki qator ustma-ust qoladi — joyni aniqlash ishonchli bo'ladi
+            if (!await d.ScrollRowsAsync("Товары", g, Math.Max(1, win.Count - 2))) break;
+        }
         return all;
     }
 
@@ -803,10 +909,10 @@ public sealed class UnmarkedRunner
             var cur = top + j;
             hint = top;
             if (cur == target) return true;
-            if (Environment.TickCount64 - lastPress < 400) return false; // oldingi tugmalar ishlanishini kutamiz
+            if (d.Now - lastPress < 400) return false; // oldingi tugmalar ishlanishini kutamiz
             var diff = target - cur;
             for (var i = 0; i < Math.Min(Math.Abs(diff), 40); i++) await d.KeyAsync(diff > 0 ? "ArrowDown" : "ArrowUp");
-            lastPress = Environment.TickCount64;
+            lastPress = d.Now;
             return false;
         }, 20000, $"«{table[target].Name}» qatoriga o'tish", 120);
     }
@@ -865,27 +971,7 @@ public sealed class UnmarkedRunner
     }
 
     /// <summary>Tepadan `max` tagacha qatorni o'qiydi.</summary>
-    async Task<List<Row>> ReadTopAsync(int max)
-    {
-        var all = new List<Row>();
-        List<Row>? prev = null;
-        for (var page = 0; page < 500 && all.Count < max; page++)
-        {
-            var g = await GridAsync();
-            var win = WindowOf(g);
-            if (win.Count == 0) break;
-            if (prev is null) all.AddRange(win);
-            else
-            {
-                var s = ShiftBetween(prev, win);
-                if (s <= 0) break;
-                all.AddRange(win.Skip(win.Count - s));
-            }
-            prev = win;
-            if (all.Count >= max || !await d.ScrollRowsAsync("Товары", g, Math.Max(1, win.Count - 1))) break;
-        }
-        return all;
-    }
+    Task<List<Row>> ReadTopAsync(int max) => ReadDownAsync(max);
 
     /// <summary>Miqdorlarni yozadi: «Количество» ustuni faollashtiriladi, har qatorga ↑/↓ bilan borib raqam + Enter.</summary>
     async Task WriteQuantitiesAsync(List<Row> kept, ReceiptPlan plan)
@@ -946,7 +1032,7 @@ public sealed class UnmarkedRunner
     /// <summary>1C sahifasiga ulanish (bosishlar va o'qish uchun).</summary>
     public async Task InitAsync()
     {
-        d = new OneCDriver(core, ct) { Waiting = m => log(m, "warn") };
+        d = new OneCDriver(core, ct, Gate) { Waiting = m => log(m, "warn") };
         await d.InitAsync();
     }
 
@@ -963,9 +1049,9 @@ public sealed class UnmarkedRunner
         {
             var cls = (await d.EvalAsync("(()=>{const l=[...document.querySelectorAll('[id$=\"_ЕстьМаркировка\"]')].filter(e=>e.getBoundingClientRect().width>0);const e=l[l.length-1];return e?e.className:null})()")).ToString();
             if (cls.Contains("select")) return true;
-            if (Environment.TickCount64 - lastClick > 3000)
+            if (d.Now - lastClick > 3000)
             {
-                lastClick = Environment.TickCount64;
+                lastClick = d.Now;
                 await d.ClickSuffixAsync("_ЕстьМаркировка", "«Товар маркирован» belgisi");
             }
             return false;
@@ -980,8 +1066,8 @@ public sealed class UnmarkedRunner
     {
         var before = (await d.MessagesAsync()).Count;
         await d.ClickSuffixAsync("_ФормаПровестиИЗакрыть", "Провести и закрыть");
-        var end = Environment.TickCount64 + 120000;
-        while (Environment.TickCount64 < end)
+        var end = d.Now + 120000;
+        while (d.Now < end)
         {
             await d.DelayAsync(200);
             var text = await d.ModalTextAsync();
@@ -1031,9 +1117,9 @@ public sealed class UnmarkedRunner
                     var v = await d.GridAsync("Товары");
                     if (v is null || Current(v) is not { } cur) return false;
                     if (cur == n) return true;
-                    if (Environment.TickCount64 - lastPress < 400) return false;
+                    if (d.Now - lastPress < 400) return false;
                     for (var i = 0; i < Math.Min(Math.Abs(n - cur), 40); i++) await d.KeyAsync(n > cur ? "ArrowDown" : "ArrowUp");
-                    lastPress = Environment.TickCount64;
+                    lastPress = d.Now;
                     return false;
                 }, 15000, $"hujjatdagi {n}-qatorga o'tish", 150);
                 var sig = string.Join("|", (await d.GridAsync("Товары"))!.Rows.Select(r => r.Cells.Values.Select(c => c.Text).FirstOrDefault(t => t.Length > 3)));
