@@ -53,6 +53,8 @@ public sealed class MainForm : Form
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
         updater = new UpdateCoordinator(this, settings, home);
+        problems = new ProblemSender(() => (settings.LogCollectorUrl, settings.LogCollectorKey));
+        problems.Start();
         BuildMenu();
         UpdateInstaller.CleanupOld(Environment.ProcessPath ?? "");
 
@@ -62,6 +64,7 @@ public sealed class MainForm : Form
         // Yangilanishdan keyin yangi nusxa ishga tushadi (ma'lumotlar saqlangandan so'ng)
         FormClosed += (_, _) =>
         {
+            problems.Dispose();
             if (updater.PendingRestart is { } exe)
                 try { UpdateInstaller.Launch(exe); } catch (Exception e) { Log.Error("restart", e); }
         };
@@ -74,6 +77,7 @@ public sealed class MainForm : Form
     }
 
     readonly UpdateCoordinator updater;
+    readonly ProblemSender problems;
 
     void BuildMenu()
     {
@@ -88,6 +92,7 @@ public sealed class MainForm : Form
         help.Items.Add(new ToolStripSeparator());
         help.Items.Add("Yangilanishni tekshirish", null, async (_, _) => await updater.CheckAsync(manual: true));
         help.Items.Add("Yangilanish sozlamalari…", null, (_, _) => updater.ShowSettings());
+        help.Items.Add("Xatolar jurnali (yig'uvchi)…", null, (_, _) => ProblemLogDialog.Show(this, settings, problems));
         help.Items.Add(new ToolStripSeparator());
         help.Items.Add("Ma'lumotlar papkasini ochish", null, (_, _) =>
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{Paths.AppData}\"") { UseShellExecute = true }));
@@ -310,7 +315,7 @@ public sealed class MainForm : Form
         }
         catch (Exception e)
         {
-            Log.Error("OpenMarking", e);
+            Log.Error("OpenMarking", e, b);
             MessageBox.Show(this, "Markirovka panelini ochib bo'lmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

@@ -100,6 +100,11 @@ public sealed class Settings
     /// <summary>Yopiq repozitoriy uchun GitHub tokeni (DPAPI bilan shifrlangan, base64).</summary>
     public string? UpdateTokenProtected { get; set; }
 
+    /// <summary>Xatolar yig'uvchisi (IshonchLogs) manzili, masalan http://192.168.1.10:5077 — bo'sh bo'lsa hech narsa yuborilmaydi.</summary>
+    public string? LogCollectorUrl { get; set; }
+    /// <summary>Yig'uvchi kaliti (yig'uvchi sozlamasidagi bilan bir xil bo'lishi kerak).</summary>
+    public string? LogCollectorKey { get; set; }
+
     /// <summary>Oxirgi yopilganda ochiq bo'lgan tablar: "base:&lt;profil&gt;", "soliq", "elektr".</summary>
     public List<string> OpenTabs { get; set; } = new();
     public bool RestoreTabs { get; set; } = true;

@@ -113,6 +113,7 @@ public sealed class CommunicatorTab : UserControl
         {
             status.Text = "E-POS Communicator: ISHLAMAYAPTI (dasturni oching)";
             status.ForeColor = Color.Firebrick;
+            ProblemLog.Report(Feature.Epos, "warn", status.Text, baseEntry);
             return;
         }
         var version = await SafeAsync(client.GetVersionAsync, "?");
@@ -138,6 +139,7 @@ public sealed class CommunicatorTab : UserControl
             }
             status.Text = $"{version}: fiskal modul ISHLAMAYAPTI ({e.Message.Trim()}) — ulanganini tekshiring";
             status.ForeColor = Color.Firebrick;
+            ProblemLog.Report(Feature.Epos, "warn", status.Text, baseEntry);
         }
     }
 
@@ -228,7 +230,7 @@ public sealed class CommunicatorTab : UserControl
                 map.Save(l);
             }
         }
-        catch (Exception e) when (e is UzposException or IOException) { Log("Xato: " + e.Message); }
+        catch (Exception e) when (e is UzposException or IOException) { Problem("Xato: " + e.Message); }
         finally { SetBusy(false); RefreshGrid(); }
     }
 
@@ -249,7 +251,7 @@ public sealed class CommunicatorTab : UserControl
                 }
             Log(bad == 0 ? "✓ Barcha kodlar yaroqli va sotilmagan." : $"{bad} ta kod muammoli.");
         }
-        catch (Exception e) when (e is UzposException or IOException) { Log("Xato: " + e.Message); }
+        catch (Exception e) when (e is UzposException or IOException) { Problem("Xato: " + e.Message); }
         finally { SetBusy(false); }
     }
 
@@ -293,7 +295,7 @@ public sealed class CommunicatorTab : UserControl
         }
         catch (Exception e) when (e is UzposException or IOException)
         {
-            Log("✗ Chek yaratilmadi: " + e.Message);
+            Problem("✗ Chek yaratilmadi: " + e.Message);
             Log("  Agar xato 'javob bermadi' bo'lsa, chek yaratilgan bo'lishi mumkin: Communicator dagi so'nggi chekni tekshiring.");
         }
         finally { SetBusy(false); }
@@ -319,6 +321,13 @@ public sealed class CommunicatorTab : UserControl
     }
 
     void Log(string text) => logBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}{Environment.NewLine}");
+
+    /// <summary>Xato: oynaga va muammolar jurnaliga.</summary>
+    void Problem(string text)
+    {
+        Log(text);
+        ProblemLog.Report(Feature.Epos, "err", text, baseEntry);
+    }
 
     protected override void Dispose(bool disposing)
     {

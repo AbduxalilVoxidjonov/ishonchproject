@@ -213,14 +213,18 @@ public sealed class UnmarkedPanel : UserControl
         start.Text = paused ? "▶  Davom etish" : "▶  Boshlash";
         start.Enabled = paused;
         pause.Enabled = !paused;
-        Log(paused ? "Pauza — keyingi 1C amalidan oldin to'xtab turadi. Davom etish uchun «▶ Davom etish» ni bosing (pauzada 1C ga tegmang)." : "Davom etilmoqda…", "warn");
+        Log(paused ? "Pauza — keyingi 1C amalidan oldin to'xtab turadi. Davom etish uchun «▶ Davom etish» ni bosing (pauzada 1C ga tegmang)." : "Davom etilmoqda…", "warn", null, report: false);
     }
 
-    void Log(string text, string level)
+    void Log(string text, string level) => Log(text, level, null);
+
+    /// <param name="report">Ogohlantirish/xato muammolar jurnaliga yozilsinmi (pauza, foydalanuvchi to'xtatgani — yo'q).</param>
+    void Log(string text, string level, string? details, bool report = true)
     {
+        if (report && level is "warn" or "err") ProblemLog.Report(Feature.Unmarked, level, text, baseEntry, details, BaseTitle);
         IshonchDesktop.Models.Log.Write($"Markirovkasiz [{BaseTitle}]: {text}");
         if (IsDisposed || logBox.IsDisposed) return;
-        if (InvokeRequired) { try { BeginInvoke(() => Log(text, level)); } catch { /* panel yopilgan */ } return; }
+        if (InvokeRequired) { try { BeginInvoke(() => Log(text, level, details, report: false)); } catch { /* panel yopilgan */ } return; }
         var color = level switch { "err" => Color.Firebrick, "warn" => Color.DarkOrange, "ok" => Color.SeaGreen, "head" => Color.RoyalBlue, _ => Color.Black };
         logBox.SelectionStart = logBox.TextLength;
         logBox.SelectionColor = color;
@@ -297,7 +301,7 @@ public sealed class UnmarkedPanel : UserControl
             runner.Gate.Changed -= OnPauseChanged;
             if (runner.InventoryNumber is { } inv && inv != prefs.InventoryNumber) { prefs.InventoryNumber = inv; settings.Save(); }
             Log($"Natija: {r.Created} / {r.Requested} ta chek, jami ≈ {r.Sum:N0}" + (r.Error is null ? "" : " — xato bilan to'xtadi"),
-                r.Error is null && !r.Stopped ? "ok" : "warn");
+                r.Error is null && !r.Stopped ? "ok" : "warn", null, report: false); // xatoning o'zi yuqorida yozilgan
             // To'xtatilgan yoki xato bilan tugagan bo'lsa — keyingi «Boshlash» qolgan cheklardan davom ettira oladi
             // Provesti qilingan cheklar «E-POS orqali sotish» uchun eslab qolinadi (o'zi sotilmaydi)
             foreach (var receipt in runner.Posted)
@@ -311,8 +315,8 @@ public sealed class UnmarkedPanel : UserControl
         }
         catch (Exception e)
         {
-            IshonchDesktop.Models.Log.Error("Unmarked", e);
-            Log("Kutilmagan xato: " + e.Message, "err");
+            IshonchDesktop.Models.Log.Write("XATO Unmarked: " + e);
+            Log("Kutilmagan xato: " + e.Message, "err", e.ToString());
         }
         finally
         {

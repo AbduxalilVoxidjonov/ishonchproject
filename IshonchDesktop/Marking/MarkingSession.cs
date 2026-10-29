@@ -68,7 +68,7 @@ public sealed class MarkingSession : IDisposable
         panelView = new WebView2 { Dock = DockStyle.Fill };
         oneC.AttachSidePanel(panelView, PanelWidth);
         // «Avtomatik cheklar» bo'limi panelning o'zida chiziladi (umumiy summa → cheklar)
-        if (ZoomStore.Settings is { } st) auto = new MarkedAuto(oneC, panelView, st, baseEntry.ProfileKey, getSoliqTab);
+        if (ZoomStore.Settings is { } st) auto = new MarkedAuto(oneC, panelView, st, baseEntry.ProfileKey, getSoliqTab, baseEntry);
         var env = await WebTab.GetEnvironmentAsync("panel");
         await panelView.EnsureCoreWebView2Async(env);
         var pcore = panelView.CoreWebView2;

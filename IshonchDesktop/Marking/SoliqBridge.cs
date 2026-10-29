@@ -125,6 +125,9 @@ public static class SoliqBridge
             var body = w.GetProperty("body").GetString() ?? "";
             if (Interlocked.Increment(ref apiLogged) <= 3)
                 IshonchDesktop.Models.Log.Write($"soliq-api {status}: {(body.Length > 1500 ? body[..1500] : body)}");
+            if (status != 200)
+                IshonchDesktop.Models.ProblemLog.Report(IshonchDesktop.Models.Feature.Soliq, "warn",
+                    $"soliq-api {status}: {(body.Length > 300 ? body[..300] : body)}", inn: ours);
             if (status is 401 or 403) return null;
 
             // «Ushbu markirovka kodi topilmadi» (yoki «не найден») — holat kodidan qat'i nazar: kod darhol tashlanadi,
@@ -241,7 +244,11 @@ public static class SoliqBridge
             var fast = await FastCheckAsync(getTab, value, ours);
             if (fast is not null) return fast;
         }
-        catch (Exception ex) { IshonchDesktop.Models.Log.Write("soliq-api: " + ex.Message); }
+        catch (Exception ex)
+        {
+            IshonchDesktop.Models.Log.Write("soliq-api: " + ex.Message);
+            IshonchDesktop.Models.ProblemLog.Report(IshonchDesktop.Models.Feature.Soliq, "warn", "soliq-api: " + ex.Message, details: ex.ToString(), inn: ours);
+        }
 
         var pageTab = await getTab();
         var pageGate = PageLock(pageTab);

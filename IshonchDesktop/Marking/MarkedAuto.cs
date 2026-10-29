@@ -21,13 +21,16 @@ public sealed class MarkedAuto : IDisposable
     readonly MarkedPrefs prefs;
     /// <summary>Shu firmaning my.soliq.uz tabi (markirovka kodlari shu yerda tekshiriladi).</summary>
     readonly Func<Task<WebTab>>? getSoliqTab;
+    /// <summary>Muammolar jurnalida qaysi baza/firma ekanini ko'rsatish uchun.</summary>
+    readonly BaseEntry? baseEntry;
     CancellationTokenSource? cts;
     string statusText = "Umumiy summa — «Maqsad summa» maydonidan olinadi.";
     string statusLevel = "info";
 
-    public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey, Func<Task<WebTab>>? getSoliqTab = null)
+    public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey, Func<Task<WebTab>>? getSoliqTab = null, BaseEntry? baseEntry = null)
     {
         this.getSoliqTab = getSoliqTab;
+        this.baseEntry = baseEntry;
         this.oneC = oneC;
         this.panel = panel;
         this.settings = settings;
@@ -123,9 +126,12 @@ public sealed class MarkedAuto : IDisposable
         if (action == "go") _ = RunAsync();
     }
 
-    void Status(string text, string level = "info")
+    /// <param name="details">Istisno matni (muammolar jurnaliga).</param>
+    /// <param name="report">Ogohlantirish/xato muammolar jurnaliga yozilsinmi (foydalanuvchi o'zi to'xtatgani — yo'q).</param>
+    void Status(string text, string level = "info", string? details = null, bool report = true)
     {
         Log.Write("Markirovkali avto: " + text);
+        if (report && level is "warn" or "err") ProblemLog.Report(Feature.Marked, level, text, baseEntry, details);
         statusText = text;
         statusLevel = level;
         if (panel.IsDisposed) return;
@@ -359,9 +365,9 @@ public sealed class MarkedAuto : IDisposable
             }
             Status($"Tugadi: {done} ta chek.", "ok");
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { Status($"To'xtatildi ({done} ta chek tayyor).", "warn"); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { Status($"To'xtatildi ({done} ta chek tayyor).", "warn", report: false); }
         catch (OneCException e) { Status(e.Message, "err"); }
-        catch (Exception e) { Log.Error("MarkedAuto", e); Status($"Kutilmagan xato ({done} ta chek tayyor): " + e.Message, "err"); }
+        catch (Exception e) { Log.Write("XATO MarkedAuto: " + e); Status($"Kutilmagan xato ({done} ta chek tayyor): " + e.Message, "err", e.ToString()); }
         finally
         {
             cts?.Dispose();

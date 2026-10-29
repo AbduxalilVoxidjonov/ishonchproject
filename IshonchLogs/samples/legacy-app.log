@@ -1,0 +1,6 @@
+09:00:00.000 Init boshlandi: 1c-tas-1cbuxapp-02-baza902
+09:00:01.500 Markirovkasiz [baza902 — Sinov Market MChJ]: Inventarizatsiya ochilmoqda
+09:00:03.250 Markirovkasiz [baza902 — Sinov Market MChJ]: Kutilmagan xato: 1C javob bermadi
+09:01:00.000 XATO update.check: System.Net.Http.HttpRequestException: No such host is known.
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync()
+09:02:00.000 Markirovkali avto: Tugadi: 3 ta chek.

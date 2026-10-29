@@ -30,6 +30,9 @@ jobs:
       - name: Testlar
         run: dotnet run -c Release --project IshonchDesktop/tests/AppTests/AppTests.csproj
 
+      - name: Log yig'uvchi testlari
+        run: dotnet run -c Release --project IshonchLogs/tests/LogsTests/LogsTests.csproj
+
       - name: Yig'ish (bitta Ishonch.exe)
         run: >
           dotnet publish IshonchDesktop/IshonchDesktop.csproj -c Release -r win-x64 --self-contained true
