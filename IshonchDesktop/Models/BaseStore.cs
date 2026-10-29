@@ -8,24 +8,67 @@ public sealed class BaseStore
 
     public List<BaseEntry> Bases { get; private set; } = new();
 
+    /// <summary>
+    /// Boshlang'ich ro'yxatga keyinroq qo'shilgan bazalar ("server/db"). Ro'yxati allaqachon bor kompyuterlarga ular
+    /// bir marta qo'shiladi; foydalanuvchi keyin o'chirsa qayta qo'shilmaydi.
+    /// </summary>
+    static readonly string[] AddedLater = { "tas-1cbuxapp-01/TestDB11" };
+
+    static string Key(BaseEntry b) => $"{b.Server}/{b.Db}".ToLowerInvariant();
+
+    string basesFile = Paths.BasesFile;
+    string seededFile = Paths.SeededBasesFile;
+
     /// <summary>Birinchi ishga tushishda Excel'dan olingan ro'yxat foydalanuvchi papkasiga nusxalanadi.</summary>
-    public void Load()
+    public void Load() => Load(Paths.BasesFile, Paths.SeededBasesFile);
+
+    /// <summary>Berilgan fayllar bilan yuklaydi (sinovlar uchun).</summary>
+    public void Load(string basesFile, string seededFile)
     {
-        if (!File.Exists(Paths.BasesFile))
+        this.basesFile = basesFile;
+        this.seededFile = seededFile;
+        if (!File.Exists(basesFile))
         {
             // Exe ichiga joylangan boshlang'ich ro'yxat (Excel'dan) foydalanuvchi papkasiga yoziladi
             using var res = typeof(BaseStore).Assembly.GetManifestResourceStream("bases.json");
             if (res is not null)
             {
-                using var fs = File.Create(Paths.BasesFile);
+                using var fs = File.Create(basesFile);
                 res.CopyTo(fs);
             }
         }
-        if (!File.Exists(Paths.BasesFile)) { Bases = new(); return; }
-        Bases = JsonSerializer.Deserialize<List<BaseEntry>>(File.ReadAllText(Paths.BasesFile), Json) ?? new();
+        if (!File.Exists(basesFile)) { Bases = new(); return; }
+        Bases = JsonSerializer.Deserialize<List<BaseEntry>>(File.ReadAllText(basesFile), Json) ?? new();
+        try { AddLaterBases(); } catch (Exception e) { Log.Error("bases-seed", e); }
     }
 
-    public void Save() => File.WriteAllText(Paths.BasesFile, JsonSerializer.Serialize(Bases, Json));
+    void AddLaterBases()
+    {
+        var seeded = File.Exists(seededFile)
+            ? new HashSet<string>(File.ReadAllLines(seededFile).Select(l => l.Trim().ToLowerInvariant()).Where(l => l.Length > 0))
+            : new HashSet<string>();
+        var pending = AddedLater.Select(k => k.ToLowerInvariant()).Where(k => !seeded.Contains(k)).ToList();
+        if (pending.Count == 0) return;
+
+        using var res = typeof(BaseStore).Assembly.GetManifestResourceStream("bases.json");
+        var embedded = res is null ? new() : JsonSerializer.Deserialize<List<BaseEntry>>(res, Json) ?? new();
+        var have = Bases.Select(Key).ToHashSet();
+        var added = false;
+        foreach (var key in pending)
+        {
+            if (!have.Contains(key) && embedded.FirstOrDefault(b => Key(b) == key) is { } entry)
+            {
+                entry.Id = Bases.Count == 0 ? 1 : Bases.Max(b => b.Id) + 1;
+                Bases.Add(entry);
+                added = true;
+            }
+            seeded.Add(key);
+        }
+        if (added) Save();
+        File.WriteAllLines(seededFile, seeded.OrderBy(s => s));
+    }
+
+    public void Save() => File.WriteAllText(basesFile, JsonSerializer.Serialize(Bases, Json));
 }
 
 public sealed class Settings

@@ -14,6 +14,9 @@ public static class Paths
     /// <summary>Foydalanuvchi tahrirlaydigan baza ro'yxati.</summary>
     public static string BasesFile => Path.Combine(AppData, "bases.json");
 
+    /// <summary>Keyinroq qo'shilgan bazalardan qaysilari bu kompyuterdagi ro'yxatga allaqachon qo'shilgan (har biri bir marta).</summary>
+    public static string SeededBasesFile => Path.Combine(AppData, "bases-seeded.txt");
+
 
     public static string SettingsFile => Path.Combine(AppData, "settings.json");
 

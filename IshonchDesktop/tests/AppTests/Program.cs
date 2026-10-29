@@ -275,6 +275,27 @@ var wu = ElektrHost.WriteUnique(Path.Combine(tmp, "out"), "natija.xlsx", new byt
 var wu2 = ElektrHost.WriteUnique(Path.Combine(tmp, "out"), "natija.xlsx", new byte[] { 2 });
 Check(wu != wu2 && File.ReadAllBytes(wu)[0] == 1, "natija fayli ustiga yozilmaydi");
 
+// ---- bazalar ro'yxati: keyin qo'shilgan TestDB11 ----
+{
+    var bf = Path.Combine(tmp, "bases.json");
+    var sf = Path.Combine(tmp, "bases-seeded.txt");
+    bool HasTest(BaseStore s) => s.Bases.Any(b => b.Db == "TestDB11" && b.Server == "tas-1cbuxapp-01");
+
+    var fresh = new BaseStore(); fresh.Load(bf, sf);
+    Check(HasTest(fresh) && fresh.Bases.Count(b => b.Db == "TestDB11") == 1, "yangi o'rnatishda TestDB11 bor (bir marta)");
+
+    File.WriteAllText(bf, "[{\"id\":7,\"no\":1,\"firm\":\"Eski\",\"server\":\"s\",\"db\":\"d\"}]");
+    File.Delete(sf);
+    var old = new BaseStore(); old.Load(bf, sf);
+    Check(HasTest(old) && old.Bases.Count == 2 && old.Bases.Last().Id == 8, "mavjud ro'yxatga TestDB11 qo'shildi (id 8)");
+    var again = new BaseStore(); again.Load(bf, sf);
+    Check(again.Bases.Count == 2, "qayta ochilganda takror qo'shilmaydi");
+
+    again.Bases.RemoveAll(b => b.Db == "TestDB11"); again.Save();
+    var removed = new BaseStore(); removed.Load(bf, sf);
+    Check(!HasTest(removed), "foydalanuvchi o'chirsa qayta qo'shilmaydi");
+}
+
 listener.Stop();
 try { Directory.Delete(tmp, true); } catch { }
 Console.WriteLine(failures == 0 ? "\nHAMMASI YAXSHI" : $"\n{failures} ta xato");

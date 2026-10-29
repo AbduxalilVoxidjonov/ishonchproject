@@ -49,6 +49,9 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.3 — Sinov bazasi ro'yxatda
+- Bazalar ro'yxatiga **TestDB11** (sinov bazasi, `tas-1cbuxapp-01`) qo'shildi. Ro'yxati allaqachon bor kompyuterlarga yangilanishdan keyin bir marta o'zi qo'shiladi; o'chirib tashlansa qayta qo'shilmaydi.
+
 ## 0.7.2 — Inventarizatsiya sanasi va eng oxirgi hujjat
 - Inventarizatsiyani yangilashda sana doim **bugun 23:59:59** qilinadi, keyin sklad qoldig'i bo'yicha to'ldirilib provesti qilinadi.
 - «Добавить из документа → Инвентаризация товаров» va inventarizatsiya ro'yxatida butun ro'yxat ko'rilib, skladning sana/vaqt bo'yicha **eng oxirgi** hujjati tanlanadi.
