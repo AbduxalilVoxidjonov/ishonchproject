@@ -19,7 +19,19 @@ Faqat egasining kompyuterida ishlaydi — muammoni ko'rish uchun Ishonch ning ya
 
 1. IshonchLogs.exe ni oching. Birinchi marta Windows «Брандмауэр» ruxsat so'rasa — **Частные сети** ga ruxsat bering.
 2. **Sozlamalar…** → «Yangi kalit» → Saqlash. Pastki satrda shu kompyuter manzili ko'rinadi, masalan `http://192.168.1.10:5077`.
-3. Har bir buxgalter kompyuterida Ishonch: Yordam → «Xatolar jurnali (yig'uvchi)…» → manzil va kalitni kiriting → **Sinash** («Ulandi») → Saqlash.
+3. Manzil va kalitni Ishonch ga bir marta o'rnating — keyingi release dan boshlab hamma kompyuterda o'zi ishlaydi:
+   GitHub → repozitoriy → **Settings → Secrets and variables → Actions**:
+   - **Variables** → `LOG_COLLECTOR_URL` = `http://<sizning manzilingiz>:5077`
+   - **Secrets** → `LOG_COLLECTOR_KEY` = yig'uvchidagi kalit
+
+   Release yig'ilganda ular exe ichiga yoziladi (kodga va repozitoriyga tushmaydi). Manzil o'zgarsa — o'zgaruvchini
+   yangilab, yangi release chiqaring.
+4. Bitta kompyuterda boshqa manzil kerak bo'lsa (yoki release dan oldin sinash uchun): Ishonch → Yordam →
+   «Xatolar jurnali (yig'uvchi)…» → manzil va kalit → **Sinash** («Ulandi») → Saqlash. Kiritilgani o'rnatilganidan ustun;
+   maydon tozalansa o'rnatilganiga qaytadi.
+
+Kalit exe ichida bo'lgani uchun uni to'liq sir deb bo'lmaydi: u faqat begona so'rovlarni to'sadi. Kalit tarqalib ketsa —
+yig'uvchida yangisini qo'ying va `LOG_COLLECTOR_KEY` ni yangilab release chiqaring.
 
 Kompyuterlar boshqa binoda bo'lsa, ular sizning kompyuteringizga yetib borishi kerak: bir xil lokal tarmoq, VPN
 (masalan Radmin VPN / ZeroTier) yoki routerda port ochish (5077). Ma'lumot uchinchi tomon serveriga yuborilmaydi.
@@ -48,6 +60,8 @@ Namuna fayllar: `samples\` (ikki o'ylab topilgan firma va eski app.log).
 dotnet publish IshonchLogs/IshonchLogs.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish-logs
 dotnet run -c Release --project IshonchLogs/tests/LogsTests/LogsTests.csproj
 ```
+
+Ishonch ni qo'lda manzil bilan yig'ish: `LogCollectorUrl` va `LogCollectorKey` muhit o'zgaruvchilari (yoki `-p:LogCollectorUrl=…`).
 
 Testlar: fayllarni o'qish (buzilgan qatorlar, eski app.log), guruhlash, filtr, takrorsiz saqlash, HTTP (kalit, 400/401)
 va Ishonch tomoni — `ProblemLog` yozadi → `ProblemSender` yuboradi → yig'uvchida ikki firma alohida guruhlanadi.

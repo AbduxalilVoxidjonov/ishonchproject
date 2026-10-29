@@ -105,6 +105,14 @@ public sealed class Settings
     /// <summary>Yig'uvchi kaliti (yig'uvchi sozlamasidagi bilan bir xil bo'lishi kerak).</summary>
     public string? LogCollectorKey { get; set; }
 
+    /// <summary>Haqiqatda ishlatiladigan manzil va kalit: shu kompyuterda kiritilgani, bo'lmasa exe ga yozilgani.</summary>
+    public (string? Url, string? Key) Collector(string? builtInUrl, string? builtInKey) =>
+        LogCollectorUrl is { Length: > 0 } u
+            ? (u, LogCollectorKey is { Length: > 0 } k ? k : null)
+            : (builtInUrl, LogCollectorKey is { Length: > 0 } k2 ? k2 : builtInKey);
+
+    public (string? Url, string? Key) Collector() => Collector(AppInfo.BuiltInCollectorUrl, AppInfo.BuiltInCollectorKey);
+
     /// <summary>Oxirgi yopilganda ochiq bo'lgan tablar: "base:&lt;profil&gt;", "soliq", "elektr".</summary>
     public List<string> OpenTabs { get; set; } = new();
     public bool RestoreTabs { get; set; } = true;

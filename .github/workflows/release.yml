@@ -34,6 +34,12 @@ jobs:
         run: dotnet run -c Release --project IshonchLogs/tests/LogsTests/LogsTests.csproj
 
       - name: Yig'ish (bitta Ishonch.exe)
+        # Xatolar yig'uvchisi manzili va kaliti: repozitoriy Settings → Secrets and variables → Actions
+        # (Variables: LOG_COLLECTOR_URL, Secrets: LOG_COLLECTOR_KEY). MSBuild ularni muhitdan xususiyat sifatida oladi;
+        # berilmasa exe ga hech narsa yozilmaydi.
+        env:
+          LogCollectorUrl: ${{ vars.LOG_COLLECTOR_URL }}
+          LogCollectorKey: ${{ secrets.LOG_COLLECTOR_KEY }}
         run: >
           dotnet publish IshonchDesktop/IshonchDesktop.csproj -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true

@@ -51,7 +51,7 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 
 ## Xatolar jurnali (keyingi versiya)
 - Har bir ogohlantirish va xato `%APPDATA%\Ishonch\problems.jsonl` ga yoziladi: vaqt, baza/firma/INN, bo'lim (markirovkali avto, markirovkasiz, E-POS, soliq, Elektr…), matn, stack trace va oldingi `app.log` qatorlari.
-- **Yordam → «Xatolar jurnali (yig'uvchi)…»** da manzil berilsa, yozuvlar egasining kompyuteridagi **IshonchLogs.exe** ga yuboriladi (HTTP, kalit bilan). Batafsil: `../IshonchLogs/README.md`.
+- **Yordam → «Xatolar jurnali (yig'uvchi)…»** da manzil berilsa, yozuvlar egasining kompyuteridagi **IshonchLogs.exe** ga yuboriladi (HTTP, kalit bilan). Manzil va kalit release da GitHub `LOG_COLLECTOR_URL` / `LOG_COLLECTOR_KEY` dan exe ga yoziladi — kompyuterlarda qo'lda kiritish shart emas. Batafsil: `../IshonchLogs/README.md`.
 
 ## 0.7.6 — E-POS markirovkasiz sotishda, pastki qatorlar
 - **Markirovkasiz sotish**: «🧾 E-POS orqali sotish» tugmasi — provesti qilingan chekni fiskal chek qiladi. O'zi bosilmaydi: faqat siz bosganda (bir nechta chek bo'lsa ro'yxatdan tanlanadi), sotilgani qayta taklif qilinmaydi. Gramm tovarlar ham to'g'ri (8,33 g).

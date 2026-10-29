@@ -304,6 +304,22 @@ Check(wu != wu2 && File.ReadAllBytes(wu)[0] == 1, "natija fayli ustiga yozilmayd
     gate.Resume();
 }
 
+// ---- xatolar yig'uvchisi: kompyuterda kiritilgani, bo'lmasa exe ga o'rnatilgani ----
+Console.WriteLine("Yig'uvchi manzili");
+{
+    var s = new Settings();
+    Check(s.Collector(null, null) == (null, null), "hech narsa yo'q — yuborilmaydi");
+    Check(s.Collector("http://o:5077", "k0") == ("http://o:5077", "k0"), "o'rnatilgan manzil va kalit");
+    s.LogCollectorKey = "k1";
+    Check(s.Collector("http://o:5077", "k0") == ("http://o:5077", "k1"), "kalit kompyuterda almashtirilgan");
+    s.LogCollectorUrl = "http://boshqa:5077"; s.LogCollectorKey = null;
+    Check(s.Collector("http://o:5077", "k0") == ("http://boshqa:5077", null), "boshqa manzilga o'rnatilgan kalit yuborilmaydi");
+    s.LogCollectorUrl = "";
+    Check(s.Collector("http://o:5077", "k0") == ("http://o:5077", "k0"), "maydon tozalansa — o'rnatilganiga qaytadi");
+    var expected = Environment.GetEnvironmentVariable("EXPECT_COLLECTOR_URL");
+    if (expected is not null) Check(AppInfo.BuiltInCollectorUrl == expected, "exe ga manzil yozilgan");
+}
+
 // ---- bazalar ro'yxati: keyin qo'shilgan TestDB11 ----
 {
     var bf = Path.Combine(tmp, "bases.json");

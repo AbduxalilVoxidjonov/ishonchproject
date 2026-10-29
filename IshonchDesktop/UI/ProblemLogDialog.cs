@@ -5,6 +5,10 @@ namespace IshonchDesktop.UI;
 /// <summary>Yordam → «Xatolar jurnali (yig'uvchi)…»: yig'uvchi manzili va kaliti, ulanishni sinash, hozir yuborish.</summary>
 static class ProblemLogDialog
 {
+    /// <summary>Oynadagi qiymatlar, bo'sh bo'lsa exe ga o'rnatilgani (Settings.Collector bilan bir xil qoida).</summary>
+    static (string? Url, string? Key) Effective(string url, string key) =>
+        new Settings { LogCollectorUrl = url.Trim(), LogCollectorKey = key.Trim() }.Collector();
+
     public static void Show(IWin32Window owner, Settings settings, ProblemSender sender)
     {
         using var dlg = new Form
@@ -12,20 +16,28 @@ static class ProblemLogDialog
             Text = "Xatolar jurnali", FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
             MaximizeBox = false, MinimizeBox = false, ClientSize = new Size(520, 280), Font = new Font("Segoe UI", 9.5f),
         };
-        var url = new TextBox { Text = settings.LogCollectorUrl ?? "", Left = 16, Top = 36, Width = 488, PlaceholderText = "http://192.168.1.10:5077" };
-        var key = new TextBox { Text = settings.LogCollectorKey ?? "", Left = 16, Top = 96, Width = 488, UseSystemPasswordChar = true };
+        var url = new TextBox { Text = settings.LogCollectorUrl ?? "", Left = 16, Top = 36, Width = 488, PlaceholderText = AppInfo.BuiltInCollectorUrl is { } bu ? bu + "  (dasturga o'rnatilgan)" : "http://192.168.1.10:5077" };
+        var key = new TextBox { Text = settings.LogCollectorKey ?? "", Left = 16, Top = 96, Width = 488, UseSystemPasswordChar = true, PlaceholderText = AppInfo.BuiltInCollectorKey is null ? "" : "(dasturga o'rnatilgan)" };
         var info = new Label
         {
             Left = 16, Top = 130, Width = 488, Height = 74, ForeColor = Color.DimGray,
             Text = $"Har bir xato va ogohlantirish shu kompyuterda yoziladi: {ProblemLog.FilePath}\n"
-                + $"Yuborilmagan: {ProblemSender.PendingCount()} ta. Manzil bo'sh bo'lsa hech qayerga yuborilmaydi.",
+                + $"Yuborilmagan: {ProblemSender.PendingCount()} ta. "
+                + (AppInfo.BuiltInCollectorUrl is null
+                    ? "Manzil bo'sh bo'lsa hech qayerga yuborilmaydi."
+                    : "Maydon bo'sh bo'lsa dasturga o'rnatilgan manzil ishlatiladi; boshqa yig'uvchi kerak bo'lsa shu yerga yozing."),
         };
         var test = new Button { Text = "Sinash", Left = 16, Top = 236, Width = 90 };
         var send = new Button { Text = "Hozir yuborish", Left = 112, Top = 236, Width = 120 };
         var ok = new Button { Text = "Saqlash", Left = 324, Top = 236, Width = 85, DialogResult = DialogResult.OK };
         var cancel = new Button { Text = "Bekor", Left = 419, Top = 236, Width = 85, DialogResult = DialogResult.Cancel };
         var result = new Label { Left = 16, Top = 208, Width = 488, AutoSize = false, Height = 22 };
-        test.Click += async (_, _) => { result.Text = "Tekshirilmoqda…"; result.Text = await sender.PingAsync(url.Text, key.Text); };
+        test.Click += async (_, _) =>
+        {
+            result.Text = "Tekshirilmoqda…";
+            var (u, k) = Effective(url.Text, key.Text);
+            result.Text = await sender.PingAsync(u, k);
+        };
         send.Click += async (_, _) =>
         {
             settings.LogCollectorUrl = url.Text.Trim();

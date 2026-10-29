@@ -46,6 +46,13 @@ public static class AppInfo
         return ParseVersion(info) ?? asm.GetName().Version ?? new Version(0, 0, 0);
     }
 
+    /// <summary>Exe ga yig'ishda yozilgan xatolar yig'uvchisi manzili (bo'lmasa null).</summary>
+    public static string? BuiltInCollectorUrl { get; } = Metadata("LogCollectorUrl");
+    public static string? BuiltInCollectorKey { get; } = Metadata("LogCollectorKey");
+
+    static string? Metadata(string key) =>
+        typeof(AppInfo).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value is { Length: > 0 } v ? v.Trim() : null;
+
     /// <summary>Bitta faylli (single-file) exe sifatida ishlayaptimi; dasturni ishlab chiqish rejimida avto-almashtirish o'chiriladi.</summary>
     public static bool IsSingleFile => string.IsNullOrEmpty((Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).Location);
 }

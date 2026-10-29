@@ -53,7 +53,7 @@ public sealed class MainForm : Form
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
         updater = new UpdateCoordinator(this, settings, home);
-        problems = new ProblemSender(() => (settings.LogCollectorUrl, settings.LogCollectorKey));
+        problems = new ProblemSender(settings.Collector);
         problems.Start();
         BuildMenu();
         UpdateInstaller.CleanupOld(Environment.ProcessPath ?? "");
