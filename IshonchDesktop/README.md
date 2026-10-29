@@ -49,6 +49,11 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.6 — E-POS markirovkasiz sotishda, pastki qatorlar
+- **Markirovkasiz sotish**: «🧾 E-POS orqali sotish» tugmasi — provesti qilingan chekni fiskal chek qiladi. O'zi bosilmaydi: faqat siz bosganda (bir nechta chek bo'lsa ro'yxatdan tanlanadi), sotilgani qayta taklif qilinmaydi. Gramm tovarlar ham to'g'ri (8,33 g).
+- Markirovkali panelda «E-POS orqali sotish» faqat ko'rinadi, avtomatika uni bosmaydi.
+- 2-, 3-cheklarda jadvalning pastki qatorlariga o'tishda xato chiqib to'xtash tuzatildi: uzoq masofaga g'ildirak bilan aylantirib, qatorni bosib o'tiladi.
+
 ## 0.7.5 — Markirovkali avtomatika, yangi dizayn, fiskal modul
 - **Markirovkali avtomatika** (panelda «▶ Avto boshlash»): inventarizatsiya bir marta (sana bugun 23:30), «Olish», har chek uchun «Товары, услуги, комиссия» (sklad + «Товар маркирован») → Podbor → provesti; oxirida inventarizatsiya qayta yangilanadi. Oldingi cheklarda ishlatilgan, sotilgan yoki soliqda topilmagan markirovkalar qayta olinmaydi.
 - my.soliq.uz ga **yuridik shaxs** sifatida (ERI kalit bilan) kirilmagan bo'lsa boshlanmaydi: «Avval … ERI kalitdan birini tanlang» deydi.

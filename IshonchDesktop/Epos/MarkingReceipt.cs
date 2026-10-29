@@ -3,8 +3,10 @@ using IshonchDesktop.Models;
 
 namespace IshonchDesktop.Epos;
 
-/// <summary>1C chekidagi bitta qator: tovar nomi, nechta dona o'tkazilgan va ularning markirovka kodlari.</summary>
-public sealed record ReceiptLine(string Name, int Quantity, decimal UnitPrice, IReadOnlyList<string> Codes);
+/// <summary>
+/// 1C chekidagi bitta qator: tovar nomi, miqdori (dona; gramm tovarda — kasr) va markirovka kodlari (markirovkasizda bo'sh).
+/// </summary>
+public sealed record ReceiptLine(string Name, decimal Quantity, decimal UnitPrice, IReadOnlyList<string> Codes);
 
 public sealed record MarkingReceipt(string ReceiptId, bool Finished, IReadOnlyList<ReceiptLine> Lines)
 {

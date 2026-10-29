@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Ishonch</AssemblyName>
     <RootNamespace>IshonchDesktop</RootNamespace>
-    <Version>0.7.5</Version>
+    <Version>0.7.6</Version>
     <!-- Mahsulot nomi «Ishonch» o'zgarmaydi: eski versiyalar yangilanish faylini shu nom bo'yicha tekshiradi -->
     <Product>Ishonch</Product>
     <!-- Ko'rinadigan nom (Vazifalar menejeri, fayl xususiyatlari) va belgi -->

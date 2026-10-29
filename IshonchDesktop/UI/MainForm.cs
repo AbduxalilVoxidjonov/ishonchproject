@@ -154,11 +154,19 @@ public sealed class MainForm : Form
         await Task.WhenAll(panels.Select(p => p.StartAsync(confirm: false)));
     }
 
+    /// <summary>Shu firma INN dagi my.soliq.uz tabi (orqa fonda ochiladi): markirovka tekshiruvi va E-POS sotuvi uchun.</summary>
+    Func<Task<WebTab>> SoliqTabFor(BaseEntry b) => async () =>
+    {
+        var soliq = OpenSoliqTab(b, select: false);
+        await soliq.Ready;
+        return soliq;
+    };
+
     void OpenUnmarked(BaseEntry b)
     {
         var tab = OpenBase(b);
         if (tab.HasSidePanel("unmarked")) { tab.ShowSidePanel(450, "unmarked"); return; }
-        tab.AttachSidePanel(new UnmarkedPanel(tab, settings, b.ProfileKey, b.Db + " — " + b.Firm), 450, "unmarked");
+        tab.AttachSidePanel(new UnmarkedPanel(tab, settings, b.ProfileKey, b.Db + " — " + b.Firm, b, SoliqTabFor(b)), 450, "unmarked");
     }
 
     // ---- Elektr -------------------------------------------------------------------------------
@@ -297,13 +305,7 @@ public sealed class MainForm : Form
         try
         {
             var tab = OpenBase(b);
-            tab.Marking ??= new Marking.MarkingSession(tab, b, async () =>
-            {
-                // Markirovka tekshiruvi shu firma INN dagi my.soliq.uz tabida (orqa fonda) bajariladi
-                var soliq = OpenSoliqTab(b, select: false);
-                await soliq.Ready;
-                return soliq;
-            });
+            tab.Marking ??= new Marking.MarkingSession(tab, b, SoliqTabFor(b));
             await tab.Marking.StartAsync();
         }
         catch (Exception e)

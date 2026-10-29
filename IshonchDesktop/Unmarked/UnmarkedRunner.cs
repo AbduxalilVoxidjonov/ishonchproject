@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using IshonchDesktop.Epos;
 using Microsoft.Web.WebView2.Core;
 
 namespace IshonchDesktop.Unmarked;
@@ -57,6 +58,12 @@ public sealed class UnmarkedRunner
     public bool CanResume => done < opt.Count && (refreshed || full is not null || done > 0);
 
     public int Done => done;
+
+    /// <summary>
+    /// Provesti qilingan cheklar (tovar, miqdor, sotuv narxi — foiz va NDS bilan): «E-POS orqali sotish» shulardan
+    /// fiskal chek qiladi (faqat foydalanuvchi bosganda).
+    /// </summary>
+    public List<MarkingReceipt> Posted { get; } = new();
 
     string docPrefix = "";
     string editPrefix = "";
@@ -256,6 +263,9 @@ public sealed class UnmarkedRunner
                         doneSum = sum;
                         foreach (var j in docRows) used[idx[j]] = used.GetValueOrDefault(idx[j]) + plan.Lines[j].Qty;
                         log($"{k + 1}-chek provesti qilindi ✓ ({docRows.Count} ta tovar, ≈{Fmt(realTotal)} so'm)", "ok");
+                        Posted.Add(new MarkingReceipt($"{k + 1}-chek", true, docRows
+                            .Select(j => new ReceiptLine(full[idx[j]].Name, plan.Lines[j].Qty, Math.Round(Unit(idx[j]), 2), Array.Empty<string>()))
+                            .ToList()));
                         if (docRows.Count < idx.Count) PlanFrom(k + 1); // o'chirilgan qatorlar qoldig'i bilan keyingilar qayta rejalanadi
                         break;
                     }
@@ -945,48 +955,93 @@ public sealed class UnmarkedRunner
     /// <summary>Oynadagi qatorlarning `table` dagi o'rni (nom+narx ketma-ketligi bo'yicha, `hint` ga eng yaqini); topilmasa -1.</summary>
     int Locate(List<Row> win, int hint)
     {
-        var best = -1;
-        for (var p = 0; p + win.Count <= table.Count; p++)
+        // Bo'sh (hali chizilmagan) qatorlar hisobga olinmaydi; to'liq oyna mos kelmasa — boshidagi kamroq qatorlar bilan
+        var rows = win.TakeWhile(r => r.Name.Length > 0).ToList();
+        for (var n = rows.Count; n >= Math.Min(3, rows.Count) && n > 0; n--)
         {
-            var ok = true;
-            for (var j = 0; j < win.Count && ok; j++) ok = SameItem(win[j], table[p + j]);
-            if (ok && (best < 0 || Math.Abs(p - hint) < Math.Abs(best - hint))) best = p;
+            var best = -1;
+            for (var p = 0; p + n <= table.Count; p++)
+            {
+                var ok = true;
+                for (var j = 0; j < n && ok; j++) ok = SameItem(rows[j], table[p + j]);
+                if (ok && (best < 0 || Math.Abs(p - hint) < Math.Abs(best - hint))) best = p;
+            }
+            if (best >= 0) return best;
+            if (n == rows.Count && n > 6) n = 7; // keyingi urinishlar: 6, 5, 4, 3 qator
         }
-        return best;
+        return -1;
     }
 
     /// <summary>
-    /// Tanlangan qatorni `target` (table indeksi) ga olib boradi: joriy qatordan ↑/↓ aniq kerakli marta bosiladi, keyin tanlangan
-    /// qator nomi va narxi tekshiriladi. Mos kelmasa joy ekrandan aniqlanadi; u ham bo'lmasa Ctrl+Home dan qayta sanaladi.
-    /// Hech qachon tugma bosmasdan kutib qolmaydi.
+    /// Tanlangan qatorni `target` (table indeksi) ga olib boradi. Yaqin masofada (≤ 15 qator) ↓/↑ aniq kerakli marta
+    /// bosiladi. Uzoq masofada yoki joy adashganda tugmalar ishlatilmaydi (1C ko'p bosishlarning bir qismini yo'qotadi):
+    /// jadval g'ildirak bilan aylantiriladi, ekrandagi qatorlar jadvalning qayeriga to'g'ri kelishi aniqlanadi va kerakli
+    /// qator sichqoncha bilan bosiladi. Hech qachon tugma bosmasdan kutib qolmaydi.
     /// </summary>
-    async Task MoveToRowAsync(int target)
+    /// <param name="column">Bosiladigan ustun (null — tahrirlanmaydigan «Всего»/«НДС»/«Сумма»).</param>
+    async Task MoveToRowAsync(int target, string? column = null)
     {
-        for (var attempt = 1; attempt <= 6; attempt++)
+        if (curRow >= 0 && Math.Abs(target - curRow) <= 15 && await MoveByKeysAsync(target)) return;
+        await MoveByClickAsync(target, column);
+    }
+
+    /// <summary>↓/↑ bilan; tanlangan qator kerakli tovar bo'lsa true.</summary>
+    async Task<bool> MoveByKeysAsync(int target)
+    {
+        var diff = target - curRow;
+        for (var i = 0; i < Math.Abs(diff); i++) await d.KeyAsync(diff > 0 ? "ArrowDown" : "ArrowUp");
+        var until = d.Now + 2500 + Math.Abs(diff) * 40;
+        while (true)
         {
-            if (curRow < 0) await FocusFirstRowAsync();
-            var diff = target - curRow;
-            for (var i = 0; i < Math.Abs(diff); i++) await d.KeyAsync(diff > 0 ? "ArrowDown" : "ArrowUp");
-            curRow = target;
-
-            // Tugmalar ishlanishini kutamiz: tanlangan qator kerakli tovar bo'lsa — tayyor (ko'pi bilan ~3 soniya)
-            var until = d.Now + 3000 + Math.Abs(diff) * 30;
-            OneCDriver.GridView g;
-            int j;
-            while (true)
-            {
-                g = await GridAsync();
-                j = g.Rows.FindIndex(r => r.Selected);
-                if (j >= 0 && WindowOf(g) is var w && j < w.Count && SameItem(w[j], table[target])) return;
-                if (d.Now > until) break;
-                await d.DelayAsync(100);
-            }
-
-            // Joy adashgan: ekrandagi oyna jadvalning qayeriga to'g'ri kelishini aniqlaymiz
-            var top = j >= 0 ? Locate(WindowOf(g), target - j) : -1;
-            curRow = top >= 0 ? top + j : -1;
-            log($"«{table[target].Name}» qatoriga o'tishda joy adashdi — " + (curRow >= 0 ? $"ekrandan topildi ({curRow + 1}-qator), tuzatilmoqda" : "boshidan qayta sanaladi"), "warn");
+            var g = await GridAsync();
+            var j = g.Rows.FindIndex(r => r.Selected);
+            if (j >= 0 && WindowOf(g) is var w && j < w.Count && SameItem(w[j], table[target])) { curRow = target; return true; }
+            if (d.Now > until) { curRow = -1; return false; }
+            await d.DelayAsync(100);
         }
+    }
+
+    /// <summary>G'ildirak bilan kerakli qatorni ekranga olib kelib, uni sichqoncha bilan bosadi.</summary>
+    async Task MoveByClickAsync(int target, string? column)
+    {
+        var hint = curRow >= 0 ? curRow : target;
+        for (var attempt = 1; attempt <= 12; attempt++)
+        {
+            var g = await GridAsync();
+            var win = WindowOf(g);
+            var top = Locate(win, hint);
+            if (top < 0)
+            {
+                // Ekrandagi qatorlar tanilmadi: jadval boshiga qaytamiz (Ctrl+Home) va u yerdan aylantiramiz
+                await FocusFirstRowAsync();
+                hint = 0;
+                continue;
+            }
+            hint = top;
+            var visible = win.TakeWhile(r => r.Name.Length > 0).Count();
+            // Kerakli qator ekranda (oxirgi, yarim ko'rinadigan qatordan tashqari) — bosamiz
+            if (target >= top && target < top + Math.Max(1, visible - 1))
+            {
+                var row = g.Rows[target - top];
+                var cell = (column is null ? null : g.Cell(row, column)) ?? g.VisibleCell(row, "Всего", "НДС", "% НДС", "Сумма") ?? g.Cell(row, "Номенклатура");
+                if (cell is null) throw new OneCException("jadval ustunlari topilmadi");
+                await d.ClickAsync(cell.Value.At);
+                var until = d.Now + 3000;
+                while (d.Now < until)
+                {
+                    await d.DelayAsync(120);
+                    var v = await GridAsync();
+                    var sel = v.Rows.FindIndex(r => r.Selected);
+                    if (sel >= 0 && WindowOf(v) is var w2 && sel < w2.Count && SameItem(w2[sel], table[target])) { curRow = target; return; }
+                }
+                continue; // bosish yutildi — qayta
+            }
+            // Kerakli qatorni ekran o'rtasiga olib keladigan qadar aylantiramiz (1 g'ildirak hodisasi = 1 qator)
+            var delta = target - top - Math.Max(1, visible / 2);
+            if (delta == 0) delta = target < top ? -1 : 1;
+            await d.ScrollRowsAsync("Товары", g, delta);
+        }
+        curRow = -1;
         throw new OneCException($"«{table[target].Name}» qatoriga o'tib bo'lmadi");
     }
 
@@ -1058,7 +1113,7 @@ public sealed class UnmarkedRunner
         await d.DelayAsync(150);
         for (var i = 0; i < kept.Count; i++)
         {
-            if (i > 0) await MoveToRowAsync(i);
+            if (i > 0) await MoveToRowAsync(i, "Количество"); // faol ustun «Количество» bo'lib qolishi kerak
             var want = plan.Lines[i].Qty;
             // Dona — butun son; gramm — vergul bilan kasr («3,45»)
             await d.TypeAsync(kept[i].Weight ? want.ToString("0.##", CultureInfo.GetCultureInfo("ru-RU")) : want.ToString("0", CultureInfo.InvariantCulture));

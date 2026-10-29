@@ -151,6 +151,16 @@ Check(fromPanel!.Lines[0].Codes.Count == 2 && fromPanel.Lines[1].Codes.Count == 
 Check(MarkingReceipt.FromJson(JsonDocument.Parse("{}").RootElement) is null, "lines yo'q bo'lsa null");
 Check(MarkingReceipt.FromJson(JsonDocument.Parse("{\"lines\":[]}").RootElement) is null, "bo'sh chek null");
 
+// Markirovkasiz chek (gramm tovar bilan): bitta qator, miqdor mingdan bir ulushda, summa tiyingacha
+{
+    var goldLine = new SaleLine { Source = new ReceiptLine("Oltin uzuk 585", 8.33m, 1_200_000m, Array.Empty<string>()), ClassCode = "71131900001000000", PackageCode = "1514296" };
+    var phoneLine = new SaleLine { Source = new ReceiptLine("Telefon", 2m, 1_500_000.50m, Array.Empty<string>()), ClassCode = "85171300001000000", PackageCode = "1500000" };
+    var built = SaleBuilder.Build(new[] { goldLine, phoneLine });
+    Check(built.Count == 2, "markirovkasiz: har tovarga bitta qator");
+    Check(built[0].Amount == 8330 && built[0].PriceTiyin == 999_600_000, "gramm: 8,33 g → miqdor 8330, summa 9 996 000,00");
+    Check(built[1].Amount == 2000 && built[1].PriceTiyin == 300_000_100, "dona: 2 ta → miqdor 2000, summa 3 000 001,00");
+}
+
 listener.Stop();
 Console.WriteLine(failures == 0 ? "\nHAMMASI O'TDI" : $"\n{failures} TA XATO");
 return failures == 0 ? 0 : 1;

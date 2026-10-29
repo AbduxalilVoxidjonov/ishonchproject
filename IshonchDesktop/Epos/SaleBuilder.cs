@@ -57,8 +57,9 @@ public static class SaleBuilder
             }
             else
             {
-                var price = unit * l.Source.Quantity;
-                items.Add(new SaleItem(l.ClassCode, l.PackageCode, l.Name, price, PieceAmount * l.Source.Quantity,
+                // Gramm tovarda miqdor kasr: miqdor mingdan bir ulushda (8,33 g = 8330), summa tiyingacha yaxlitlanadi
+                var price = (long)Math.Round(unit * l.Source.Quantity, MidpointRounding.AwayFromZero);
+                items.Add(new SaleItem(l.ClassCode, l.PackageCode, l.Name, price, (long)Math.Round(PieceAmount * l.Source.Quantity, MidpointRounding.AwayFromZero),
                     VatIncluded(price, l.VatPercent), l.VatPercent, null, l.Barcode));
             }
         }
