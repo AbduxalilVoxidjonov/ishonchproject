@@ -44,11 +44,12 @@ public sealed class MainForm : Form
         var import = new Button { Text = "Fayl qo'shish…", AutoSize = true };
         var folder = new Button { Text = "Papkani ochish", AutoSize = true };
         var options = new Button { Text = "Sozlamalar…", AutoSize = true };
+        var copyAll = new Button { Text = "Ko'rsatilganlarni nusxalash", AutoSize = true };
         var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6), WrapContents = true };
         bar.Controls.AddRange(new Control[]
         {
             Caption("Sana:"), from, Caption("—"), to, Caption("Firma:"), firm, Caption("Bo'lim:"), feature, Caption("Daraja:"), level, search,
-            import, folder, options,
+            copyAll, import, folder, options,
         });
 
         foreach (var (name, w) in new[] { ("Vaqt", 130), ("Firma", 230), ("Bo'lim", 120), ("Daraja", 70), ("Xabar", 520), ("Kompyuter", 110), ("Versiya", 60), ("Manba", 120) })
@@ -68,7 +69,21 @@ public sealed class MainForm : Form
         search.TextChanged += (_, _) => Refill();
         tree.AfterSelect += (_, _) => ShowList();
         list.DoubleClick += (_, _) => OpenSelected();
-        list.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) OpenSelected(); };
+        list.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter) OpenSelected();
+            if (e.Control && e.KeyCode == Keys.C) CopySelected();
+            if (e.Control && e.KeyCode == Keys.A) foreach (ListViewItem i in list.Items) i.Selected = true;
+        };
+        var listMenu = new ContextMenuStrip();
+        listMenu.Items.Add("Nusxalash (to'liq)", null, (_, _) => CopySelected());
+        listMenu.Items.Add("Ochish", null, (_, _) => OpenSelected());
+        list.ContextMenuStrip = listMenu;
+        var treeMenu = new ContextMenuStrip();
+        treeMenu.Items.Add("Shu guruhni nusxalash", null, (_, _) => CopyTreeNode());
+        tree.ContextMenuStrip = treeMenu;
+        tree.NodeMouseClick += (_, e) => { if (e.Button == MouseButtons.Right) tree.SelectedNode = e.Node; };
+        copyAll.Click += (_, _) => Copy(shown, "Ko'rsatilgan yozuvlar");
         import.Click += (_, _) => ImportFiles();
         folder.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{store.Folder}\"") { UseShellExecute = true });
         options.Click += async (_, _) => await EditSettingsAsync();
@@ -202,6 +217,31 @@ public sealed class MainForm : Form
         if (list.SelectedItems.Count == 0 || list.SelectedItems[0].Tag is not Problem p) return;
         using var d = new DetailForm(p);
         d.ShowDialog(this);
+    }
+
+    void CopySelected() =>
+        Copy(list.SelectedItems.Cast<ListViewItem>().Select(i => i.Tag).OfType<Problem>().ToList(), "Tanlangan yozuvlar");
+
+    void CopyTreeNode()
+    {
+        switch (tree.SelectedNode?.Tag)
+        {
+            case FirmGroup f: Copy(f.Problems.SelectMany(p => p.Items).ToList(), f.Title); break;
+            case ProblemGroup g: Copy(g.Items, $"[{g.Feature}] {g.Pattern} — {g.Count} marta"); break;
+            default: Copy(shown, "Ko'rsatilgan yozuvlar"); break;
+        }
+    }
+
+    /// <summary>Yozuvlarni to'liq matn bilan buferga (ko'pi bilan 200 tasi, eng so'nggisi birinchi) — Telegram ga yoki Claude ga berish uchun.</summary>
+    void Copy(List<Problem> items, string title)
+    {
+        if (items.Count == 0) { status.Text = "Nusxalash uchun yozuv yo'q"; return; }
+        var top = items.OrderByDescending(p => p.Time).Take(200).ToList();
+        var sep = Environment.NewLine + new string('=', 70) + Environment.NewLine;
+        var text = $"{title}: {items.Count} ta" + (items.Count > top.Count ? $" (eng so'nggi {top.Count} tasi)" : "") + sep
+            + string.Join(sep, top.Select(DetailForm.Describe));
+        DetailForm.Clip(text);
+        status.Text = $"Buferga nusxalandi: {top.Count} ta yozuv";
     }
 
     void ImportFiles()

@@ -26,6 +26,11 @@ public sealed class UnmarkedPanel : UserControl
     readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly TextBox percent = new() { Width = 80, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
+    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (soniyasigacha); har ochilganda — bugun 23:30:00.</summary>
+    readonly DateTimePicker inventoryDate = new()
+    {
+        Format = DateTimePickerFormat.Custom, CustomFormat = "dd.MM.yyyy  HH:mm:ss", Value = UnmarkedOptions.DefaultInventoryDate(),
+    };
     readonly TextBox warehouse = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
     readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true, Dock = DockStyle.Top };
     readonly CheckBox refresh = new() { Text = "Boshlashdan oldin inventarizatsiyani yangilash", AutoSize = true, Dock = DockStyle.Top };
@@ -97,6 +102,7 @@ public sealed class UnmarkedPanel : UserControl
             grid.Controls.Add(l);
             grid.Controls.Add(c);
         }
+        Row("Inventarizatsiya sanasi va vaqti", inventoryDate, wide: true);
         Row("Umumiy summa (NDS bilan, so'm)", target, wide: true);
         Row("Cheklar soni", count);
         Row("Qatorlar soni (har chekda)", lines);
@@ -108,7 +114,7 @@ public sealed class UnmarkedPanel : UserControl
         checks.Controls.Add(post);
         card.Controls.Add(checks);
         card.Controls.Add(grid);
-        card.Height = 330;
+        card.Height = 386;
 
         var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 3, Padding = new Padding(0, 8, 0, 4) };
         buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
@@ -246,7 +252,8 @@ public sealed class UnmarkedPanel : UserControl
 
     public string Describe() =>
         $"{BaseTitle}: jami {Parse(target.Text):N0} so'm = {count.Value} ta chek × ≈{Parse(target.Text) / count.Value:N0} so'm, {lines.Value} ta qatordan" + (maxPerItem.Value > 0 ? $", bir tovardan ≤{maxPerItem.Value} dona" : "") + $", +{percent.Text}%" +
-        (post.Checked ? ", provesti" : ", provesti qilinmaydi");
+        (post.Checked ? ", provesti" : ", provesti qilinmaydi") +
+        (refresh.Checked ? $", inventarizatsiya {inventoryDate.Value:dd.MM.yyyy HH:mm:ss}" : "");
 
     public async Task StartAsync(bool confirm)
     {
@@ -256,7 +263,7 @@ public sealed class UnmarkedPanel : UserControl
         var sum = Parse(target.Text)!.Value;
         var pct = Parse(percent.Text)!.Value;
         var options = new UnmarkedOptions(Math.Round(sum / (int)count.Value, 2), (int)count.Value, (int)lines.Value, pct, warehouse.Text.Trim(), post.Checked)
-            { RefreshInventory = refresh.Checked, InventoryNumber = prefs.InventoryNumber, MaxPerItem = (int)maxPerItem.Value };
+            { RefreshInventory = refresh.Checked, InventoryNumber = prefs.InventoryNumber, MaxPerItem = (int)maxPerItem.Value, InventoryDate = inventoryDate.Value };
 
         // Oldingi to'xtatilgan jarayon (sozlamalar o'zgarmagan bo'lsa) qolgan cheklardan davom ettiriladi
         var resume = resumable is { CanResume: true } prev && prev.Options with { InventoryNumber = null } == options with { InventoryNumber = null };

@@ -10,7 +10,27 @@ public sealed class DetailForm : Form
         Text = $"{p.FirmTitle} — {p.Feature}";
         Size = new Size(1000, 700);
         StartPosition = FormStartPosition.CenterParent;
-        var text = string.Join(Environment.NewLine, new[]
+        var text = Describe(p);
+        var box = new TextBox
+        {
+            Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
+            Font = new Font("Consolas", 10f), Text = text,
+        };
+        var copy = new Button { Text = "Nusxalash", Dock = DockStyle.Bottom, Height = 32 };
+        copy.Click += (_, _) => Clip(text);
+        Controls.Add(box);
+        Controls.Add(copy);
+    }
+
+    /// <summary>Buferga (Telegram ga yuborish yoki Claude ga berish uchun).</summary>
+    public static void Clip(string text)
+    {
+        try { Clipboard.SetText(text); } catch { /* buferga yozilmadi */ }
+    }
+
+    /// <summary>Yozuvning to'liq matni: maydonlar, xabar, tafsilot, oldingi jurnal qatorlari.</summary>
+    public static string Describe(Problem p) =>
+        string.Join(Environment.NewLine, new[]
         {
             $"Vaqt:       {p.Time.LocalDateTime:dd.MM.yyyy HH:mm:ss}",
             $"Daraja:     {(p.Level == "err" ? "XATO" : "ogohlantirish")}",
@@ -30,14 +50,4 @@ public sealed class DetailForm : Form
             "OLDINGI JURNAL QATORLARI (app.log):",
             p.Context ?? "(yo'q)",
         }).Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
-        var box = new TextBox
-        {
-            Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
-            Font = new Font("Consolas", 10f), Text = text,
-        };
-        var copy = new Button { Text = "Nusxalash", Dock = DockStyle.Bottom, Height = 32 };
-        copy.Click += (_, _) => { try { Clipboard.SetText(text); } catch { /* buferga yozilmadi */ } };
-        Controls.Add(box);
-        Controls.Add(copy);
-    }
 }

@@ -320,6 +320,20 @@ Console.WriteLine("Yig'uvchi manzili");
     if (expected is not null) Check(AppInfo.BuiltInCollectorUrl == expected, "exe ga manzil yozilgan");
 }
 
+// ---- inventarizatsiya sanasi ----
+Console.WriteLine("Inventarizatsiya sanasi");
+{
+    var when = new DateTime(2026, 10, 29, 2, 5, 9);
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseOneCDate("29.10.2026  2:05:09") == when, "1C: bir xonali soat (ikki bo'shliq)");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseOneCDate("29.10.2026 02:05:09") == when, "1C: ikki xonali soat");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseOneCDate("29.10.2026 2:05") is null, "1C: soniyasiz — mos emas");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseInventoryDate("2026-10-29T02:05:09") == when, "panel: soniya bilan");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseInventoryDate("2026-10-29T02:05") == when.AddSeconds(-9), "panel: soniyasiz (00)");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseInventoryDate("") is null, "panel: bo'sh");
+    var def = IshonchDesktop.Unmarked.UnmarkedOptions.DefaultInventoryDate();
+    Check(def.Date == DateTime.Today && def.TimeOfDay == new TimeSpan(23, 30, 0), "standart: bugun 23:30:00");
+}
+
 // ---- bazalar ro'yxati: keyin qo'shilgan TestDB11 ----
 {
     var bf = Path.Combine(tmp, "bases.json");

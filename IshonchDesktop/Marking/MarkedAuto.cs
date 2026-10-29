@@ -26,6 +26,8 @@ public sealed class MarkedAuto : IDisposable
     CancellationTokenSource? cts;
     string statusText = "Umumiy summa — «Maqsad summa» maydonidan olinadi.";
     string statusLevel = "info";
+    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (panel tepasida so'raladi; har ochilganda — bugun 23:30:00).</summary>
+    DateTime inventoryDate = UnmarkedOptions.DefaultInventoryDate();
 
     public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey, Func<Task<WebTab>>? getSoliqTab = null, BaseEntry? baseEntry = null)
     {
@@ -56,14 +58,14 @@ public sealed class MarkedAuto : IDisposable
           const send = (action) => {
             const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"]');
             window.chrome?.webview?.postMessage({ kind: 'ishAuto', action,
-              warehouse: q('wh')?.value || '', count: Number(q('count')?.value) || 1, post: !!q('post')?.checked });
+              warehouse: q('wh')?.value || '', count: Number(q('count')?.value) || 1, post: !!q('post')?.checked, invDate: q('inv')?.value || '' });
           };
           window.__ishAutoApply = (s) => {
             window.__ishAutoState = s;
             const box = document.getElementById('ishAuto'); if (!box || !s) return;
             const q = (n) => box.querySelector('[data-x="' + n + '"]');
-            if (s.init) { q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; s.init = false; }
-            q('wh').disabled = q('count').disabled = q('post').disabled = q('go').disabled = !!s.running;
+            if (s.init) { q('inv').value = s.invDate || ''; q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; s.init = false; }
+            q('inv').disabled = q('wh').disabled = q('count').disabled = q('post').disabled = q('go').disabled = !!s.running;
             q('stop').disabled = !s.running;
             const st = document.getElementById('ishAutoStatus');
             if (st) { st.textContent = s.status || ''; st.className = 'ish-st ' + (s.level || ''); }
@@ -80,6 +82,7 @@ public sealed class MarkedAuto : IDisposable
             const box = document.createElement('div');
             box.id = 'ishAuto'; box.className = inSlots ? 'ish-in' : 'ish-auto';
             box.innerHTML = (inSlots ? '' : '<div class="ish-h">⚡ Avtomatik cheklar</div>') +
+              '<div class="row"><label class="field" style="flex:1 1 100%"><span>Inventarizatsiya sanasi va vaqti</span><input class="inp" data-x="inv" type="datetime-local" step="1"></label></div>' +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: МАРКИРОВАН (EPOS)"></label></div>' +
               '<div class="row"><label class="field"><span>Cheklar soni</span><input class="inp" data-x="count" type="number" min="1" max="200" step="1"></label>' +
               '<label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
@@ -93,9 +96,13 @@ public sealed class MarkedAuto : IDisposable
             act.querySelector('[data-x="go"]').onclick = () => {
               const wh = box.querySelector('[data-x="wh"]');
               if (!wh.value.trim()) { wh.classList.add('ish-bad'); wh.focus(); window.__ishAutoApply({ ...(window.__ishAutoState || {}), init: false, status: 'Avval skladni kiriting.', level: 'err' }); return; }
-              wh.classList.remove('ish-bad'); send('go');
+              wh.classList.remove('ish-bad');
+              const inv = box.querySelector('[data-x="inv"]');
+              if (!inv.value) { inv.classList.add('ish-bad'); inv.focus(); window.__ishAutoApply({ ...(window.__ishAutoState || {}), init: false, status: 'Inventarizatsiya sanasini kiriting.', level: 'err' }); return; }
+              inv.classList.remove('ish-bad'); send('go');
             };
             act.querySelector('[data-x="stop"]').onclick = () => send('stop');
+            box.querySelector('[data-x="inv"]').onchange = () => send('save');
             box.querySelector('[data-x="wh"]').onchange = () => send('save');
             box.querySelector('[data-x="count"]').onchange = () => send('save');
             box.querySelector('[data-x="post"]').onchange = () => send('save');
@@ -108,7 +115,7 @@ public sealed class MarkedAuto : IDisposable
     /// <summary>Panel sahifasi tayyor bo'lganda (va qayta yuklanganda) bo'limga saqlangan qiymatlarni beradi.</summary>
     public void Push(bool init = false)
     {
-        var state = new { init, warehouse = prefs.Warehouse, count = Math.Clamp(prefs.Count, 1, 200), post = prefs.Post, running = Running, status = statusText, level = statusLevel };
+        var state = new { init, invDate = inventoryDate.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture), warehouse = prefs.Warehouse, count = Math.Clamp(prefs.Count, 1, 200), post = prefs.Post, running = Running, status = statusText, level = statusLevel };
         try { _ = panel.CoreWebView2?.ExecuteScriptAsync("window.__ishAutoApply && window.__ishAutoApply(" + JsonSerializer.Serialize(state) + ")"); }
         catch { /* panel yopilgan */ }
     }
@@ -122,6 +129,7 @@ public sealed class MarkedAuto : IDisposable
         if (m.TryGetProperty("warehouse", out var w)) prefs.Warehouse = (w.GetString() ?? "").Trim();
         if (m.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number) prefs.Count = Math.Clamp(c.GetInt32(), 1, 200);
         if (m.TryGetProperty("post", out var p)) prefs.Post = p.ValueKind == JsonValueKind.True;
+        if (m.TryGetProperty("invDate", out var inv) && UnmarkedOptions.ParseInventoryDate(inv.GetString()) is { } when) inventoryDate = when;
         settings.Save();
         if (action == "go") _ = RunAsync();
     }
@@ -292,7 +300,7 @@ public sealed class MarkedAuto : IDisposable
                 if (!await SoliqBridge.IsLoggedInAsync(getSoliqTab))
                     throw new OneCException(SoliqBridge.NotLoggedInMessage + ".");
             }
-            var runner = new UnmarkedRunner(core, new UnmarkedOptions(0, 1, 1, 0, prefs.Warehouse, false), (t, l) => Status(t, l), ct);
+            var runner = new UnmarkedRunner(core, new UnmarkedOptions(0, 1, 1, 0, prefs.Warehouse, false) { InventoryDate = inventoryDate }, (t, l) => Status(t, l), ct);
             await runner.InitAsync();
 
             // 1) Boshida bir marta: inventarizatsiya → «Olish»

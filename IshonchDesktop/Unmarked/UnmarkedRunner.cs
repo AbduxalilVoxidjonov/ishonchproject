@@ -21,6 +21,21 @@ public sealed record UnmarkedOptions(decimal Target, int Count, int Lines, decim
 
     /// <summary>Bitta chekda bir tovardan ko'pi bilan necha dona (0 — cheklovsiz).</summary>
     public int MaxPerItem { get; init; }
+
+    /// <summary>Inventarizatsiya hujjatining sanasi va vaqti (soniyasigacha); berilmasa — bugun 23:30:00.</summary>
+    public DateTime? InventoryDate { get; init; }
+
+    public static DateTime DefaultInventoryDate() => DateTime.Today.AddHours(23).AddMinutes(30);
+
+    /// <summary>Paneldagi datetime-local qiymati: "2026-10-29T23:30:15" yoki soniyasiz "2026-10-29T23:30".</summary>
+    public static DateTime? ParseInventoryDate(string? s) =>
+        DateTime.TryParseExact((s ?? "").Trim(), new[] { "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss.fff" },
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    /// <summary>1C sana maydoni qiymati: "29.10.2026 23:30:00" yoki soat bir xonali bo'lsa "29.10.2026  2:00:00".</summary>
+    public static DateTime? ParseOneCDate(string? s) =>
+        DateTime.TryParseExact(string.Join(' ', (s ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)),
+            new[] { "dd.MM.yyyy H:mm:ss", "dd.MM.yyyy HH:mm:ss" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
 }
 
 public sealed record RunSummary(int Created, int Requested, decimal Sum, bool Stopped, string? Error);
@@ -459,9 +474,9 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () => await d.HasAsync("_ТоварыПодменюЗаполнить"), 40000, "inventarizatsiya hujjati");
 
         await SetWarehouseAsync();
-        // Sana doim bugun 23:30:00 — qoldiq kun oxiri holatida olinadi va bu hujjat ro'yxatda eng oxirgisi bo'ladi
+        // Sana — panel tepasida tanlangani (berilmasa bugun 23:30:00): qoldiq shu payt holatida olinadi
         // (markirovkali avtomatika ham shu yerdan foydalanadi)
-        await SetDateEndOfDayAsync();
+        await SetInventoryDateAsync();
         // Sklad maydonidan fokus chiqishi bilan birinchi bosish yutilib ketishi mumkin: menyu ochilguncha qayta bosiladi
         var lastClick = 0L;
         var fillItem = await d.WaitAsync(async () =>
@@ -598,14 +613,14 @@ public sealed class UnmarkedRunner
         return bottom is null ? null : (await At("End"))?.Row;
     }
 
-    /// <summary>Inventarizatsiya vaqti (bugungi sana bilan).</summary>
-    const string InventoryTime = "23:30:00";
-
-    /// <summary>Ochiq hujjatning sanasini bugun 23:30:00 qilib yozadi (inventarizatsiya kun oxiri holatida bo'lishi uchun).</summary>
-    async Task SetDateEndOfDayAsync()
+    /// <summary>Ochiq hujjatning sanasini tanlangan sana va vaqtga (soniyasigacha) yozadi; berilmasa bugun 23:30:00.</summary>
+    async Task SetInventoryDateAsync()
     {
-        var want = DateTime.Today.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) + " " + InventoryTime;
-        if (Norm(await d.ValueAsync("_Дата_i0")) == want) return;
+        var when = opt.InventoryDate ?? UnmarkedOptions.DefaultInventoryDate();
+        when = new DateTime(when.Year, when.Month, when.Day, when.Hour, when.Minute, when.Second);
+        var want = when.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+        bool Same(string? v) => UnmarkedOptions.ParseOneCDate(v) == when;
+        if (Same(await d.ValueAsync("_Дата_i0"))) return;
         // Faqat raqamlar: maska «.», «:» va bo'sh joyni o'zi qo'yadi; belgilar bilan yozilsa ortiqchasi keyingi (Склад) maydonga tushadi
         var digits = new string(want.Where(char.IsDigit).ToArray());
         // Sklad tanlangandan keyin 1C bir oz band bo'ladi: birinchi bosish yutilib ketishi mumkin. Shuning uchun har urinishdan
@@ -624,7 +639,7 @@ public sealed class UnmarkedRunner
             while (d.Now < until)
             {
                 await d.DelayAsync(200);
-                if (Norm(await d.ValueAsync("_Дата_i0")) == want) { ok = true; break; }
+                if (Same(await d.ValueAsync("_Дата_i0"))) { ok = true; break; }
             }
             if (!ok)
             {
@@ -635,9 +650,6 @@ public sealed class UnmarkedRunner
         if (!ok) throw new OneCException($"Inventarizatsiya sanasini «{want}» qilib bo'lmadi (maydonda: «{await d.ValueAsync("_Дата_i0")}»)");
         await AnswerRefillAsync();
         log($"Inventarizatsiya sanasi: {want}", "info");
-
-        // 1C vaqtni « 2:00:00» kabi ikki bo'shliq bilan ko'rsatishi mumkin
-        static string Norm(string? s) => string.Join(' ', (s ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     /// <summary>
