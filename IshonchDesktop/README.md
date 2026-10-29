@@ -49,6 +49,13 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.7 — Markirovkali avtomatika: bitta chek, pauza, davom etish
+- «▶ Avto boshlash» har safar **bitta chek** yaratadi («Maqsad summa» — shu chek summasi; bir tovardan nechta — «Bir tovardan, dona»).
+- **⏸ Pauza / ▶ Davom**: jarayon (panel Podbor'i ham) shu joyida to'xtaydi va davom etadi; to'xtatilgan chekni keyingi «Avto boshlash» **qolgan joyidan davom ettirishni** taklif qiladi.
+- **⟲ Boshiga qaytarish**: qotib qolsa majburan to'xtatib, joriy chekni tozalaydi (ombor ma'lumoti, ishlatilgan kodlar va xato bazasi saqlanadi).
+- Ombor (inventarizatsiya + «Olish») **kuniga bir marta** o'qiladi; keyingi cheklar sotilganlarni ayirib, darhol boshlanadi.
+- «Olish»da «Jadval tanlanmadi» xatosi kamaydi (qayta urinadi); panel tugmalari va holat qatori endi to'g'ri yangilanadi.
+
 ## 0.7.6 — E-POS markirovkasiz sotishda, pastki qatorlar
 - **Markirovkasiz sotish**: «🧾 E-POS orqali sotish» tugmasi — provesti qilingan chekni fiskal chek qiladi. O'zi bosilmaydi: faqat siz bosganda (bir nechta chek bo'lsa ro'yxatdan tanlanadi), sotilgani qayta taklif qilinmaydi. Gramm tovarlar ham to'g'ri (8,33 g).
 - Markirovkali panelda «E-POS orqali sotish» faqat ko'rinadi, avtomatika uni bosmaydi.
