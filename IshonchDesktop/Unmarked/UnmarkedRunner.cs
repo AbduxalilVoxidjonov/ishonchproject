@@ -633,7 +633,16 @@ public sealed class UnmarkedRunner
             await d.ClickSuffixAsync("_Дата_i0", "Sana maydoni", "input");
             await d.DelayAsync(200);
             await d.SelectAllAsync();
-            await d.TypeAsync(digits);
+            // Maska tez yozilganda raqamlarni yutib yuboradi (TestDB11 da «02:05:09» → «2:05:00»): ikkitadan yoziladi va
+            // Tab dan oldin hamma raqam maydonga tushguncha kutiladi
+            for (var i = 0; i < digits.Length; i += 2)
+            {
+                await d.TypeAsync(digits.Substring(i, Math.Min(2, digits.Length - i)));
+                await d.DelayAsync(80);
+            }
+            var typed = d.Now + 1500;
+            while (d.Now < typed && new string((await d.ValueAsync("_Дата_i0") ?? "").Where(char.IsDigit).ToArray()) != digits)
+                await d.DelayAsync(100);
             await d.KeyAsync("Tab");
             var until = d.Now + 4000;
             while (d.Now < until)
