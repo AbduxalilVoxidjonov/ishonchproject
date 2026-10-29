@@ -49,6 +49,10 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.2 — Inventarizatsiya sanasi va eng oxirgi hujjat
+- Inventarizatsiyani yangilashda sana doim **bugun 23:59:59** qilinadi, keyin sklad qoldig'i bo'yicha to'ldirilib provesti qilinadi.
+- «Добавить из документа → Инвентаризация товаров» va inventarizatsiya ro'yxatida butun ro'yxat ko'rilib, skladning sana/vaqt bo'yicha **eng oxirgi** hujjati tanlanadi.
+
 ## 0.7.1 — Markirovkali avtomatika panel ichida
 - Markirovkali chek panelidagi **«Avtomatik cheklar»** bo'limi: avval **sklad** (bo'sh bo'lsa boshlanmaydi), cheklar soni, provesti; umumiy summa — «Maqsad summa» maydonidan. Panel endi ikkiga bo'linmaydi.
 - Avtomatika panel qayta chizilganda o'zi to'xtab qolmaydi; «To'xtatildi» faqat ■ bosilganda.
