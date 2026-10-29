@@ -1356,8 +1356,10 @@
     return { receiptId: String(state.receiptId ?? ''), finished: state.status === 'done', lines };
   }
 
-  const eposSaleBlockReason = () => !IS_DESKTOP
-    ? 'E-POS orqali sotish faqat Ishonch dasturida ishlaydi'
+  const EPOS_SALE_ENABLED = false;
+  const eposSaleBlockReason = () => !EPOS_SALE_ENABLED
+    ? 'E-POS orqali sotish hozircha o‘chirilgan'
+    : !IS_DESKTOP ? 'E-POS orqali sotish faqat Ishonch dasturida ishlaydi'
     : activeTask || state.status === 'running' ? 'joriy ish bajarilmoqda'
       : state.inFlight ? 'o‘tkazish natijasi noaniq'
         : !state.items.some((i) => i.placed > 0) ? '1C ga o‘tkazilgan tovar yo‘q'
@@ -1617,7 +1619,8 @@
     if (capturing) el('captureLimit').disabled = true; // the button is Pauza/Davom while reading: the limit stays fixed
     el('captureLimit').value = state.captureLimit ?? '';
     btn('start').textContent = next ? 'Yangi chekni boshlash' : busy ? 'Pauza' : resumable ? 'Davom' : 'Boshlash';
-    btn('eposSale').hidden = !IS_DESKTOP;
+    // E-POS orqali sotish hozircha o'chirilgan (kod saqlanadi, qaytarish uchun EPOS_SALE_ENABLED = true)
+    btn('eposSale').hidden = !(IS_DESKTOP && EPOS_SALE_ENABLED);
     btn('eposSale').disabled = !!eposSaleBlockReason();
     btn('start').disabled = capturing || !!state.inFlight || (!next && !!state.documentNeedsAck) || !state.items.length ||
       (!busy && !!activeTask && !paused);

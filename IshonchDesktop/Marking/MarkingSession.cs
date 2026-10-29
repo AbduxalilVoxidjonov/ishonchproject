@@ -27,6 +27,7 @@ public sealed class MarkingSession : IDisposable
     PageChannel? page;
     PageChannel? panel;
     WebView2? panelView;
+    MarkedAuto? auto;
     TaskCompletionSource ready = NewReady();
     bool started;
 
@@ -65,11 +66,9 @@ public sealed class MarkingSession : IDisposable
         // Panel: dastur ichidagi sidepanel.html (kengaytmadagi bilan bir xil)
         Log.Write("1C sahifasi ulandi, panel yaratilmoqda");
         panelView = new WebView2 { Dock = DockStyle.Fill };
-        // Panel ustida avtomatika qatori (umumiy summa → cheklar), pastida kengaytmaning o'z paneli
-        var host = new Panel { Dock = DockStyle.Fill };
-        host.Controls.Add(panelView);
-        if (ZoomStore.Settings is { } st) host.Controls.Add(new MarkedAutoBar(oneC, panelView, st, baseEntry.ProfileKey));
-        oneC.AttachSidePanel(host, PanelWidth);
+        oneC.AttachSidePanel(panelView, PanelWidth);
+        // «Avtomatik cheklar» bo'limi panelning o'zida chiziladi (umumiy summa → cheklar)
+        if (ZoomStore.Settings is { } st) auto = new MarkedAuto(oneC, panelView, st, baseEntry.ProfileKey);
         var env = await WebTab.GetEnvironmentAsync("panel");
         await panelView.EnsureCoreWebView2Async(env);
         var pcore = panelView.CoreWebView2;
@@ -80,6 +79,11 @@ public sealed class MarkingSession : IDisposable
         pcore.WebResourceRequested += ServePanelFile;
         panel = new PageChannel(pcore, PanelOrigin) { Rpc = HandlePanelRpc, Event = OnPanelEvent };
         await pcore.AddScriptToExecuteOnDocumentCreatedAsync(MkResources.PanelScript());
+        if (auto is not null)
+        {
+            await pcore.AddScriptToExecuteOnDocumentCreatedAsync(MarkedAuto.PanelScript);
+            pcore.NavigationCompleted += (_, _) => auto.Push(init: true);
+        }
         pcore.Navigate(PanelOrigin + "sidepanel.html");
         Log.Write("Panel ochildi");
     }
@@ -221,6 +225,9 @@ public sealed class MarkingSession : IDisposable
             case "portClose":
                 if (panelPorts.Remove(id)) page?.Send(new { kind = "portClose", portId = id });
                 break;
+            case "ishAuto":
+                auto?.OnMessage(m);
+                break;
         }
     }
 
@@ -237,5 +244,9 @@ public sealed class MarkingSession : IDisposable
         e.Response = env.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK", "Content-Type: " + type);
     }
 
-    public void Dispose() => store.Dispose();
+    public void Dispose()
+    {
+        auto?.Dispose();
+        store.Dispose();
+    }
 }
