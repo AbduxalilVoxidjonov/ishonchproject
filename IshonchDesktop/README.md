@@ -49,6 +49,13 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.1 — Markirovkali avtomatika panel ichida
+- Markirovkali chek panelidagi **«Avtomatik cheklar»** bo'limi: avval **sklad** (bo'sh bo'lsa boshlanmaydi), cheklar soni, provesti; umumiy summa — «Maqsad summa» maydonidan. Panel endi ikkiga bo'linmaydi.
+- Avtomatika panel qayta chizilganda o'zi to'xtab qolmaydi; «To'xtatildi» faqat ■ bosilganda.
+- Markirovka kodlari my.soliq.uz API orqali tezroq tekshiriladi; bir nechta firma bir vaqtda ishlasa bir-biriga halaqit bermaydi.
+- Summa maydonlarida minglik ajratgich.
+- «E-POS orqali sotish» vaqtincha o'chirildi.
+
 ## 0.7.0 — Markirovkasiz sotish
 Bosh sahifada bazani tanlab **«Markirovkasiz sotish»** — 1C tabining o'ng tomonida panel ochiladi (har baza uchun sozlamalar alohida saqlanadi):
 - **Umumiy summa** va **cheklar soni** — summa cheklarga har xil (±25%) bo'linadi, yig'indisi aynan umumiy summa.
