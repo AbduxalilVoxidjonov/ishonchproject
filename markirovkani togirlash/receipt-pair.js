@@ -22,6 +22,7 @@
   const math = root.ReceiptMath || (typeof require === 'function' ? require('./receipt-math.js') : null);
   const MAX = BigInt(Number.MAX_SAFE_INTEGER);
   const DP_STATE_LIMIT = 250000;
+  const DP_WORK_BUDGET = 2000000; // guruhlar soni × saqlanadigan holatlar (taxminiy ish hajmi)
   const MITM_HALF_LIMIT = 1 << 21;
 
   function valid(value) {
@@ -130,7 +131,12 @@
     return best;
   }
 
+  // Holatlar chegarasi tovar guruhlari soniga moslanadi: guruh kam bo'lsa to'liq (DP_STATE_LIMIT), ko'p bo'lsa umumiy
+  // hisob byudjeti guruhlarga bo'linadi — aks holda yuzlab tovarda reja daqiqalab hisoblanib, 1C sahifasini band qiladi
+  let stateLimit = DP_STATE_LIMIT;
+
   function pruneFrontier(states, target) {
+    const DP_STATE_LIMIT = stateLimit;
     if (states.length <= DP_STATE_LIMIT) return states;
     const below = states.filter(state => state.total <= target)
       .sort((a, b) => betterPlan(a, b, target) ? -1 : betterPlan(b, a, target) ? 1 : 0);
@@ -149,6 +155,7 @@
   }
 
   function dynamicPlan(groups, target) {
+    stateLimit = Math.max(1500, Math.min(DP_STATE_LIMIT, Math.floor(DP_WORK_BUDGET / Math.max(1, groups.length))));
     let states = [stateFor(0n, [])];
     for (const group of groups) {
       const next = [];

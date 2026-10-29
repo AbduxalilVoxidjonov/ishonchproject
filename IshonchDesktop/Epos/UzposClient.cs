@@ -56,6 +56,83 @@ public sealed class UzposClient : IDisposable
         catch { return false; }
     }
 
+    static int salesInProgress;
+
+    /// <summary>Hozir fiskal chek sotilmoqdami (holat qatori shu paytda modulni so'ramaydi).</summary>
+    public static bool SaleInProgress => Volatile.Read(ref salesInProgress) > 0;
+
+    /// <summary>Fiskal xizmat ishlashi mumkin bo'lgan portlar: FiscalDriveAPI — 3448, FiscalDriveService — 3449/3450.</summary>
+    public static readonly int[] KnownPorts = { 3448, 3449, 3450 };
+
+    /// <summary>
+    /// Fiskal modul javob beradigan portni topadi (avval joriysi, keyin qolganlari) va <see cref="FiscalPort"/> ga yozadi.
+    /// Topilmasa null (joriy port o'zgarmaydi). Faqat holat so'raladi — hech narsa yozilmaydi.
+    /// </summary>
+    public async Task<int?> DetectPortAsync()
+    {
+        var original = FiscalPort;
+        foreach (var port in KnownPorts.OrderBy(p => p == original ? 0 : 1))
+        {
+            FiscalPort = port;
+            try { await GetStatusAsync(); return port; }
+            catch (UzposException) { /* bu portda modul yo'q */ }
+        }
+        FiscalPort = original;
+        return null;
+    }
+
+    /// <summary>
+    /// Ulangan fiskal modul nomi/raqami (faqat o'qish): avval Communicator `getInfo`, bo'lmasa FiscalDriveService ning
+    /// `POST /FiscalDrive/List` (ulangan modullar). Javobdan TerminalID va FactoryID qidiriladi. Topilmasa null.
+    /// </summary>
+    public async Task<string?> GetModuleNameAsync()
+    {
+        try
+        {
+            var r = await CallAsync("getInfo");
+            if (Describe(r) is { } fromInfo) return fromInfo;
+        }
+        catch (Exception e) when (e is UzposException or IOException or TaskCanceledException) { }
+
+        foreach (var port in new[] { 3449, 3450, 3448 })
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var resp = await http.PostAsync($"http://127.0.0.1:{port}/FiscalDrive/List", new StringContent("{}", Encoding.UTF8, "application/json"), cts.Token);
+                if (!resp.IsSuccessStatusCode) continue;
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(cts.Token));
+                if (Describe(doc.RootElement) is { } fromList) return fromList;
+            }
+            catch { /* bu portda xizmat yo'q */ }
+        }
+        return null;
+    }
+
+    /// <summary>JSON ichidan TerminalID va FactoryID ni topib, o'qiladigan matn qiladi.</summary>
+    static string? Describe(JsonElement root)
+    {
+        string? terminal = null, factory = null;
+        void Walk(JsonElement e)
+        {
+            if (e.ValueKind == JsonValueKind.Object)
+                foreach (var p in e.EnumerateObject())
+                {
+                    if (p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { Length: > 0 } v)
+                    {
+                        if (terminal is null && p.Name.Contains("terminal", StringComparison.OrdinalIgnoreCase)) terminal = v;
+                        else if (factory is null && p.Name.Contains("factory", StringComparison.OrdinalIgnoreCase)) factory = v;
+                    }
+                    else Walk(p.Value);
+                }
+            else if (e.ValueKind == JsonValueKind.Array)
+                foreach (var x in e.EnumerateArray()) Walk(x);
+        }
+        Walk(root);
+        if (terminal is null && factory is null) return null;
+        return string.Join(", ", new[] { terminal is null ? null : "Terminal " + terminal, factory is null ? null : "FactoryID " + factory }.Where(s => s is not null));
+    }
+
     /// <summary>Fiskal modul holati; ishlamasa UzposException (masalan FISCAL_DRIVER_IS_NOT_WORKING).</summary>
     public async Task<string> GetStatusAsync()
     {
@@ -96,7 +173,12 @@ public sealed class UzposClient : IDisposable
         if (cashTiyin + cardTiyin != total)
             throw new ArgumentException($"To'lov summasi chek jamiga teng emas: {cashTiyin + cardTiyin} != {total}.");
 
-        var r = await CallAsync("sale", new
+        // Sotuv paytida fonda holat so'rovlari yuborilmasin (fiskal modul band)
+        Interlocked.Increment(ref salesInProgress);
+        JsonElement r;
+        try
+        {
+        r = await CallAsync("sale", new
         {
             @params = new
             {
@@ -120,6 +202,8 @@ public sealed class UzposClient : IDisposable
                 externalId,
             },
         });
+        }
+        finally { Interlocked.Decrement(ref salesInProgress); }
 
         var info = r.TryGetProperty("info", out var i2) ? i2 : default;
         return new SaleResult(Str(info, "terminalId"), Str(info, "receiptSeq"), Str(info, "fiscalSign"),

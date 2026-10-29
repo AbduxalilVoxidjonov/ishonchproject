@@ -253,6 +253,16 @@ Console.WriteLine("Markirovkasiz sotish: reja");
     var shortStock = IshonchDesktop.Unmarked.Planner.Distribute(new[] { new IshonchDesktop.Unmarked.StockItem(0, "X", 2, 10_000_000m) }, 100_000_000m);
     Check(shortStock.Lines[0].Qty == 2 && shortStock.Total == 20_000_000m, "qoldiq kam bo'lsa — bori olinadi");
 
+    // Gramm (oltin) tovarlar: birlik yoki kasr qoldiq bo'yicha aniqlanadi
+    Check(IshonchDesktop.Unmarked.Planner.IsWeight("г", 5) && IshonchDesktop.Unmarked.Planner.IsWeight("гр.", 5)
+          && IshonchDesktop.Unmarked.Planner.IsWeight("Грамм", 5) && IshonchDesktop.Unmarked.Planner.IsWeight(null, 12.35m), "gramm tovar aniqlanadi");
+    Check(!IshonchDesktop.Unmarked.Planner.IsWeight("шт", 5) && !IshonchDesktop.Unmarked.Planner.IsWeight(null, 7)
+          && !IshonchDesktop.Unmarked.Planner.IsWeight("", 7.000m), "dona tovar gramm deb olinmaydi");
+    // 12,35 g oltin, 1 g = 1 200 000 so'm: 0,01 g qadamlarda (1235 qadam × 12 000) 10 mln ga yaqin, qoldiqdan oshmaydi
+    var gold = IshonchDesktop.Unmarked.Planner.Distribute(new[] { new IshonchDesktop.Unmarked.StockItem(0, "Oltin", 1235, 12_000m) }, 10_000_000m);
+    var grams = gold.Lines[0].Qty * IshonchDesktop.Unmarked.Planner.WeightStep;
+    Check(grams == 8.33m && gold.Total <= 10_000_000m && gold.Total > 9_990_000m, $"gramm kasr miqdorda rejalanadi ({grams} g)");
+
     Check(IshonchDesktop.UI.ThousandsInput.Format("100000000") == "100 000 000" && IshonchDesktop.UI.ThousandsInput.Format("1234,567") == "1 234,56"
           && IshonchDesktop.UI.ThousandsInput.Format("12 3456") == "123 456" && IshonchDesktop.UI.ThousandsInput.Format("") == "", "summa minglarga ajratiladi");
 

@@ -11,6 +11,16 @@ public static class AppInfo
     /// <summary>Release dagi fayl nomi: har bir release da aynan shu nomli bitta exe bo'lishi kerak.</summary>
     public const string AssetName = "Ishonch.exe";
 
+    /// <summary>
+    /// Ekranda ko'rinadigan nom (oyna sarlavhasi, xabarlar). Ichki nom «Ishonch» (mahsulot nomi, exe, ma'lumotlar papkasi)
+    /// o'zgarmaydi — eski versiyalar yangilanishni shu nom bo'yicha tekshiradi.
+    /// </summary>
+    public const string DisplayName = "Ishonch-Abduxalil";
+
+    /// <summary>Yordam uchun aloqa (Yordam menyusida).</summary>
+    public const string SupportPhone = "+998 95 313 44 47";
+    public const string SupportTelegram = "ishonchabduxalil";
+
     public static Version Current { get; } = ReadVersion();
 
     /// <summary>"0.6.0" ko'rinishida (to'rtinchi raqamsiz).</summary>

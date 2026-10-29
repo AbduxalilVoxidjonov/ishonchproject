@@ -8,8 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Ishonch</AssemblyName>
     <RootNamespace>IshonchDesktop</RootNamespace>
-    <Version>0.7.4</Version>
+    <Version>0.7.5</Version>
+    <!-- Mahsulot nomi «Ishonch» o'zgarmaydi: eski versiyalar yangilanish faylini shu nom bo'yicha tekshiradi -->
     <Product>Ishonch</Product>
+    <!-- Ko'rinadigan nom (Vazifalar menejeri, fayl xususiyatlari) va belgi -->
+    <AssemblyTitle>Ishonch-Abduxalil</AssemblyTitle>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <NoWarn>MSB3277</NoWarn>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
@@ -32,6 +36,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\bases.json" LogicalName="bases.json" />
+    <EmbeddedResource Include="Resources\app.ico" LogicalName="app.ico" />
 
     <!-- Markirovka kengaytmasi fayllari o'zgarishsiz exe ichiga joylanadi: mantiq bitta joyda qoladi -->
     <EmbeddedResource Include="Marking\shim.js" LogicalName="shim.js" />

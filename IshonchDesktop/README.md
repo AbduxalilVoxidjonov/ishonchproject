@@ -49,6 +49,15 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
+## 0.7.5 — Markirovkali avtomatika, yangi dizayn, fiskal modul
+- **Markirovkali avtomatika** (panelda «▶ Avto boshlash»): inventarizatsiya bir marta (sana bugun 23:30), «Olish», har chek uchun «Товары, услуги, комиссия» (sklad + «Товар маркирован») → Podbor → provesti; oxirida inventarizatsiya qayta yangilanadi. Oldingi cheklarda ishlatilgan, sotilgan yoki soliqda topilmagan markirovkalar qayta olinmaydi.
+- my.soliq.uz ga **yuridik shaxs** sifatida (ERI kalit bilan) kirilmagan bo'lsa boshlanmaydi: «Avval … ERI kalitdan birini tanlang» deydi.
+- «Markirovka topilmadi» kodlari darhol tashlanadi; chek rejasi yuzlab tovarda ham bir-ikki soniyada tuziladi (oldin daqiqalab 1C ni band qilardi).
+- Panel bosqichma-bosqich: ① Sozlamalar, ② Ishga tushirish; qo'lda boshqarish yashirildi; chek oxiridagi ovoz olib tashlandi.
+- **Yangi dizayn**: bosh sahifa lentasi va belgisi, oyna nomi «Ishonch-Abduxalil»; «Yordam» (telefon, Telegram) Elektr ostida; pastda fiskal modul holati (aktiv / aktiv emas, modul raqami).
+- **E-POS orqali sotish** qaytdi; fiskal port (3448/3449/3450) o'zi topiladi.
+- Markirovkasiz sotish: **gramm** bilan sotiladigan tovarlar (oltin) avtomatik aniqlanadi; qatorga o'tishda qotib qolmaydi; sana yozishda qayta urinadi.
+
 ## 0.7.4 — Pauza va barqaror ishlash (markirovkasiz sotish)
 - **⏸ Pauza**: jarayon keyingi 1C amalidan oldin to'xtab turadi, **▶ Davom etish** aynan shu joydan davom ettiradi.
 - ■ To'xtatish yoki xatodan keyin **▶ Boshlash** — qolgan cheklardan davom etish (yoki boshidan) taklif qilinadi.
@@ -60,7 +69,7 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - Bazalar ro'yxatiga **TestDB11** (sinov bazasi, `tas-1cbuxapp-01`) qo'shildi. Ro'yxati allaqachon bor kompyuterlarga yangilanishdan keyin bir marta o'zi qo'shiladi; o'chirib tashlansa qayta qo'shilmaydi.
 
 ## 0.7.2 — Inventarizatsiya sanasi va eng oxirgi hujjat
-- Inventarizatsiyani yangilashda sana doim **bugun 23:59:59** qilinadi, keyin sklad qoldig'i bo'yicha to'ldirilib provesti qilinadi.
+- Inventarizatsiyani yangilashda sana doim **bugun 23:30:00** qilinadi, keyin sklad qoldig'i bo'yicha to'ldirilib provesti qilinadi.
 - «Добавить из документа → Инвентаризация товаров» va inventarizatsiya ro'yxatida butun ro'yxat ko'rilib, skladning sana/vaqt bo'yicha **eng oxirgi** hujjati tanlanadi.
 
 ## 0.7.1 — Markirovkali avtomatika panel ichida

@@ -51,7 +51,7 @@ public sealed class ElektrTab : UserControl
         catch (Exception e)
         {
             Log.Error("ElektrTab.Init", e);
-            MessageBox.Show(this, "WebView2 ishga tushmadi: " + e.Message, "Ishonch", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "WebView2 ishga tushmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 

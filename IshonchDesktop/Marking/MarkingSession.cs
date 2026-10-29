@@ -68,7 +68,7 @@ public sealed class MarkingSession : IDisposable
         panelView = new WebView2 { Dock = DockStyle.Fill };
         oneC.AttachSidePanel(panelView, PanelWidth);
         // «Avtomatik cheklar» bo'limi panelning o'zida chiziladi (umumiy summa → cheklar)
-        if (ZoomStore.Settings is { } st) auto = new MarkedAuto(oneC, panelView, st, baseEntry.ProfileKey);
+        if (ZoomStore.Settings is { } st) auto = new MarkedAuto(oneC, panelView, st, baseEntry.ProfileKey, getSoliqTab);
         var env = await WebTab.GetEnvironmentAsync("panel");
         await panelView.EnsureCoreWebView2Async(env);
         var pcore = panelView.CoreWebView2;
@@ -91,6 +91,7 @@ public sealed class MarkingSession : IDisposable
     /// <summary>1C sahifasi qayta yuklanganda panel aloqasi uziladi; panel o'zi qayta ulanadi.</summary>
     void ResetPage()
     {
+        if (panelPorts.Count > 0) Log.Write($"1C sahifasi qayta yuklanmoqda — panel ulanishlari uziladi ({panelPorts.Count} ta)");
         ready = NewReady();
         foreach (var id in panelPorts.ToArray()) panel?.Send(new { kind = "portClose", portId = id });
         panelPorts.Clear();
@@ -151,6 +152,12 @@ public sealed class MarkingSession : IDisposable
                 : new { ok = true, sold = false, receiptSeq = "", fiscalSign = "", qrCodeUrl = "", dateTime = "" };
         }
         finally { saleOpen = false; }
+    }
+
+    static string Short(JsonElement m)
+    {
+        var raw = m.TryGetProperty("data", out var d) ? d.GetRawText() : m.GetRawText();
+        return raw.Length > 120 ? raw[..120] : raw;
     }
 
     static int Int(JsonElement e, string name) =>
@@ -221,6 +228,7 @@ public sealed class MarkingSession : IDisposable
                 break;
             case "port":
                 if (panelPorts.Contains(id)) page?.Send(new { kind = "port", portId = id, data = m.GetProperty("data") });
+                else Log.Write($"Panel xabari tashlab yuborildi: ulanish {id} yopiq (ochiq: {string.Join(",", panelPorts)}) — {Short(m)}");
                 break;
             case "portClose":
                 if (panelPorts.Remove(id)) page?.Send(new { kind = "portClose", portId = id });

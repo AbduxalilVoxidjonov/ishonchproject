@@ -10,27 +10,32 @@ public sealed class HomeControl : UserControl
     readonly ListView list = new()
     {
         Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
-        MultiSelect = false, GridLines = true,
+        MultiSelect = false, GridLines = false, BorderStyle = BorderStyle.None, BackColor = Color.White,
     };
-    readonly Label info = new() { Width = 300, Height = 92, Margin = new Padding(0, 0, 0, 10) };
-    readonly Button openOneC = Big("1C bazani ochish");
-    readonly Button openSoliq = Big("my.soliq.uz ochish");
-    readonly Button openMarking = Big("Markirovkali chek tayyorlash");
-    readonly Button openUnmarked = Big("Markirovkasiz sotish");
-    readonly Button openElektr = Big("Elektr (HET kabinetlari)");
+    /// <summary>Qator balandligi uchun (ListView qatorni shu rasm balandligidan past qilmaydi).</summary>
+    readonly ImageList rowHeight = new() { ImageSize = new Size(1, 28) };
+    readonly Label info = new() { Width = 300, Height = 104, Margin = new Padding(0, 0, 0, 14), BackColor = Color.White, Padding = new Padding(16, 12, 12, 10) };
+    readonly Button openOneC = Big("🗄   1C bazani ochish", primary: true);
+    readonly Button openSoliq = Big("🌐   my.soliq.uz ochish");
+    readonly Button openMarking = Big("🏷   Markirovkali chek tayyorlash");
+    readonly Button openUnmarked = Big("📦   Markirovkasiz sotish");
+    readonly Button openElektr = Big("⚡   Elektr (HET kabinetlari)");
+    readonly Button openHelp = Big("❓   Yordam");
 
     public event Action<BaseEntry>? OpenOneC;
     public event Action<BaseEntry?>? OpenSoliq;
     public event Action<BaseEntry>? OpenMarking;
     public event Action<BaseEntry>? OpenUnmarked;
     public event Action? OpenElektr;
+    /// <summary>«Yordam» tugmasi bosildi (tugmaning o'zi — menyuni uning ostida ochish uchun).</summary>
+    public event Action<Control>? HelpClicked;
     public event Action? CheckUpdatesClicked;
     public event Action? InstallUpdateClicked;
     public event Action<BaseEntry>? SelectionChanged;
     public event Action<double>? ZoomChanged;
 
     // Masshtablanadigan elementlar
-    readonly Label title = new();
+    readonly HeaderBar title = new();
     readonly FlowLayoutPanel right = new();
     readonly FlowLayoutPanel foot = new();
     readonly Button reloadBtn = new() { Text = "Ro'yxatni qayta yuklash" };
@@ -61,11 +66,36 @@ public sealed class HomeControl : UserControl
 
     public BaseEntry? Selected => list.SelectedItems.Count == 1 ? (BaseEntry)list.SelectedItems[0].Tag! : null;
 
-    static Button Big(string text) => new()
+    static readonly Color Indigo = Color.FromArgb(79, 70, 229);
+
+    /// <summary>O'ng tomondagi katta «plitka» tugma: oq karta, kursor ustida och binafsha; asosiysi — to'liq rangli.</summary>
+    static Button Big(string text, bool primary = false)
     {
-        Text = text, Width = 300, Height = 64, Margin = new Padding(0, 0, 0, 10),
-        Font = new Font("Segoe UI", 11f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft,
-    };
+        var b = new Button
+        {
+            Text = text, Width = 300, Height = 58, Margin = new Padding(0, 0, 0, 10), Padding = new Padding(12, 0, 0, 0),
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft,
+            FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, UseVisualStyleBackColor = false,
+        };
+        if (primary)
+        {
+            b.FlatAppearance.BorderSize = 0;
+            b.BackColor = Indigo;
+            b.ForeColor = Color.White;
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(67, 56, 202);
+            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(55, 48, 163);
+            b.EnabledChanged += (_, _) => b.BackColor = b.Enabled ? Indigo : Color.FromArgb(165, 180, 252);
+        }
+        else
+        {
+            b.BackColor = Color.White;
+            b.ForeColor = Color.FromArgb(30, 41, 59);
+            b.FlatAppearance.BorderColor = PanelStyle.Border;
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(238, 242, 255);
+            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(224, 231, 255);
+        }
+        return b;
+    }
 
     public HomeControl(BaseStore store)
     {
@@ -73,11 +103,27 @@ public sealed class HomeControl : UserControl
         Dock = DockStyle.Fill;
         Padding = new Padding(20);
         Font = new Font("Segoe UI", 9.5f);
+        BackColor = PanelStyle.Back;
 
-        title.Text = "Ishonch — 1C va my.soliq.uz boshqaruv paneli";
+        // Lentada dastur nomi yozilmaydi (u oyna sarlavhasida bor) — faqat belgi va vazifasi
+        title.Text = "1C va my.soliq.uz boshqaruv paneli";
+        title.Subtitle = "Bazani tanlang va kerakli bo'limni oching";
+        title.Version = "v" + AppInfo.Text;
         title.Dock = DockStyle.Top;
-        title.Height = 44;
-        title.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
+        title.Height = 76;
+        title.Font = new Font("Segoe UI", 18f, FontStyle.Bold);
+
+        search.Font = new Font("Segoe UI", 11f);
+        list.SmallImageList = rowHeight;
+        list.Font = new Font("Segoe UI", 10f);
+        // Tanlangan firma kartasi: chap tomonda rangli chiziq va ingichka chegara
+        info.Paint += (_, e) =>
+        {
+            using var pen = new Pen(PanelStyle.Border);
+            e.Graphics.DrawRectangle(pen, 0, 0, info.Width - 1, info.Height - 1);
+            using var bar = new SolidBrush(Indigo);
+            e.Graphics.FillRectangle(bar, 0, 0, Math.Max(4, info.Width / 75), info.Height);
+        };
 
         list.Columns.Add("№", 62);
         list.Columns.Add("Firma", 250);
@@ -88,8 +134,13 @@ public sealed class HomeControl : UserControl
         var left = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 20, 0) };
         chip.Controls.Add(chipLabel);
         chip.Controls.Add(chipClear);
-        left.Controls.Add(list);
+        // Jadval oq kartada (1 piksel chegara)
+        var listCard = PanelStyle.CardPanel(new Padding(1));
+        listCard.Dock = DockStyle.Fill;
+        listCard.Controls.Add(list);
+        left.Controls.Add(listCard);
         left.Controls.Add(chip);
+        left.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 10 });
         left.Controls.Add(search);
 
         right.Dock = DockStyle.Right;
@@ -102,6 +153,7 @@ public sealed class HomeControl : UserControl
         right.Controls.Add(openMarking);
         right.Controls.Add(openUnmarked);
         right.Controls.Add(openElektr);
+        right.Controls.Add(openHelp);
 
         reloadBtn.Size = new Size(190, 30);
         fileBtn.Size = new Size(190, 30);
@@ -114,14 +166,17 @@ public sealed class HomeControl : UserControl
         foot.Controls.Add(countLabel);
         foot.Controls.Add(versionLabel);
         updateBtn.Size = new Size(210, 30);
-        versionLabel.Text = "Ishonch " + AppInfo.Text;
+        versionLabel.Text = AppInfo.DisplayName + " " + AppInfo.Text;
         updateBtn.Click += (_, _) => CheckUpdatesClicked?.Invoke();
         banner.Click += (_, _) => InstallUpdateClicked?.Invoke();
+
+        foreach (var b in new[] { reloadBtn, fileBtn, updateBtn }) PanelStyle.Secondary(b);
 
         Controls.Add(left);
         Controls.Add(right);
         Controls.Add(foot);
         Controls.Add(banner);
+        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 16 });
         Controls.Add(title);
 
         search.TextChanged += (_, _) => Fill(Selected?.Id);
@@ -138,6 +193,7 @@ public sealed class HomeControl : UserControl
         };
         chipClear.Click += (_, _) => ClearFilter();
         list.MouseUp += OnListMouseUp;
+        list.Resize += (_, _) => FitColumns();
         list.SelectedIndexChanged += (_, _) => UpdateInfo();
         list.DoubleClick += (_, _) => { if (Selected is { } b) OpenOneC?.Invoke(b); };
         list.KeyDown += (_, e) =>
@@ -150,6 +206,7 @@ public sealed class HomeControl : UserControl
         openMarking.Click += (_, _) => { if (Selected is { } b) OpenMarking?.Invoke(b); };
         openUnmarked.Click += (_, _) => { if (Selected is { } b) OpenUnmarked?.Invoke(b); };
         openElektr.Click += (_, _) => OpenElektr?.Invoke();
+        openHelp.Click += (_, _) => HelpClicked?.Invoke(openHelp);
         reloadBtn.Click += (_, _) => { store.Load(); Fill(Selected?.Id); };
         fileBtn.Click += (_, _) =>
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notepad.exe", $"\"{Paths.BasesFile}\"") { UseShellExecute = true });
@@ -191,7 +248,7 @@ public sealed class HomeControl : UserControl
 
     // Birinchi ko'ringandagi (DPI ga allaqachon moslangan) o'lchamlar; masshtab shularga nisbatan hisoblanadi
     sealed record Metrics(float Font, float TitleFont, float ButtonFont, int TitleH, int RightW, Size Info, Size Big,
-        Size Small, int FootH, int[] Columns, Size Scroll);
+        Size Small, int FootH, int[] Columns, Size Scroll, int RowH);
     Metrics? baseMetrics;
 
     void LayoutForZoom()
@@ -199,7 +256,8 @@ public sealed class HomeControl : UserControl
         baseMetrics ??= new Metrics(Font.SizeInPoints, title.Font.SizeInPoints, openOneC.Font.SizeInPoints, title.Height,
             right.Width, info.Size, openOneC.Size, reloadBtn.Size, foot.Height,
             Enumerable.Range(0, list.Columns.Count).Select(i => list.Columns[i].Width).ToArray(),
-            new Size(Math.Max(1, (int)(ClientSize.Width * 0.62)), Math.Max(1, (int)(ClientSize.Height * 0.62))));
+            new Size(Math.Max(1, (int)(ClientSize.Width * 0.62)), Math.Max(1, (int)(ClientSize.Height * 0.62))),
+            LogicalToDeviceUnits(28));
         var m = baseMetrics;
         var f = (float)zoom;
         int S(int v) => Math.Max(1, (int)Math.Round(v * zoom));
@@ -211,7 +269,7 @@ public sealed class HomeControl : UserControl
         title.Height = S(m.TitleH);
         right.Width = S(m.RightW);
         info.Size = S2(m.Info);
-        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openElektr })
+        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openElektr, openHelp })
         {
             b.Font = new Font(b.Font.FontFamily, m.ButtonFont * f, FontStyle.Bold);
             b.Size = S2(m.Big);
@@ -221,9 +279,25 @@ public sealed class HomeControl : UserControl
         banner.Height = S(m.Small.Height + 8);
         foot.Height = S(m.FootH);
         for (var i = 0; i < list.Columns.Count; i++) list.Columns[i].Width = S(m.Columns[i]);
+        rowHeight.ImageSize = new Size(1, Math.Min(256, S(m.RowH)));
+        firmaMin = list.Columns[1].Width;
+        FitColumns();
         // Kichik oynada kesilib qolmasin: kontent shundan torayganda aylantirish chizig'i chiqadi
         AutoScrollMinSize = S2(new Size((int)(m.Columns.Sum() * 0.55) + m.RightW + 60, m.TitleH + m.FootH + 320));
         ResumeLayout(true);
+    }
+
+    /// <summary>«Firma» ustunining eng kichik kengligi (masshtabga moslangan).</summary>
+    int firmaMin = 250;
+
+    /// <summary>«Firma» ustuni jadvalning qolgan bo'sh kengligini egallaydi (o'ng tomonda bo'sh joy qolmasin).</summary>
+    void FitColumns()
+    {
+        if (list.Columns.Count < 2 || list.ClientSize.Width <= 0) return;
+        var others = 0;
+        for (var i = 0; i < list.Columns.Count; i++) if (i != 1) others += list.Columns[i].Width;
+        var width = Math.Max(firmaMin, list.ClientSize.Width - others - 4);
+        if (list.Columns[1].Width != width) list.Columns[1].Width = width;
     }
 
     public void Fill(int? keepId)
@@ -254,7 +328,7 @@ public sealed class HomeControl : UserControl
             {
                 Tag = b,
             };
-            if (pinned) item.BackColor = Color.FromArgb(255, 248, 220);
+            item.BackColor = pinned ? Color.FromArgb(255, 248, 220) : list.Items.Count % 2 == 1 ? Color.FromArgb(248, 250, 252) : Color.White;
             list.Items.Add(item);
             if (b.Id == keepId) { item.Selected = true; item.EnsureVisible(); }
         }

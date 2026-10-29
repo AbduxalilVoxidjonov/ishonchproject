@@ -19,12 +19,15 @@ public sealed class MarkedAuto : IDisposable
     readonly WebView2 panel;
     readonly Settings settings;
     readonly MarkedPrefs prefs;
+    /// <summary>Shu firmaning my.soliq.uz tabi (markirovka kodlari shu yerda tekshiriladi).</summary>
+    readonly Func<Task<WebTab>>? getSoliqTab;
     CancellationTokenSource? cts;
     string statusText = "Umumiy summa — «Maqsad summa» maydonidan olinadi.";
     string statusLevel = "info";
 
-    public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey)
+    public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey, Func<Task<WebTab>>? getSoliqTab = null)
     {
+        this.getSoliqTab = getSoliqTab;
         this.oneC = oneC;
         this.panel = panel;
         this.settings = settings;
@@ -42,7 +45,11 @@ public sealed class MarkedAuto : IDisposable
             .ish-auto .ish-h { font-weight:700; color:#3730a3; }
             .ish-auto .row { margin:0; }
             .ish-auto .ish-st { font-size:12px; color:#475569; } .ish-auto .ish-st.err { color:#b91c1c; } .ish-auto .ish-st.ok { color:#15803d; } .ish-auto .ish-st.warn { color:#b45309; }
-            .ish-auto input.ish-bad { border-color:#ef4444; outline:2px solid #fecaca; }`;
+            .ish-in { display:flex; flex-direction:column; gap:8px; }
+            .ish-in .row { margin:0; }
+            .ish-in .ish-st { font-size:12px; color:#475569; } .ish-in .ish-st.err { color:#b91c1c; } .ish-in .ish-st.ok { color:#15803d; } .ish-in .ish-st.warn { color:#b45309; }
+            .ish-go { flex:3 1 auto; padding:10px 8px; font-size:13px; }
+            #ishAuto input.ish-bad { border-color:#ef4444; outline:2px solid #fecaca; }`;
           const send = (action) => {
             const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"]');
             window.chrome?.webview?.postMessage({ kind: 'ishAuto', action,
@@ -63,19 +70,23 @@ public sealed class MarkedAuto : IDisposable
             if (!target || document.getElementById('ishAuto')) return;
             const row = target.closest('.row'); if (!row) return;
             if (!document.getElementById('ishAutoCss')) { const st = document.createElement('style'); st.id = 'ishAutoCss'; st.textContent = css; document.head.appendChild(st); }
+            // Yangi panelda bo'sh joylar bor: ① Sozlamalar va ② Ishga tushirish; eski panelda — «Maqsad summa» atrofiga
+            const setSlot = document.getElementById('ishAutoSettingsSlot');
+            const actSlot = document.getElementById('ishAutoActionsSlot');
+            const inSlots = !!(setSlot && actSlot);
             const box = document.createElement('div');
-            box.id = 'ishAuto'; box.className = 'ish-auto';
-            box.innerHTML = '<div class="ish-h">⚡ Avtomatik cheklar</div>' +
-              '<div class="row"><label class="field" style="flex:1 1 100%"><span>1) Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: Основной склад"></label></div>' +
-              '<div class="row"><label class="field"><span>2) Cheklar soni</span><input class="inp" data-x="count" type="number" min="1" max="200" step="1"></label>' +
+            box.id = 'ishAuto'; box.className = inSlots ? 'ish-in' : 'ish-auto';
+            box.innerHTML = (inSlots ? '' : '<div class="ish-h">⚡ Avtomatik cheklar</div>') +
+              '<div class="row"><label class="field" style="flex:1 1 100%"><span>Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: МАРКИРОВАН (EPOS)"></label></div>' +
+              '<div class="row"><label class="field"><span>Cheklar soni</span><input class="inp" data-x="count" type="number" min="1" max="200" step="1"></label>' +
               '<label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
-              '<div class="muted">3) Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>';
-            row.parentNode.insertBefore(box, row);
+              (inSlots ? '' : '<div class="muted">Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>');
             const act = document.createElement('div');
-            act.id = 'ishAutoAct'; act.className = 'ish-auto';
-            act.innerHTML = '<div class="row"><button class="b primary" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="stop" disabled>■ To‘xtatish</button></div>' +
+            act.id = 'ishAutoAct'; act.className = inSlots ? 'ish-in' : 'ish-auto';
+            act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="stop" disabled>■ To‘xtatish</button></div>' +
               '<div class="ish-st" id="ishAutoStatus"></div>';
-            row.parentNode.insertBefore(act, row.nextSibling);
+            if (inSlots) { setSlot.appendChild(box); actSlot.appendChild(act); }
+            else { row.parentNode.insertBefore(box, row); row.parentNode.insertBefore(act, row.nextSibling); }
             act.querySelector('[data-x="go"]').onclick = () => {
               const wh = box.querySelector('[data-x="wh"]');
               if (!wh.value.trim()) { wh.classList.add('ish-bad'); wh.focus(); window.__ishAutoApply({ ...(window.__ishAutoState || {}), init: false, status: 'Avval skladni kiriting.', level: 'err' }); return; }
@@ -149,7 +160,8 @@ public sealed class MarkedAuto : IDisposable
         var raw = await PanelEvalAsync(
             "(() => { const q = s => document.querySelector('#app ' + s); const b = n => q('[data-a=\"' + n + '\"]');" +
             " return { start: b('start')?.textContent?.trim() || '', startDisabled: !!b('start')?.disabled," +
-            " capture: b('capture')?.textContent?.trim() || '', source: q('[data-el=\"source\"]')?.textContent?.trim() || '' }; })()", ct);
+            " capture: b('capture')?.textContent?.trim() || '', source: q('[data-el=\"source\"]')?.textContent?.trim() || ''," +
+            " full: q('[data-el=\"fullSource\"]')?.textContent?.trim() || '', message: q('[data-el=\"message\"]')?.textContent?.trim() || '' }; })()", ct);
         using var doc = JsonDocument.Parse(raw);
         return doc.RootElement.Clone();
     }
@@ -184,6 +196,41 @@ public sealed class MarkedAuto : IDisposable
         }
     }
 
+    /// <summary>
+    /// Panelning «Boshlash» tugmasini bosadi va jarayon haqiqatan boshlanganini tekshiradi. «Olish» endigina tugagan bo'lsa
+    /// tugma bir lahza o'chiq turadi va bosish e'tiborsiz qoladi — shuning uchun avval faol bo'lishi kutiladi, boshlanmasa
+    /// (tugma «Pauza» ga aylanmasa) qayta bosiladi.
+    /// </summary>
+    async Task StartPanelAsync(int k, CancellationToken ct)
+    {
+        // Panel «Boshlash» dan keyin avval chek rejasini hisoblaydi (1C sahifasida) — bu paytda sahifa band bo'lib, tugma
+        // yangilanmaydi. Shuning uchun bir marta bosib sabr bilan kutiladi; qayta bosish hisobni navbatga qo'shib sekinlashtiradi.
+        var before = await PanelStateAsync(ct);
+        var beforeStart = Str(before, "start");
+        var beforeMsg = Str(before, "message");
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            await WaitAsync(async () => (await PanelStateAsync(ct)).TryGetProperty("startDisabled", out var dis) && dis.ValueKind == JsonValueKind.False,
+                TimeSpan.FromMinutes(2), $"{k + 1}-chek uchun «Boshlash» tugmasi", ct);
+            await PanelClickAsync("start", ct);
+            var until = DateTime.UtcNow.AddMinutes(3);
+            var note = DateTime.UtcNow.AddSeconds(20);
+            while (DateTime.UtcNow < until)
+            {
+                await Task.Delay(700, ct);
+                var s = await PanelStateAsync(ct);
+                var now = Str(s, "start");
+                // «Pauza» — ishlayapti; boshqa matn (oldingi «Yangi chekni boshlash» dan farqli) — holat o'zgardi
+                if (now == "Pauza" || (now != beforeStart && now != "Boshlash")) return;
+                var msg = Str(s, "message");
+                if (msg.Length > 0 && msg != beforeMsg) throw new OneCException($"{k + 1}-chek: panel boshlamadi — {msg}");
+                if (DateTime.UtcNow > note) { Status($"{k + 1}-chek: panel reja tuzmoqda…"); note = DateTime.UtcNow.AddSeconds(30); }
+            }
+            Status($"{k + 1}-chek: panel javob bermadi, «Boshlash» qayta bosilmoqda…", "warn");
+        }
+        throw new OneCException($"{k + 1}-chek: panelning «Boshlash» tugmasi ishga tushmadi — panel jurnalini ko'ring.");
+    }
+
     // ---- asosiy jarayon ---------------------------------------------------------------------------
 
     async Task RunAsync()
@@ -193,6 +240,23 @@ public sealed class MarkedAuto : IDisposable
         if (oneC.Core is not { } core) { Status("1C tabi tayyor emas.", "err"); return; }
         cts = new CancellationTokenSource();
         var ct = cts.Token;
+        // Panel qayta chizilsa ham tugmalar va holat to'g'ri tursin: ish davomida har 2 soniyada qayta yuboriladi
+        using var keepAlive = new System.Windows.Forms.Timer { Interval = 2000 };
+        keepAlive.Tick += (_, _) => { if (Running) Push(); };
+        keepAlive.Start();
+        // Panelda oldingi (masalan dastur yopilgan paytdagi) tugallanmagan chek qolgan bo'lsa — «Davom» turadi, summa maydoni
+        // qulflangan va eski summa olinardi. Uni «To'liq to'xtatish» bilan bekor qilamiz va summani qayta kiritishni so'raymiz.
+        if (Str(await PanelStateAsync(ct), "start") == "Davom")
+        {
+            await PanelClickAsync("clear", ct);
+            await Task.Delay(1500, ct);
+            var cleared = Str(await PanelStateAsync(ct), "start") != "Davom";
+            cts.Dispose(); cts = null;
+            Status(cleared
+                ? "Panelda oldingi tugallanmagan chek bor edi — u tozalandi. «Maqsad summa» ni kiriting va «▶ Avto boshlash» ni qayta bosing."
+                : "Panelda tugallanmagan chek bor va uni tozalab bo'lmadi: «③ Qo'lda boshqarish» → «⛔ To'liq to'xtatish» ni ikki marta bosing, keyin qayta boshlang.", cleared ? "warn" : "err");
+            return;
+        }
         var sum = Parse(await PanelTargetAsync(ct));
         var n = prefs.Count;
         if (sum is not > 0)
@@ -204,7 +268,7 @@ public sealed class MarkedAuto : IDisposable
         var targets = Planner.SplitTotal(sum.Value, n, 0.25m, new Random());
         var msg = $"Markirovkali: jami {sum:N0} so'm, {n} ta chek ({string.Join("; ", targets.Select(t => t.ToString("N0")))}), sklad «{prefs.Warehouse}».\n" +
                   (prefs.Post ? "Har chek PROVESTI QILINADI.\n" : "Cheklar provesti qilinmaydi (har chekdan keyin to'xtaydi).\n") + "\nBoshlansinmi?";
-        if (MessageBox.Show(owner, msg, "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (MessageBox.Show(owner, msg, AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
             cts.Dispose(); cts = null;
             Push();
@@ -215,23 +279,42 @@ public sealed class MarkedAuto : IDisposable
         Status("Boshlanmoqda…");
         try
         {
+            // Markirovka kodlari my.soliq.uz da tekshiriladi: ERI kalit bilan kirilmagan bo'lsa boshlanmaydi
+            if (getSoliqTab is not null)
+            {
+                Status("my.soliq.uz ga kirilganligi tekshirilmoqda…");
+                if (!await SoliqBridge.IsLoggedInAsync(getSoliqTab))
+                    throw new OneCException(SoliqBridge.NotLoggedInMessage + ".");
+            }
             var runner = new UnmarkedRunner(core, new UnmarkedOptions(0, 1, 1, 0, prefs.Warehouse, false), (t, l) => Status(t, l), ct);
             await runner.InitAsync();
 
             // 1) Boshida bir marta: inventarizatsiya → «Olish»
             Status("Inventarizatsiya yangilanmoqda…");
             await runner.RefreshInventoryKeepOpenAsync();
-            Status("«Olish»: inventarizatsiya o'qilmoqda…");
-            await PanelClickAsync("capture", ct);
-            var sawCapture = false;
-            var started = DateTime.UtcNow;
-            await WaitAsync(async () =>
+            // «Olish» haqiqatan yangi ma'lumot o'qiganini tekshiramiz (o'qilgan vaqti o'zgaradi); xato bo'lsa — eski ma'lumot
+            // bilan davom etilmaydi: inventarizatsiya tabi qayta ochilib bir marta yana urinadi
+            var beforeFull = Str(await PanelStateAsync(ct), "full");
+            for (var attempt = 1; ; attempt++)
             {
-                var s = await PanelStateAsync(ct);
-                var cap = Str(s, "capture");
-                if (cap.StartsWith("Pauza") || cap.StartsWith("Davom")) sawCapture = true;
-                return cap == "Olish" && (sawCapture || DateTime.UtcNow - started > TimeSpan.FromSeconds(5)) && !Str(s, "source").StartsWith("0 ");
-            }, TimeSpan.FromMinutes(30), "«Olish» tugashi", ct);
+                Status("«Olish»: inventarizatsiya o'qilmoqda…");
+                await PanelClickAsync("capture", ct);
+                var sawCapture = false;
+                var started = DateTime.UtcNow;
+                await WaitAsync(async () =>
+                {
+                    var s = await PanelStateAsync(ct);
+                    var cap = Str(s, "capture");
+                    if (cap.StartsWith("Pauza") || cap.StartsWith("Davom")) sawCapture = true;
+                    return cap == "Olish" && (sawCapture || DateTime.UtcNow - started > TimeSpan.FromSeconds(5));
+                }, TimeSpan.FromMinutes(30), "«Olish» tugashi", ct);
+                var after = await PanelStateAsync(ct);
+                if (Str(after, "full") != beforeFull && !Str(after, "source").StartsWith("0 ")) break;
+                var why = Str(after, "message");
+                if (attempt >= 2) throw new OneCException("«Olish» inventarizatsiyani o'qiy olmadi" + (why.Length > 0 ? ": " + why : "."));
+                Status("«Olish» o'qiy olmadi" + (why.Length > 0 ? $" ({why})" : "") + " — inventarizatsiya qayta ochilib, yana urinilmoqda…", "warn");
+                await runner.ActivateInventoryTabAsync();
+            }
             Status("Olindi: " + Str(await PanelStateAsync(ct), "source"));
 
             // 2) Har chek
@@ -241,11 +324,8 @@ public sealed class MarkedAuto : IDisposable
                 await runner.CreateMarkedDocumentAsync();
                 await PanelSetTargetAsync(targets[k], ct);
                 await Task.Delay(800, ct);
-                await PanelClickAsync("start", ct);
                 Status($"{k + 1}/{n}-chek: Подбор (≈{targets[k]:N0} so'm)…");
-
-                // Oldingi chekning «tayyor» holatidan chiqib, jarayon boshlanganini kutamiz (aks holda darhol «tayyor» deb o'qilardi)
-                await WaitAsync(async () => Str(await PanelStateAsync(ct), "start") != "Yangi chekni boshlash", TimeSpan.FromMinutes(2), $"{k + 1}-chek boshlanishi", ct);
+                await StartPanelAsync(k, ct);
 
                 // Panel jarayoni tugashini kutamiz: «Yangi chekni boshlash» — tayyor; «Davom» — to'xtab qoldi
                 var stoppedSince = (DateTime?)null;
@@ -269,6 +349,13 @@ public sealed class MarkedAuto : IDisposable
                 if (!r.Ok) throw new OneCException($"{k + 1}-chekni provesti qilib bo'lmadi: " + string.Join(" | ", r.Messages.Take(2)));
                 done++;
                 Status($"{k + 1}/{n}-chek provesti qilindi ✓", "ok");
+            }
+            // Hamma cheklar provesti qilingach — inventarizatsiya sklad qoldig'i bo'yicha qayta yangilanadi
+            // (cheklar orasida unga qaytib kirilmaydi: tovarlar boshida bir marta o'qilgan)
+            if (prefs.Post && done > 0)
+            {
+                Status("Cheklar tayyor — inventarizatsiya qayta yangilanmoqda…");
+                await runner.RefreshInventoryAndCloseAsync();
             }
             Status($"Tugadi: {done} ta chek.", "ok");
         }

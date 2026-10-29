@@ -133,7 +133,7 @@ public sealed class UnmarkedPanel : UserControl
 
         close.Click += (_, _) =>
         {
-            if (Running && MessageBox.Show(FindForm(), "Jarayon ketmoqda. To'xtatilsinmi?", "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            if (Running && MessageBox.Show(FindForm(), "Jarayon ketmoqda. To'xtatilsinmi?", AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             Stop();
             tab.HideSidePanel();
         };
@@ -197,7 +197,7 @@ public sealed class UnmarkedPanel : UserControl
     {
         if (Running) return;
         var owner = FindForm();
-        if (ValidateInput() is { } problem) { Log(problem, "err"); if (confirm) MessageBox.Show(owner, problem, "Ishonch"); return; }
+        if (ValidateInput() is { } problem) { Log(problem, "err"); if (confirm) MessageBox.Show(owner, problem, AppInfo.DisplayName); return; }
         var sum = Parse(target.Text)!.Value;
         var pct = Parse(percent.Text)!.Value;
         var options = new UnmarkedOptions(Math.Round(sum / (int)count.Value, 2), (int)count.Value, (int)lines.Value, pct, warehouse.Text.Trim(), post.Checked)
@@ -209,14 +209,14 @@ public sealed class UnmarkedPanel : UserControl
         {
             var ans = MessageBox.Show(owner,
                 $"Oldingi ish {resumable!.Done} / {options.Count} ta chekda to'xtagan.\n\nHa — qolgan cheklardan davom etish (inventarizatsiya qayta yangilanmaydi).\nYo'q — hammasini boshidan boshlash.",
-                "Ishonch", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                AppInfo.DisplayName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
             if (ans == DialogResult.Cancel) return;
             resume = ans == DialogResult.Yes;
         }
         else if (confirm)
         {
             var msg = Describe() + "\n\n" + (post.Checked ? "Hujjatlar PROVESTI QILINADI (omborda va hisobda aks etadi).\n" : "") + "Davom etilsinmi?";
-            if (MessageBox.Show(owner, msg, "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            if (MessageBox.Show(owner, msg, AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         }
 
         prefs.Target = sum;

@@ -90,8 +90,16 @@ public static class CdpInput
         {
             var ch = rune.ToString();
             var isDigit = ch.Length == 1 && ch[0] is >= '0' and <= '9';
-            var code = ch == " " ? "Space" : isDigit ? "Digit" + ch : "";
-            var keyCode = isDigit ? 48 + (ch[0] - '0') : ch == " " ? 32 : 0;
+            // Kasr sonlar (masalan gramm: «3,45») uchun vergul, nuqta va minus — haqiqiy tugma kodlari bilan
+            var (code, keyCode) = ch switch
+            {
+                " " => ("Space", 32),
+                "," => ("Comma", 188),
+                "." => ("Period", 190),
+                "-" => ("Minus", 189),
+                _ when isDigit => ("Digit" + ch, 48 + (ch[0] - '0')),
+                _ => ("", 0),
+            };
             await Send(core, "Input.dispatchKeyEvent", new()
             {
                 ["type"] = "keyDown", ["text"] = ch, ["unmodifiedText"] = ch, ["key"] = ch, ["code"] = code,

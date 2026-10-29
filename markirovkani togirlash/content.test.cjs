@@ -213,7 +213,7 @@ test('run finishes without a markup step: transfers happen once, total is the lo
   assert.equal(ctx.transfers,1);
   assert.equal(ctx.state.receiptTarget,220);
   assert.equal(ctx.snapshot,200);
-  assert.equal(JSON.stringify(ctx.said),'[true]'); // announced once, as complete
+  assert.equal(ctx.said,undefined); // no sound / voice at the end of a receipt
   assert.equal(ctx.state.pricingResult.total,200);
   await run('runLoop()');
   assert.equal(ctx.transfers,1);
@@ -421,7 +421,9 @@ test('compact panel has one primary, collapsed details and truly hidden conditio
   assert.equal((ui.match(/class="b primary"/g)||[]).length,1);
   assert.match(ui,/data-el="perItem"/); assert.match(ui,/data-el="clock"/); assert.match(ui,/data-el="bad"/);
   assert.doesNotMatch(ui,/data-a="(?:min|close)"/);
-  assert.match(ui,/<details data-el="details"><summary>Tafsilotlar<\/summary>/);
+  assert.match(ui,/<details class="card fold" data-el="details">/); assert.match(ui,/Tafsilotlar va jurnal<\/summary>/);
+  // Ishonch dasturida qo'lda boshqarish yashirin (avtomatika tugmalarni ichkaridan bosadi), Chrome kengaytmasida ko'rinadi
+  assert.match(ui,/data-el="manual"\$\{IS_DESKTOP \? ' hidden' : ''\}/);
   assert.match(ui,/\[hidden\] \{ display: none !important; \}/);
   assert.match(ui,/data-a="clear"/); assert.match(ui,/>Tozalash<\/button>/);
   assert.match(ui,/data-a="clearWarehouse"/); assert.match(ui,/>Omborni tozalash<\/button>/);
@@ -1098,7 +1100,7 @@ test('E-POS receipt takes the placed units and only this receipt\'s codes, per p
   ctx.state.status='done';ctx.IS_DESKTOP=false;assert.match(vm.runInContext('eposSaleBlockReason()',ctx),/faqat Ishonch dasturida/);
   ctx.IS_DESKTOP=true;ctx.state.items.forEach(i=>i.placed=0);assert.match(vm.runInContext('eposSaleBlockReason()',ctx),/tovar yo‘q/);
   assert.match(source,/data-a="eposSale" hidden/);
-  assert.match(source,/btn\('eposSale'\)\.hidden = !IS_DESKTOP/);
+  assert.match(source,/btn\('eposSale'\)\.hidden = !\(IS_DESKTOP && EPOS_SALE_ENABLED\)/);
 });
 
 test('definitive soliq.uz refusals are kept in a permanent bad-code database and skipped next time',()=>{
@@ -1118,7 +1120,9 @@ test('definitive soliq.uz refusals are kept in a permanent bad-code database and
   // the Подбор loop asks the database first, stores only a definitive refusal and survives Tozalash
   const loop=source.slice(source.indexOf('      const knownBad = knownBadCode(code);'),source.indexOf('      if (atLeastOne(cellText(f.line, colQty)))'));
   assert.ok(loop.indexOf('knownBadCode(code)')<loop.indexOf('await checkMarkingCode(code)'));
-  assert.match(loop,/if \(sold\) rememberBadDb\(item, code, reason, checked\)/);
+  // definitive only: sold, or not found in soliq.uz at all (a temporary failure is not stored)
+  assert.match(loop,/const permanent = sold \|\| !!checked\.notFound;/);
+  assert.match(loop,/if \(permanent\) rememberBadDb\(item, code, sold \? reason : 'markirovka topilmadi', checked\)/);
   assert.doesNotMatch(source.slice(source.indexOf('  function resetReceiptState'),source.indexOf('  async function clearUnstarted')),/badDb/);
   assert.match(source,/badDb: \{\}/);assert.match(source,/data-a="clearBadDb"/);
 });

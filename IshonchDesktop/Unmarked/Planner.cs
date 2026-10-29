@@ -120,6 +120,20 @@ public static class Planner
         return result;
     }
 
+    /// <summary>Gramm bilan sotiladigan tovar miqdori qadami (0,01 g).</summary>
+    public const decimal WeightStep = 0.01m;
+
+    /// <summary>
+    /// Tovar dona emas, og'irlik (gramm, masalan oltin) bilan sotiladimi: o'lchov birligi «г», «гр», «грамм», «кг» (yoki lotincha)
+    /// bo'lsa yoki qoldiq kasr son bo'lsa (12,35). Aks holda — dona.
+    /// </summary>
+    public static bool IsWeight(string? unit, decimal qty)
+    {
+        var u = (unit ?? "").Trim().TrimEnd('.').ToLowerInvariant();
+        if (u is "г" or "гр" or "грамм" or "граммы" or "граммов" or "кг" or "килограмм" or "g" or "gr" or "gramm" or "gram" or "kg") return true;
+        return qty != Math.Truncate(qty);
+    }
+
     /// <summary>1C post xatosi matnidan (qator raqami, qoldiq): «в строке 3 ... превышает остаток. Остаток: 0; Не хватает: 254».</summary>
     public static (int Row, decimal Stock)? ParseStockError(string message)
     {

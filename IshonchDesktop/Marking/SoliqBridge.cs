@@ -65,6 +65,34 @@ public static class SoliqBridge
     const string ApiUrl = "https://my.soliq.uz/api/mark-personal-cabinet/turnover-marking/marking-code";
     static int apiLogged;
 
+    /// <summary>my.soliq.uz ga kirilmagan bo'lsa ko'rsatiladigan xabar (markirovkani tekshirib bo'lmaydi).</summary>
+    public const string NotLoggedInMessage = "Avval my.soliq.uz ga yuridik shaxs sifatida kiring: ERI kalitdan birini tanlang, keyin tekshirishni boshlaymiz";
+
+    /// <summary>Yuridik shaxs sifatida kirish sahifasi.</summary>
+    public const string LegalLoginUrl = "https://my.soliq.uz/login?type=legal";
+
+    /// <summary>
+    /// my.soliq.uz ga ERI kalit bilan kirilganmi: sahifa kirish (login) sahifasi emas va unda sessiya tokeni bor.
+    /// Tab boshqa joyda bo'lsa markirovka sahifasi ochiladi.
+    /// </summary>
+    public static async Task<bool> IsLoggedInAsync(Func<Task<WebTab>> getTab)
+    {
+        var tab = await getTab();
+        await tab.Ready;
+        if (tab.Core is not { } core) return false;
+        if (!(core.Source ?? "").StartsWith(Origin, StringComparison.OrdinalIgnoreCase))
+        {
+            tab.Navigate(MarkUrl);
+            await tab.WaitNavigatedAsync();
+            await Task.Delay(1500);
+        }
+        var loggedIn = !(core.Source ?? "").Contains("/login", StringComparison.OrdinalIgnoreCase)
+            && (await core.ExecuteScriptAsync("!!localStorage.getItem('token')")).Trim() == "true";
+        // Kirilmagan: tab yuridik shaxs kirish sahifasiga o'tkaziladi — ERI kalitni darhol tanlash mumkin
+        if (!loggedIn && !(core.Source ?? "").Contains("type=legal", StringComparison.OrdinalIgnoreCase)) tab.Navigate(LegalLoginUrl);
+        return loggedIn;
+    }
+
     /// <summary>
     /// Markirovka tarixini sahifaning o'z API si orqali oladi (sahifa ichidan, foydalanuvchi sessiyasi bilan).
     /// null — bu yo'l ishlamadi (kirilmagan, sahifa boshqa joyda, javob tushunarsiz): eski usul ishlatiladi.
@@ -99,6 +127,11 @@ public static class SoliqBridge
                 IshonchDesktop.Models.Log.Write($"soliq-api {status}: {(body.Length > 1500 ? body[..1500] : body)}");
             if (status is 401 or 403) return null;
 
+            // «Ushbu markirovka kodi topilmadi» (yoki «не найден») — holat kodidan qat'i nazar: kod darhol tashlanadi,
+            // sekin sahifa qidiruviga o'tilmaydi
+            if (body.Contains("topilmadi", StringComparison.OrdinalIgnoreCase) || body.Contains("не найден", StringComparison.OrdinalIgnoreCase))
+                return new { ok = true, verdict = "unknown", reason = "markirovka topilmadi", notFound = true };
+
             using var doc = JsonDocument.Parse(body);
             var data = doc.RootElement.TryGetProperty("data", out var d1) ? d1 : default;
             if (data.ValueKind == JsonValueKind.Object && data.TryGetProperty("data", out var d2) && d2.ValueKind == JsonValueKind.Object) data = d2;
@@ -106,7 +139,7 @@ public static class SoliqBridge
             {
                 var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.ToString() : "";
                 return status == 200 || status == 400 || status == 404
-                    ? new { ok = true, verdict = "unknown", reason = string.IsNullOrWhiteSpace(msg) ? "markirovka topilmadi" : msg }
+                    ? new { ok = true, verdict = "unknown", reason = string.IsNullOrWhiteSpace(msg) ? "markirovka topilmadi" : msg, notFound = string.IsNullOrWhiteSpace(msg) }
                     : null;
             }
 
@@ -230,7 +263,7 @@ public static class SoliqBridge
                 if (r is not { ValueKind: JsonValueKind.Object } result) { await Task.Delay(500); continue; }
 
                 if (result.TryGetProperty("loggedIn", out var li) && li.ValueKind == JsonValueKind.False)
-                    return new { ok = true, verdict = "unknown", reason = "my.soliq.uz ga kirilmagan" };
+                    return new { ok = true, verdict = "unknown", reason = NotLoggedInMessage, notLoggedIn = true };
 
                 var found = result.TryGetProperty("found", out var f) && f.ValueKind == JsonValueKind.True;
                 result.TryGetProperty("history", out var history);

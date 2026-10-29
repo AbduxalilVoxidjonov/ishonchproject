@@ -255,11 +255,14 @@
     if (typeof el === 'function') el('target').value = '';
   };
 
+  // A receipt into which nothing was transferred yet can be dropped even if its 1C document still needs confirming
+  // (e.g. the program was closed and that document no longer exists): the ledger loses nothing
+  const nothingTransferred = () => !(state.pendingCodes || []).length && state.items.every(i => i.placed === (i.deducted || 0));
   const clearBlockReason = () => activeTask
       ? 'joriy ish bajarilmoqda'
       : state.inFlight
         ? 'o‘tkazish natijasi noaniq'
-        : state.documentNeedsAck
+        : state.documentNeedsAck && !nothingTransferred()
           ? 'joriy hujjatni tasdiqlash kerak'
           : state.status === 'running'
             ? 'chek ishlamoqda'
@@ -773,6 +776,7 @@
           if (error) return finish({ verdict: 'unknown', reason: error.message });
           if (!response?.ok) return finish({ verdict: 'unknown', reason: response?.error || 'MXIK javob bermadi' });
           finish({ verdict: response.verdict || 'unknown', operation: response.operation || '', reason: response.reason || '',
+            notLoggedIn: !!response.notLoggedIn, notFound: !!response.notFound,
             lastStir: response.lastStir || '', stirMatch: response.stirMatch ?? null,
             product: response.history?.product || '', steps: response.history?.steps?.length || 0, last: response.history?.last || null });
         });
@@ -1039,6 +1043,12 @@
       }
 
       const checked = await checkMarkingCode(code);
+      // my.soliq.uz ga ERI kalit bilan kirilmagan: kodlarni tashlab ketish befoyda — Подбор yopiladi va ish pauza qilinadi
+      if (checked.notLoggedIn) {
+        try { await closePodbor(); } catch { /* yopilmasa ham pauza qilinadi */ }
+        state.pendingCodes = [];
+        throw docError('Avval my.soliq.uz ga yuridik shaxs sifatida kiring: ERI kalitdan birini tanlang, keyin tekshirishni boshlaymiz («Davom» ni bosing)');
+      }
       if (checked.verdict !== 'available') {
         const sold = checked.verdict === 'sold';
         const reason = sold
@@ -1047,8 +1057,10 @@
             : `sotilgan${checked.operation ? ` (${checked.operation})` : ''}`
           : `tekshirilmadi${checked.reason ? ` (${checked.reason})` : ''}`;
         noteBadCode(item, code, position, reason);
-        if (sold) rememberBadDb(item, code, reason, checked);
-        log(`↷ ${item.name}: ${position}-kod ${reason}, tashlandi${sold ? ' (xato bazasiga yozildi)' : ''}.`, sold ? 'info' : 'warn');
+        // Sotilgan yoki soliqda umuman topilmagan kod keyingi cheklarda ham olinmaydi — qayta so'ralmasligi uchun bazaga yoziladi
+        const permanent = sold || !!checked.notFound;
+        if (permanent) rememberBadDb(item, code, sold ? reason : 'markirovka topilmadi', checked);
+        log(`↷ ${item.name}: ${position}-kod ${reason}, tashlandi${permanent ? ' (xato bazasiga yozildi)' : ''}.`, permanent ? 'info' : 'warn');
         await cdp({ type: 'key', key: 'ArrowDown' });
         await sleep(T.afterCell);
         continue;
@@ -1271,7 +1283,6 @@
       snapshotReceipt();
       state.phase = 'complete';
       state.status = 'done';
-      announce(!state.incomplete);
       receiptReady = false;
       el('target').value = '';
       log(`Jami (lokal hisob): ${fmtSum(state.pricingResult.total)}${state.receiptTarget != null ? `; maqsaddan farq: ${fmtSum(round2(state.pricingResult.total - state.receiptTarget))}` : ''}. Yakuniy summa 1C da hujjat o‘tkazilganda (QQS, 1C narxi) farq qilishi mumkin.`, 'warn');
@@ -1292,37 +1303,6 @@
       save();
       render();
     }
-  }
-
-  /**
-   * Says out loud that the receipt is collected, so it is noticed without watching the panel.
-   * An Uzbek voice is used when the browser has one; otherwise a Russian voice says the same in Russian
-   * (Edge and Yandex ship different voices). A short beep comes first and works even with no voice at all.
-   */
-  function announce(complete) {
-    try {
-      const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
-      if (Audio) {
-        const ac = new Audio();
-        const osc = ac.createOscillator();
-        osc.connect(ac.destination);
-        osc.frequency.value = 880;
-        osc.start();
-        osc.stop(ac.currentTime + 0.25);
-        setTimeout(() => ac.close().catch(() => {}), 600);
-      }
-    } catch { /* no audio */ }
-    try {
-      const synth = globalThis.speechSynthesis;
-      if (!synth || typeof SpeechSynthesisUtterance !== 'function') return;
-      const voices = synth.getVoices();
-      const uz = voices.find((v) => /^uz/i.test(v.lang));
-      const u = new SpeechSynthesisUtterance(uz ? (complete ? 'Yig‘ib bo‘lindi' : 'Chek to‘liq emas') : (complete ? 'Сбор завершён' : 'Чек неполный'));
-      u.lang = uz ? uz.lang : 'ru-RU';
-      if (uz) u.voice = uz;
-      synth.cancel();
-      synth.speak(u);
-    } catch { /* no speech */ }
   }
 
   /** Continue after a pause: the running loop picks it up, or a new loop starts (e.g. after a page reload). */
@@ -1356,7 +1336,7 @@
     return { receiptId: String(state.receiptId ?? ''), finished: state.status === 'done', lines };
   }
 
-  const EPOS_SALE_ENABLED = false;
+  const EPOS_SALE_ENABLED = true;
   const eposSaleBlockReason = () => !EPOS_SALE_ENABLED
     ? 'E-POS orqali sotish hozircha o‘chirilgan'
     : !IS_DESKTOP ? 'E-POS orqali sotish faqat Ishonch dasturida ishlaydi'
@@ -1380,7 +1360,7 @@
   }
 
   async function primaryAction() {
-    if (activeTask === 'capture') return;
+    if (activeTask === 'capture') return log('«Olish» hali tugamagan — «Boshlash» keyinroq bosiladi.', 'warn');
     if (state.status === 'running' && activeTask === 'run') {
       state.status = 'paused';
       save(); render();
@@ -1555,35 +1535,75 @@
       button.small { flex: 0 0 auto; }
       .receipt { flex:0 0 auto; min-height:120px; max-height:320px; overflow:auto; } table { border-collapse:collapse; width:100%; min-width:680px; } th,td { padding:4px; text-align:right; border-bottom:1px solid #e2e8f0; } th:first-child,td:first-child { text-align:left; } .qty { width:76px; }
       .item.skip { color: #94a3b8; }
+      /* Bosqichlar: oq karta, raqamli sarlavha */
+      .body { background: #f8fafc; }
+      .head .hstat { font-size: 11px; opacity: .85; text-align: right; margin-left: 8px; }
+      .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+      .card .st { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #1e1b4b; font-size: 13px; }
+      .card .st .n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #4f46e5; color: #fff; font-size: 11px; flex: 0 0 auto; }
+      details.fold { gap: 0; }
+      details.fold > summary { cursor: pointer; list-style: none; }
+      details.fold > summary::-webkit-details-marker { display: none; }
+      details.fold > summary::after { content: '▸'; margin-left: auto; color: #94a3b8; }
+      details.fold[open] > summary::after { content: '▾'; }
+      details.fold .sub { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     </style>
     <div class="panel">
-      <div class="head"><b>Markirovkali chek <small>v${VERSION}</small></b></div>
+      <div class="head"><b>Markirovkali chek <small>v${VERSION}</small></b><span class="hstat" data-el="source">Ma’lumot olinmagan</span></div>
       <div class="body">
-        <div class="muted" data-el="source">Ma’lumot olinmagan</div>
-        <div class="row"><button class="b" data-a="capture">Olish</button><button class="b small" data-a="clear" title="Joriy chekni tozalash">Tozalash</button><button class="b small" data-a="clearWarehouse" title="O‘qilgan ombor ma’lumotlarini tozalash">Omborni tozalash</button><label title="100 — boshidan 100 qator; 4-20 — 4-qatordan 20-qatorgacha (17 qator); bo‘sh — hammasi">Qatorlar <input class="inp" style="flex:0 0 100px;width:100px;box-sizing:border-box" data-el="captureLimit" type="text" inputmode="text" placeholder="100 yoki 4-20"></label></div>
-        <div class="row">
-          <label class="field"><span>Maqsad summa, UZS</span><input class="inp" data-el="target" type="text" inputmode="decimal"></label>
-          <label class="field" title="Har bir tovardan nechta dona olinadi. Qoldiq kam bo‘lsa boricha olinadi. Bo‘sh qoldirilsa tovarning hammasi olinadi."><span>Bir tovardan, dona</span><input class="inp" data-el="perItem" type="text" inputmode="numeric" placeholder="hammasi"></label>
-        </div>
-        <div class="row"><button class="b primary" data-a="start">Boshlash</button><button class="b" data-a="all">Barcha mahsulotlarni qo‘shish</button><button class="b" data-a="eposSale" hidden title="Tayyor chekni E-POS orqali fiskal chek qilib sotadi">E-POS orqali sotish</button><button class="b small" data-a="abort" title="Qotib qolgan amalni tugatadi va joriy chekni nolga qaytaradi (ombor qoldig‘i saqlanadi)">⛔ To‘liq to‘xtatish</button></div>
+        <section class="card">
+          <div class="st"><span class="n">1</span>Sozlamalar</div>
+          <div class="auto-slot" id="ishAutoSettingsSlot"></div>
+          <div class="row">
+            <label class="field"><span>Maqsad summa, UZS</span><input class="inp" data-el="target" type="text" inputmode="decimal" placeholder="umumiy summa"></label>
+            <label class="field" title="Har bir tovardan nechta dona olinadi. Qoldiq kam bo‘lsa boricha olinadi. Bo‘sh qoldirilsa tovarning hammasi olinadi."><span>Bir tovardan, dona</span><input class="inp" data-el="perItem" type="text" inputmode="numeric" placeholder="hammasi"></label>
+          </div>
+          <div class="row">
+            <label class="field" title="100 — boshidan 100 qator; 4-20 — 4-qatordan 20-qatorgacha (17 qator); bo‘sh — hammasi"><span>Inventarizatsiyadan qatorlar</span><input class="inp" data-el="captureLimit" type="text" inputmode="text" placeholder="hammasi (yoki 100, 4-20)"></label>
+            <label class="field" title="Kod faqat oxirgi operatsiyasi ulgurji va oxirgi olgan STIR shu bo‘lsa olinadi. Bo‘sh qoldirilsa faqat operatsiya turi tekshiriladi."><span>Bizning STIR</span><input class="inp" data-el="stir" type="text" inputmode="numeric" placeholder="masalan 123456789"></label>
+          </div>
+        </section>
 
-        <div class="clock" data-el="clock" hidden></div>
-        <div data-el="receiptSummary"></div>
-        <div><div class="bar"><i data-el="bar"></i></div><div class="muted" data-el="progress"></div></div>
-        <div data-el="message" role="status"></div>
+        <section class="card">
+          <div class="st"><span class="n">2</span>Ishga tushirish</div>
+          <div class="auto-slot" id="ishAutoActionsSlot"></div>
+          <div class="clock" data-el="clock" hidden></div>
+          <div data-el="receiptSummary"></div>
+          <div><div class="bar"><i data-el="bar"></i></div><div class="muted" data-el="progress"></div></div>
+          <div data-el="message" role="status"></div>
+          <div class="row"><button class="b" data-a="eposSale" hidden title="Tayyor chekni E-POS orqali fiskal chek qilib sotadi">E-POS orqali sotish</button></div>
+          <div class="row" data-el="recovery" hidden><button class="b" data-a="confirmAdded" hidden>Qo‘shilganini tasdiqlash</button><button class="b" data-a="confirmNotAdded" hidden>Qo‘shilmaganini tasdiqlash</button><button class="b" data-a="confirmDocument" hidden>Joriy hujjatni tasdiqlash</button></div>
+        </section>
+
+        <!-- Qo'lda boshqarish: Ishonch dasturida ko'rinmaydi (hammasini avtomatika bajaradi, tugmalarni ichkaridan bosadi);
+             Chrome kengaytmasida — oddiy tugmalar -->
+        <section class="card" data-el="manual"${IS_DESKTOP ? ' hidden' : ''}>
+          <div class="st"><span class="n">3</span>Boshqaruv</div>
+          <div class="row"><button class="b" data-a="capture" title="Ochiq inventarizatsiyadan tovarlarni o‘qish">Olish</button><button class="b primary" data-a="start">Boshlash</button></div>
+          <div class="row"><button class="b" data-a="all">Barcha mahsulotlarni qo‘shish</button></div>
+          <div class="row"><button class="b small" data-a="clear" title="Joriy chekni tozalash">Tozalash</button><button class="b small" data-a="clearWarehouse" title="O‘qilgan ombor ma’lumotlarini tozalash">Omborni tozalash</button><button class="b small" data-a="abort" title="Qotib qolgan amalni tugatadi va joriy chekni nolga qaytaradi (ombor qoldig‘i saqlanadi)">⛔ To‘liq to‘xtatish</button></div>
+        </section>
+
         <div class="badbox" data-el="badBox" hidden><details open><summary data-el="badTitle">Xato markirovkalar</summary><div class="bad" data-el="bad"></div><div class="row"><button class="b small" data-a="clearBadDb" title="Doimiy xato markirovkalar bazasini bo‘shatadi: kodlar qayta soliq.uz da tekshiriladi">Xato bazasini tozalash</button></div></details></div>
-        <div class="check"><b>Markirovkani tekshirish</b>
-          <label class="field" title="Kod faqat oxirgi operatsiyasi ulgurji va oxirgi olgan STIR shu bo‘lsa olinadi. Bo‘sh qoldirilsa faqat operatsiya turi tekshiriladi."><span>Bizning STIR</span><input class="inp" data-el="stir" type="text" inputmode="numeric" placeholder="masalan 123456789"></label>
-          <div class="row"><input class="inp" data-el="checkCode" data-enter="checkCode" type="text" placeholder="Kodni kiriting yoki skanerlang (bir nechtasini bo‘shliq bilan)"><button class="b small" data-a="checkCode">Tekshirish</button></div>
-          <div data-el="checkResult"></div></div>
-        <details data-el="details"><summary>Tafsilotlar</summary>
-        <div class="row" data-el="recovery" hidden><button class="b" data-a="confirmAdded" hidden>Qo‘shilganini tasdiqlash</button><button class="b" data-a="confirmNotAdded" hidden>Qo‘shilmaganini tasdiqlash</button><button class="b" data-a="confirmDocument" hidden>Joriy hujjatni tasdiqlash</button></div>
-        <div class="muted" data-el="rules">Faqat markirovkali • har bir tovardan ko‘pi bilan 2 dona (qoldiq kam bo‘lsa boricha) • turlar soni cheklanmagan</div>
-        <div class="muted" data-el="fullSource"></div>
-        <div class="muted" data-el="plan"></div>
-        <div class="receipt" data-el="receipt"></div>
-        <div class="list" data-el="list"></div>
-        <div class="log" data-el="log"></div>
+
+        <details class="card fold check">
+          <summary class="st"><span class="n">✓</span>Markirovkani tekshirish</summary>
+          <div class="sub">
+            <div class="row"><input class="inp" data-el="checkCode" data-enter="checkCode" type="text" placeholder="Kodni kiriting yoki skanerlang (bir nechtasini bo‘shliq bilan)"><button class="b small" data-a="checkCode">Tekshirish</button></div>
+            <div data-el="checkResult"></div>
+          </div>
+        </details>
+
+        <details class="card fold" data-el="details">
+          <summary class="st"><span class="n">i</span>Tafsilotlar va jurnal</summary>
+          <div class="sub">
+            <div class="muted" data-el="rules">Faqat markirovkali • har bir tovardan ko‘pi bilan 2 dona (qoldiq kam bo‘lsa boricha) • turlar soni cheklanmagan</div>
+            <div class="muted" data-el="fullSource"></div>
+            <div class="muted" data-el="plan"></div>
+            <div class="receipt" data-el="receipt"></div>
+            <div class="list" data-el="list"></div>
+            <div class="log" data-el="log"></div>
+          </div>
         </details>
       </div>
     </div>`;
@@ -1619,7 +1639,7 @@
     if (capturing) el('captureLimit').disabled = true; // the button is Pauza/Davom while reading: the limit stays fixed
     el('captureLimit').value = state.captureLimit ?? '';
     btn('start').textContent = next ? 'Yangi chekni boshlash' : busy ? 'Pauza' : resumable ? 'Davom' : 'Boshlash';
-    // E-POS orqali sotish hozircha o'chirilgan (kod saqlanadi, qaytarish uchun EPOS_SALE_ENABLED = true)
+    // E-POS orqali sotish (fiskal modul ulanganda); o'chirish uchun EPOS_SALE_ENABLED = false
     btn('eposSale').hidden = !(IS_DESKTOP && EPOS_SALE_ENABLED);
     btn('eposSale').disabled = !!eposSaleBlockReason();
     btn('start').disabled = capturing || !!state.inFlight || (!next && !!state.documentNeedsAck) || !state.items.length ||
@@ -1870,6 +1890,8 @@
       if (msg?.type === 'click') {
         const b = btn(msg.a);
         if (b && !b.disabled && !b.hidden) b.click();
+        // Bosish bajarilmasa sababi jurnalga yoziladi (Ishonch avtomatikasi tugmalarni ichkaridan bosadi)
+        else if (msg.a === 'start' || msg.a === 'capture') log(`«${msg.a}» bosilmadi: ${!b ? 'tugma topilmadi' : b.disabled ? 'tugma o‘chiq' : 'tugma yashirin'} (holat: ${state.status}${activeTask ? ', ' + activeTask : ''})`, 'warn');
       } else if (msg?.type === 'input') {
         const input = el(msg.name);
         if (input?.tagName !== 'INPUT' || input.disabled) return;
@@ -1910,6 +1932,9 @@
     if (data[STORE_KEY]) state = globalThis.ReceiptStateMigration.migrate(data[STORE_KEY], VERSION, emptyState, globalThis.ReceiptLedger);
     // Time between the last save and a page reload is unknown: it is not counted
     if (state.clock) state.clock.since = null;
+    // Nothing runs right after loading: a saved «running» (the page or the program was closed mid-run) is a pause,
+    // so «Davom» / «Tozalash» work instead of the panel staying locked
+    if (state.status === 'running') state.status = 'paused';
     restored = true;
     await save();
     if (!alive()) return;

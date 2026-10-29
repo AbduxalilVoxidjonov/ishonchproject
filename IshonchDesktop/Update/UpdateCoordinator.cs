@@ -133,7 +133,7 @@ public sealed class UpdateCoordinator
             return;
         }
 
-        using var progress = new ProgressDialog($"Ishonch {AppInfo.Format(u.Version)} yuklanmoqda…");
+        using var progress = new ProgressDialog($"{AppInfo.DisplayName} {AppInfo.Format(u.Version)} yuklanmoqda…");
         progress.Show(owner);
         try
         {
@@ -173,7 +173,7 @@ public sealed class UpdateCoordinator
 
         // 4) Qayta ishga tushirish (ochiq tablar keyingi ishga tushishda tiklanadi)
         if (MessageBox.Show(owner, $"Yangilanish o'rnatildi (v{AppInfo.Format(u.Version)}).\nDastur qayta ishga tushadi; ochiq tablaringiz va saqlangan ma'lumotlar o'z joyida qoladi.",
-                "Ishonch", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
+                AppInfo.DisplayName, MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
             owner.Close();
         else
             PendingRestart = null; // keyingi qo'lda ishga tushirishda yangi versiya ochiladi
@@ -233,7 +233,7 @@ public sealed class UpdateDialog : Form
 
     public UpdateDialog(UpdateInfo u, Version current, bool canAutoInstall)
     {
-        Text = "Ishonch — yangi versiya";
+        Text = AppInfo.DisplayName + " — yangi versiya";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = MinimizeBox = false;
@@ -280,7 +280,7 @@ public sealed class ProgressDialog : Form
 
     public ProgressDialog(string text)
     {
-        Text = "Ishonch — yangilanish";
+        Text = AppInfo.DisplayName + " — yangilanish";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = MinimizeBox = ControlBox = false;

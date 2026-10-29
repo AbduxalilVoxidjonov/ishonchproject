@@ -92,7 +92,15 @@ public sealed class WebTab : UserControl
         if (!Environments.TryGetValue(key, out var task))
         {
             var folder = Path.Combine(Paths.Profiles, key);
-            Environments[key] = task = CoreWebView2Environment.CreateAsync(null, folder);
+            // Faqat sinov uchun: ISHONCH_DEBUG_PORT berilsa har bir muhit o'z debug portini oladi (asos + tartib raqami)
+            CoreWebView2EnvironmentOptions? options = null;
+            if (int.TryParse(Environment.GetEnvironmentVariable("ISHONCH_DEBUG_PORT"), out var basePort) && basePort > 0)
+            {
+                var port = basePort + Environments.Count;
+                options = new CoreWebView2EnvironmentOptions($"--remote-debugging-port={port}");
+                Log.Write($"Debug port: {key} → {port}");
+            }
+            Environments[key] = task = CoreWebView2Environment.CreateAsync(null, folder, options);
         }
         return task;
     }
@@ -121,7 +129,7 @@ public sealed class WebTab : UserControl
         {
             Log.Error("WebView2 yaratish " + ProfileKey, e);
             ready.TrySetResult();
-            MessageBox.Show(this, "WebView2 ishga tushmadi: " + e.Message, "Ishonch", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "WebView2 ishga tushmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 

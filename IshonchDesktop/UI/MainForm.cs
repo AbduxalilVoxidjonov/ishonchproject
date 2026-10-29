@@ -23,7 +23,9 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Ishonch";
+        Text = AppInfo.DisplayName;
+        // Oyna va vazifalar paneli belgisi — exe ga joylangan belgi (Resources\app.ico)
+        if (AppIcon.ForWindow() is { } appIcon) Icon = appIcon;
         KeyPreview = true;
         ZoomStore.Settings = settings;
         MinimumSize = new Size(820, 560);
@@ -40,6 +42,8 @@ public sealed class MainForm : Form
         homePage.Controls.Add(home);
         tabs.TabPages.Add(homePage);
         Controls.Add(tabs);
+        // Pastda: ulangan fiskal modul va uning holati
+        Controls.Add(new FiscalStatusBar());
 
         home.OpenOneC += b => OpenBase(b);
         home.OpenSoliq += b => OpenSoliqTab(b);
@@ -73,23 +77,24 @@ public sealed class MainForm : Form
 
     void BuildMenu()
     {
-        var menu = new MenuStrip { Dock = DockStyle.Top };
-        var help = new ToolStripMenuItem("Yordam");
-        help.DropDownItems.Add("Yangilanishni tekshirish", null, async (_, _) => await updater.CheckAsync(manual: true));
-        help.DropDownItems.Add("Yangilanish sozlamalari…", null, (_, _) => updater.ShowSettings());
-        help.DropDownItems.Add(new ToolStripSeparator());
-        help.DropDownItems.Add("Ma'lumotlar papkasini ochish", null, (_, _) =>
+        // «Yordam» — bosh sahifada «Elektr» ostidagi tugma; bosilganda shu menyu ochiladi (tepada menyu satri yo'q)
+        var help = new ContextMenuStrip { Font = new Font("Segoe UI", 10f) };
+        help.Items.Add($"📞  Telefon: {AppInfo.SupportPhone}  (nusxalash)", null, (_, _) =>
+        {
+            try { Clipboard.SetText(AppInfo.SupportPhone); } catch { /* buferga yozilmadi */ }
+        });
+        help.Items.Add($"✈  Telegram: @{AppInfo.SupportTelegram}", null, (_, _) =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://t.me/" + AppInfo.SupportTelegram) { UseShellExecute = true }));
+        help.Items.Add(new ToolStripSeparator());
+        help.Items.Add("Yangilanishni tekshirish", null, async (_, _) => await updater.CheckAsync(manual: true));
+        help.Items.Add("Yangilanish sozlamalari…", null, (_, _) => updater.ShowSettings());
+        help.Items.Add(new ToolStripSeparator());
+        help.Items.Add("Ma'lumotlar papkasini ochish", null, (_, _) =>
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{Paths.AppData}\"") { UseShellExecute = true }));
-        help.DropDownItems.Add("Ishonch haqida", null, (_, _) =>
-            MessageBox.Show(this, $"Ishonch {AppInfo.Text}\nYangilanishlar: github.com/{settings.UpdateRepo}\nMa'lumotlar: {Paths.AppData}",
-                "Ishonch haqida", MessageBoxButtons.OK, MessageBoxIcon.Information));
-        var unmarked = new ToolStripMenuItem("Markirovkasiz sotish");
-        unmarked.DropDownItems.Add("Barcha ochiq panellarda boshlash", null, async (_, _) => await StartAllUnmarkedAsync());
-        unmarked.DropDownItems.Add("Hammasini to'xtatish", null, (_, _) => { foreach (var p in UnmarkedPanels()) p.Stop(); });
-        menu.Items.Add(unmarked);
-        menu.Items.Add(help);
-        MainMenuStrip = menu;
-        Controls.Add(menu);
+        help.Items.Add("Dastur haqida", null, (_, _) =>
+            MessageBox.Show(this, $"Versiya: {AppInfo.Text}\n\nYordam uchun:\nTelefon: {AppInfo.SupportPhone}\nTelegram: @{AppInfo.SupportTelegram}\n\nMa'lumotlar: {Paths.AppData}",
+                "Dastur haqida", MessageBoxButtons.OK, MessageBoxIcon.Information));
+        home.HelpClicked += anchor => help.Show(anchor, new Point(0, anchor.Height));
     }
 
     // ---- ochiq tablarni saqlash/tiklash --------------------------------------------------------
@@ -135,17 +140,17 @@ public sealed class MainForm : Form
         var panels = UnmarkedPanels().Where(p => !p.Running).ToList();
         if (panels.Count == 0)
         {
-            MessageBox.Show(this, "Ochiq «Markirovkasiz sotish» paneli yo'q. Bosh sahifada bazani tanlab panelni oching.", "Ishonch");
+            MessageBox.Show(this, "Ochiq «Markirovkasiz sotish» paneli yo'q. Bosh sahifada bazani tanlab panelni oching.", AppInfo.DisplayName);
             return;
         }
         var bad = panels.Select(p => (p, err: p.ValidateInput())).Where(x => x.err is not null).ToList();
         if (bad.Count > 0)
         {
-            MessageBox.Show(this, string.Join("\n", bad.Select(x => x.p.BaseTitle + ": " + x.err)), "Ishonch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, string.Join("\n", bad.Select(x => x.p.BaseTitle + ": " + x.err)), AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         var text = string.Join("\n", panels.Select(p => "• " + p.Describe()));
-        if (MessageBox.Show(this, text + "\n\nHammasi bir vaqtda boshlansinmi?", "Ishonch", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        if (MessageBox.Show(this, text + "\n\nHammasi bir vaqtda boshlansinmi?", AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         await Task.WhenAll(panels.Select(p => p.StartAsync(confirm: false)));
     }
 
@@ -304,7 +309,7 @@ public sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Error("OpenMarking", e);
-            MessageBox.Show(this, "Markirovka panelini ochib bo'lmadi: " + e.Message, "Ishonch", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "Markirovka panelini ochib bo'lmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

@@ -78,7 +78,12 @@ public sealed class CommunicatorTab : UserControl
         Controls.Add(top);
 
         refreshBtn.Click += async (_, _) => await RefreshStatusAsync();
-        portBox.SelectedIndexChanged += async (_, _) => { client.FiscalPort = int.Parse((string)portBox.SelectedItem!); await RefreshStatusAsync(); };
+        portBox.SelectedIndexChanged += async (_, _) =>
+        {
+            if (settingPort) return;
+            client.FiscalPort = int.Parse((string)portBox.SelectedItem!);
+            await RefreshStatusAsync();
+        };
         loadBtn.Click += (_, _) => LoadReceipt();
         ikpuBtn.Click += async (_, _) => await FillIkpuAndPackagesAsync();
         checkBtn.Click += async (_, _) => await CheckCodesAsync();
@@ -114,15 +119,36 @@ public sealed class CommunicatorTab : UserControl
         try
         {
             await client.GetStatusAsync();
-            status.Text = $"{version}: fiskal modul ishlayapti";
+            status.Text = $"{version}: fiskal modul ishlayapti (port {client.FiscalPort})";
             status.ForeColor = Color.SeaGreen;
+            await ShowModuleAsync();
         }
         catch (UzposException e)
         {
-            status.Text = $"{version}: fiskal modul ISHLAMAYAPTI ({e.Message.Trim()})";
+            // Tanlangan portda modul yo'q — boshqa portlarni sinab ko'ramiz (FiscalDriveAPI 3448, FiscalDriveService 3449/3450)
+            if (await client.DetectPortAsync() is { } found)
+            {
+                settingPort = true;
+                portBox.SelectedItem = found.ToString();
+                settingPort = false;
+                status.Text = $"{version}: fiskal modul ishlayapti (port {found} avtomatik topildi)";
+                status.ForeColor = Color.SeaGreen;
+                await ShowModuleAsync();
+                return;
+            }
+            status.Text = $"{version}: fiskal modul ISHLAMAYAPTI ({e.Message.Trim()}) — ulanganini tekshiring";
             status.ForeColor = Color.Firebrick;
         }
     }
+
+    /// <summary>Holat qatoriga qaysi fiskal modul ulanganini qo'shadi (TerminalID / FactoryID).</summary>
+    async Task ShowModuleAsync()
+    {
+        var name = await client.GetModuleNameAsync();
+        status.Text += name is null ? " — modul raqami aniqlanmadi" : $" — ulangan modul: {name}";
+    }
+
+    bool settingPort;
 
     static async Task<string> SafeAsync(Func<Task<string>> f, string fallback)
     {
