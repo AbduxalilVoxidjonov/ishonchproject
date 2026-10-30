@@ -525,9 +525,13 @@
       // position does not matter (Ctrl+Home is not reliable on every keyboard layout).
       const firstLine = gridRows(grid)[0];
       if (!firstLine) throw new Error('Товары jadvali bo‘sh');
-      await realClick(cellOf(firstLine, colN) || firstLine);
-      await sleep(T.afterClick);
       const focusInGrid = () => !!grid.querySelector('.gridBody .gridBox.focus') && grid.contains(document.activeElement);
+      // Inventarizatsiya endigina provesti qilingan bo'lsa 1C bir oz band: birinchi bosish yutilishi mumkin — bir necha marta
+      for (let attempt = 0; attempt < 5 && (attempt === 0 || !focusInGrid()); attempt++) {
+        const line = gridRows(grid)[0] || firstLine;
+        await realClick(cellOf(line, colN) || line);
+        await sleep(T.afterClick + attempt * 400);
+      }
       if (!focusInGrid()) throw new Error('Jadval tanlanmadi — brauzer masshtabi 100% ekanini tekshiring (Ctrl+0) va «Olish» ni qayta bosing');
       const targetCount = !bounds ? rowCount : rowCount ? Math.min(rowCount, bounds.to) : bounds.to;
       const complete = () => {

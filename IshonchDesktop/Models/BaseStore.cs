@@ -173,4 +173,9 @@ public sealed class MarkedPrefs
     public int Count { get; set; } = 3;
     public string Warehouse { get; set; } = "";
     public bool Post { get; set; } = true;
+    /// <summary>Ombor (inventarizatsiya) qaysi sklad uchun va qachon o'qilgan: shu kun shu sklad uchun qayta o'qilmaydi.</summary>
+    public string CapturedWarehouse { get; set; } = "";
+    public DateTime? CapturedOn { get; set; }
+    /// <summary>Qaysi inventarizatsiya sanasi bilan o'qilgan: sana o'zgarsa ombor qayta o'qiladi.</summary>
+    public DateTime? CapturedInventoryDate { get; set; }
 }

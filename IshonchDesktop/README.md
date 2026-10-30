@@ -49,9 +49,17 @@ Bosh sahifadagi **E-POS orqali sotish** tugmasi shu bazaning tayyor markirovkali
 - **Yangilanish**: GitHub Release dan tekshirish/yuklash/almashtirish (Yordam → Yangilanishni tekshirish), ma'lumotlar zaxirasi, ochiq tablar tiklanadi.
 - Bosh sahifa: raqam yonidagi ☆ bilan bazani tepaga qadash, № bo'yicha tartib.
 
-## Xatolar jurnali (keyingi versiya)
-- Har bir ogohlantirish va xato `%APPDATA%\Ishonch\problems.jsonl` ga yoziladi: vaqt, baza/firma/INN, bo'lim (markirovkali avto, markirovkasiz, E-POS, soliq, Elektr…), matn, stack trace va oldingi `app.log` qatorlari.
-- **Yordam → «Xatolar jurnali (yig'uvchi)…»** da manzil berilsa, yozuvlar egasining kompyuteridagi **IshonchLogs.exe** ga yuboriladi (HTTP, kalit bilan). Manzil va kalit release da GitHub `LOG_COLLECTOR_URL` / `LOG_COLLECTOR_KEY` dan exe ga yoziladi — kompyuterlarda qo'lda kiritish shart emas. Batafsil: `../IshonchLogs/README.md`.
+## 0.7.8 — Xatolar jurnali, inventarizatsiya sanasi
+- **Xatolar jurnali**: har bir ogohlantirish va xato `%APPDATA%\Ishonch\problems.jsonl` ga yoziladi: vaqt, baza/firma/INN, bo'lim (markirovkali avto, markirovkasiz, E-POS, soliq, Elektr…), matn, stack trace va oldingi `app.log` qatorlari.
+- **Yordam → «Xatolar jurnali (yig'uvchi)…»** da manzil berilsa, yozuvlar egasining kompyuteridagi **IshonchLogs.exe** ga yuboriladi (HTTP, kalit bilan). Manzil va kalit release da GitHub `LOG_COLLECTOR_URL` / `LOG_COLLECTOR_KEY` dan exe ga yoziladi — kompyuterlarda qo'lda kiritish shart emas. Ular berilmasa jurnal faqat kompyuterda yoziladi, dastur odatdagidek ishlaydi. Batafsil: `../IshonchLogs/README.md`.
+- **Inventarizatsiya sanasi va vaqti**: markirovkali avtomatika panelida va markirovkasiz bo'limda tepada so'raladi (odatiy — bugun 23:30:00); 1C hujjatiga soniyasigacha shu sana yoziladi.
+
+## 0.7.7 — Markirovkali avtomatika: bitta chek, pauza, davom etish
+- «▶ Avto boshlash» har safar **bitta chek** yaratadi («Maqsad summa» — shu chek summasi; bir tovardan nechta — «Bir tovardan, dona»).
+- **⏸ Pauza / ▶ Davom**: jarayon (panel Podbor'i ham) shu joyida to'xtaydi va davom etadi; to'xtatilgan chekni keyingi «Avto boshlash» **qolgan joyidan davom ettirishni** taklif qiladi.
+- **⟲ Boshiga qaytarish**: qotib qolsa majburan to'xtatib, joriy chekni tozalaydi (ombor ma'lumoti, ishlatilgan kodlar va xato bazasi saqlanadi).
+- Ombor (inventarizatsiya + «Olish») **kuniga bir marta** o'qiladi; keyingi cheklar sotilganlarni ayirib, darhol boshlanadi.
+- «Olish»da «Jadval tanlanmadi» xatosi kamaydi (qayta urinadi); panel tugmalari va holat qatori endi to'g'ri yangilanadi.
 
 ## 0.7.6 — E-POS markirovkasiz sotishda, pastki qatorlar
 - **Markirovkasiz sotish**: «🧾 E-POS orqali sotish» tugmasi — provesti qilingan chekni fiskal chek qiladi. O'zi bosilmaydi: faqat siz bosganda (bir nechta chek bo'lsa ro'yxatdan tanlanadi), sotilgani qayta taklif qilinmaydi. Gramm tovarlar ham to'g'ri (8,33 g).
