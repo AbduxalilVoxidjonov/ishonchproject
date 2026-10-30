@@ -49,6 +49,8 @@ public sealed class MainForm : Form
         home.OpenSoliq += b => OpenSoliqTab(b);
         home.OpenMarking += async b => await OpenMarkingAsync(b);
         home.OpenUnmarked += b => OpenUnmarked(b);
+        home.Open4790 += async b => await Open4790Async(b);
+        home.OpenUnsellable += OpenUnsellable;
         home.OpenElektr += () => OpenElektrTab();
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
@@ -125,6 +127,7 @@ public sealed class MainForm : Form
             {
                 if (FindTab(key) is not null) continue;
                 if (key == ElektrKey) OpenElektrTab(select: false);
+                else if (key == UnsellableKey) OpenUnsellableTab(select: false);
                 else if (key == "soliq") OpenSoliqTab(null, select: false);
                 else if (key.StartsWith("soliq-") && store.Bases.FirstOrDefault(b => "soliq-" + b.Inn == key) is { } sb) OpenSoliqTab(sb, select: false);
                 else if (store.Bases.FirstOrDefault(b => b.ProfileKey == key) is { } bb) OpenBase(bb, select: false);
@@ -317,6 +320,40 @@ public sealed class MainForm : Form
         {
             Log.Error("OpenMarking", e, b);
             MessageBox.Show(this, "Markirovka panelini ochib bo'lmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    const string UnsellableKey = "unsellable";
+
+    /// <summary>Barcha bazalardan yig'ilgan sotib bo'lmaydigan markirovkalar jadvali — asosiy oynadagi alohida tab.</summary>
+    void OpenUnsellable() => OpenUnsellableTab();
+
+    void OpenUnsellableTab(bool select = true)
+    {
+        if (FindTab(UnsellableKey) is { } existing)
+        {
+            if (select) tabs.SelectedTab = existing;
+            return;
+        }
+        var page = new TabPage("Sotib bo'lmaydigan markirovkalar") { Tag = UnsellableKey, Padding = new Padding(0) };
+        page.Controls.Add(new UnsellableTab());
+        tabs.TabPages.Add(page);
+        if (select) tabs.SelectedTab = page;
+    }
+
+    /// <summary>Tanlangan baza 1C tabida «4790 to'ldiruvchi» panelini ochadi/yopadi (hujjatni saqlamaydi).</summary>
+    async Task Open4790Async(BaseEntry b)
+    {
+        try
+        {
+            var tab = OpenBase(b);
+            tab.U4790 ??= new Marking.U4790Session(tab, b);
+            await tab.U4790.ToggleAsync();
+        }
+        catch (Exception e)
+        {
+            Log.Error("Open4790", e, b);
+            MessageBox.Show(this, "4790 panelini ochib bo'lmadi: " + e.Message, AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

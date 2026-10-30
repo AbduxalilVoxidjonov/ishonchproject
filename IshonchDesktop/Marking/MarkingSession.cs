@@ -123,7 +123,11 @@ public sealed class MarkingSession : IDisposable
             case "storageGet":
                 return store.Get(msg.TryGetProperty("keys", out var k) ? k : default);
             case "storageSet":
-                if (msg.TryGetProperty("obj", out var o)) store.Set(o);
+                if (msg.TryGetProperty("obj", out var o))
+                {
+                    store.Set(o);
+                    UnsellableStore.AddFromPanelState(o, baseEntry, ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Warehouse ?? "");
+                }
                 return new { ok = true };
             default:
                 return new { ok = false, error = "noma'lum so'rov" };

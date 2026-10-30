@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Ishonch</AssemblyName>
     <RootNamespace>IshonchDesktop</RootNamespace>
-    <Version>0.7.8</Version>
+    <Version>0.7.9</Version>
     <!-- Mahsulot nomi «Ishonch» o'zgarmaydi: eski versiyalar yangilanish faylini shu nom bo'yicha tekshiradi -->
     <Product>Ishonch</Product>
     <!-- Ko'rinadigan nom (Vazifalar menejeri, fayl xususiyatlari) va belgi -->
@@ -58,6 +58,8 @@
     <EmbeddedResource Include="..\markirovkani togirlash\content.js" LogicalName="mk/content.js" />
     <EmbeddedResource Include="..\markirovkani togirlash\sidepanel.js" LogicalName="mk/sidepanel.js" />
     <EmbeddedResource Include="..\markirovkani togirlash\sidepanel.html" LogicalName="mk/sidepanel.html" />
+    <EmbeddedResource Include="..\1c-4790-extension\content.js" LogicalName="u4790/content.js" />
+    <EmbeddedResource Include="..\1c-4790-extension\panel.css" LogicalName="u4790/panel.css" />
     <EmbeddedResource Include="..\tasnifsoliq\extension\content.js" LogicalName="soliq/content.js" />
     <EmbeddedResource Include="..\tasnifsoliq\extension\page-active.js" LogicalName="soliq/page-active.js" />
 

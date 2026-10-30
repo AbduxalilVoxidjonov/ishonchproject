@@ -26,7 +26,7 @@ public sealed class UnmarkedPanel : UserControl
     readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly TextBox percent = new() { Width = 80, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
-    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (soniyasigacha); har ochilganda — bugun 23:30:00.</summary>
+    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (soniyasigacha); har ochilganda — bugun 23:59:59.</summary>
     readonly DateTimePicker inventoryDate = new()
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "dd.MM.yyyy  HH:mm:ss", Value = UnmarkedOptions.DefaultInventoryDate(),

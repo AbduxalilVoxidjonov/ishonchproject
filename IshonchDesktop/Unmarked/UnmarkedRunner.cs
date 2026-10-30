@@ -22,10 +22,10 @@ public sealed record UnmarkedOptions(decimal Target, int Count, int Lines, decim
     /// <summary>Bitta chekda bir tovardan ko'pi bilan necha dona (0 — cheklovsiz).</summary>
     public int MaxPerItem { get; init; }
 
-    /// <summary>Inventarizatsiya hujjatining sanasi va vaqti (soniyasigacha); berilmasa — bugun 23:30:00.</summary>
+    /// <summary>Inventarizatsiya hujjatining sanasi va vaqti (soniyasigacha); berilmasa — bugun 23:59:59.</summary>
     public DateTime? InventoryDate { get; init; }
 
-    public static DateTime DefaultInventoryDate() => DateTime.Today.AddHours(23).AddMinutes(30);
+    public static DateTime DefaultInventoryDate() => DateTime.Today.AddHours(23).AddMinutes(59).AddSeconds(59);
 
     /// <summary>Paneldagi datetime-local qiymati: "2026-10-29T23:30:15" yoki soniyasiz "2026-10-29T23:30".</summary>
     public static DateTime? ParseInventoryDate(string? s) =>
@@ -474,7 +474,7 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () => await d.HasAsync("_ТоварыПодменюЗаполнить"), 40000, "inventarizatsiya hujjati");
 
         await SetWarehouseAsync();
-        // Sana — panel tepasida tanlangani (berilmasa bugun 23:30:00): qoldiq shu payt holatida olinadi
+        // Sana — panel tepasida tanlangani (berilmasa bugun 23:59:59): qoldiq shu payt holatida olinadi
         // (markirovkali avtomatika ham shu yerdan foydalanadi)
         await SetInventoryDateAsync();
         // Sklad maydonidan fokus chiqishi bilan birinchi bosish yutilib ketishi mumkin: menyu ochilguncha qayta bosiladi
@@ -613,7 +613,7 @@ public sealed class UnmarkedRunner
         return bottom is null ? null : (await At("End"))?.Row;
     }
 
-    /// <summary>Ochiq hujjatning sanasini tanlangan sana va vaqtga (soniyasigacha) yozadi; berilmasa bugun 23:30:00.</summary>
+    /// <summary>Ochiq hujjatning sanasini tanlangan sana va vaqtga (soniyasigacha) yozadi; berilmasa bugun 23:59:59.</summary>
     async Task SetInventoryDateAsync()
     {
         var when = opt.InventoryDate ?? UnmarkedOptions.DefaultInventoryDate();

@@ -19,6 +19,8 @@ public sealed class HomeControl : UserControl
     readonly Button openSoliq = Big("🌐   my.soliq.uz ochish");
     readonly Button openMarking = Big("🏷   Markirovkali chek tayyorlash");
     readonly Button openUnmarked = Big("📦   Markirovkasiz sotish");
+    readonly Button open4790 = Big("🧾   4790 to'ldiruvchi");
+    readonly Button openUnsellable = Big("🚫   Sotib bo'lmaydigan markirovkalar");
     readonly Button openElektr = Big("⚡   Elektr (HET kabinetlari)");
     readonly Button openHelp = Big("❓   Yordam");
 
@@ -26,6 +28,8 @@ public sealed class HomeControl : UserControl
     public event Action<BaseEntry?>? OpenSoliq;
     public event Action<BaseEntry>? OpenMarking;
     public event Action<BaseEntry>? OpenUnmarked;
+    public event Action<BaseEntry>? Open4790;
+    public event Action? OpenUnsellable;
     public event Action? OpenElektr;
     /// <summary>«Yordam» tugmasi bosildi (tugmaning o'zi — menyuni uning ostida ochish uchun).</summary>
     public event Action<Control>? HelpClicked;
@@ -48,7 +52,7 @@ public sealed class HomeControl : UserControl
         BackColor = Color.FromArgb(220, 252, 231), ForeColor = Color.FromArgb(22, 101, 52), TextAlign = ContentAlignment.MiddleLeft,
         Font = new Font("Segoe UI", 10f, FontStyle.Bold),
     };
-    static readonly int[] BaseColumns = { 62, 250, 90, 170, 80 };
+    static readonly int[] BaseColumns = { 62, 330, 100, 200, 80 };
     const string PinMark = "★ ";
     const string UnpinMark = "☆ ";
     static readonly string[] ColumnNames = { "№", "Firma", "INN", "Buxgalter", "Baza" };
@@ -126,9 +130,9 @@ public sealed class HomeControl : UserControl
         };
 
         list.Columns.Add("№", 62);
-        list.Columns.Add("Firma", 250);
-        list.Columns.Add("INN", 90);
-        list.Columns.Add("Buxgalter", 170);
+        list.Columns.Add("Firma", 330);
+        list.Columns.Add("INN", 100);
+        list.Columns.Add("Buxgalter", 200);
         list.Columns.Add("Baza", 80);
 
         var left = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 20, 0) };
@@ -152,6 +156,8 @@ public sealed class HomeControl : UserControl
         right.Controls.Add(openSoliq);
         right.Controls.Add(openMarking);
         right.Controls.Add(openUnmarked);
+        right.Controls.Add(open4790);
+        right.Controls.Add(openUnsellable);
         right.Controls.Add(openElektr);
         right.Controls.Add(openHelp);
 
@@ -205,6 +211,8 @@ public sealed class HomeControl : UserControl
         openSoliq.Click += (_, _) => OpenSoliq?.Invoke(Selected);
         openMarking.Click += (_, _) => { if (Selected is { } b) OpenMarking?.Invoke(b); };
         openUnmarked.Click += (_, _) => { if (Selected is { } b) OpenUnmarked?.Invoke(b); };
+        open4790.Click += (_, _) => { if (Selected is { } b) Open4790?.Invoke(b); };
+        openUnsellable.Click += (_, _) => OpenUnsellable?.Invoke();
         openElektr.Click += (_, _) => OpenElektr?.Invoke();
         openHelp.Click += (_, _) => HelpClicked?.Invoke(openHelp);
         reloadBtn.Click += (_, _) => { store.Load(); Fill(Selected?.Id); };
@@ -269,7 +277,7 @@ public sealed class HomeControl : UserControl
         title.Height = S(m.TitleH);
         right.Width = S(m.RightW);
         info.Size = S2(m.Info);
-        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openElektr, openHelp })
+        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, open4790, openUnsellable, openElektr, openHelp })
         {
             b.Font = new Font(b.Font.FontFamily, m.ButtonFont * f, FontStyle.Bold);
             b.Size = S2(m.Big);
@@ -280,24 +288,26 @@ public sealed class HomeControl : UserControl
         foot.Height = S(m.FootH);
         for (var i = 0; i < list.Columns.Count; i++) list.Columns[i].Width = S(m.Columns[i]);
         rowHeight.ImageSize = new Size(1, Math.Min(256, S(m.RowH)));
-        firmaMin = list.Columns[1].Width;
+        lastMin = list.Columns[^1].Width;
         FitColumns();
         // Kichik oynada kesilib qolmasin: kontent shundan torayganda aylantirish chizig'i chiqadi
         AutoScrollMinSize = S2(new Size((int)(m.Columns.Sum() * 0.55) + m.RightW + 60, m.TitleH + m.FootH + 320));
         ResumeLayout(true);
     }
 
-    /// <summary>«Firma» ustunining eng kichik kengligi (masshtabga moslangan).</summary>
-    int firmaMin = 250;
+    /// <summary>Oxirgi («Baza») ustunning eng kichik kengligi (masshtabga moslangan).</summary>
+    int lastMin = 80;
 
-    /// <summary>«Firma» ustuni jadvalning qolgan bo'sh kengligini egallaydi (o'ng tomonda bo'sh joy qolmasin).</summary>
+    /// <summary>Oxirgi ustun jadvalning qolgan bo'sh kengligini egallaydi (o'ng tomonda bo'sh joy qolmasin).</summary>
     void FitColumns()
     {
+        // Firma, INN, Buxgalter — qat'iy kenglikda (INN doim firma nomidan keyin, siljimaydi); bo'sh joyni oxirgi «Baza» oladi
         if (list.Columns.Count < 2 || list.ClientSize.Width <= 0) return;
+        var last = list.Columns.Count - 1;
         var others = 0;
-        for (var i = 0; i < list.Columns.Count; i++) if (i != 1) others += list.Columns[i].Width;
-        var width = Math.Max(firmaMin, list.ClientSize.Width - others - 4);
-        if (list.Columns[1].Width != width) list.Columns[1].Width = width;
+        for (var i = 0; i < last; i++) others += list.Columns[i].Width;
+        var width = Math.Max(lastMin, list.ClientSize.Width - others - 4);
+        if (list.Columns[last].Width != width) list.Columns[last].Width = width;
     }
 
     public void Fill(int? keepId)
@@ -431,7 +441,7 @@ public sealed class HomeControl : UserControl
     void UpdateInfo()
     {
         var b = Selected;
-        openOneC.Enabled = openMarking.Enabled = openUnmarked.Enabled = b is not null;
+        openOneC.Enabled = openMarking.Enabled = openUnmarked.Enabled = open4790.Enabled = b is not null;
         if (b is null) { info.Text = "Ro'yxatdan bazani tanlang (yoki ikki marta bosing).\nRaqam yonidagi ☆ ni bosing — baza tepaga qadaladi."; return; }
         info.Text = $"{b.Firm}\nINN: {b.Inn}   Buxgalter: {b.Accountant}\n{b.Url}";
         SelectionChanged?.Invoke(b);

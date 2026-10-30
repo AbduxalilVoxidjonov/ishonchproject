@@ -10,7 +10,7 @@ namespace IshonchDesktop.Marking;
 
 /// <summary>
 /// Markirovkali chek panelidagi «Avtomatik cheklar» bo'limi: umumiy summa cheklar soniga (har xil) bo'linadi va har chek uchun
-/// avtomatik — sklad inventarizatsiyasi (boshida bir marta) → «Olish» → yangi Реализация (sklad + «Товар маркирован») →
+/// avtomatik — sklad inventarizatsiyasi (bir marta; faqat yangilash so‘ralganda qayta) → «Olish» → yangi Реализация (sklad + «Товар маркирован») →
 /// panelning o'z «Boshlash» jarayoni (Подбор, kodlar) → provesti → keyingi chek.
 /// Bo'lim panel sahifasining ichida chiziladi (<see cref="PanelScript"/>), bu klass uning tugmalarini bajaradi.
 /// </summary>
@@ -27,7 +27,7 @@ public sealed class MarkedAuto : IDisposable
     CancellationTokenSource? cts;
     string statusText = "Umumiy summa — «Maqsad summa» maydonidan olinadi.";
     string statusLevel = "info";
-    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (panel tepasida so'raladi; har ochilganda — bugun 23:30:00).</summary>
+    /// <summary>Inventarizatsiya hujjatiga yoziladigan sana va vaqt (panel tepasida so'raladi; har ochilganda — bugun 23:59:59).</summary>
     DateTime inventoryDate = UnmarkedOptions.DefaultInventoryDate();
 
     public MarkedAuto(WebTab oneC, WebView2 panel, Settings settings, string baseKey, Func<Task<WebTab>>? getSoliqTab = null, BaseEntry? baseEntry = null)
@@ -68,6 +68,7 @@ public sealed class MarkedAuto : IDisposable
             const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"], #ishAutoAct [data-x="' + n + '"]') || { };
             if (s.init) { q('inv').value = s.invDate || ''; q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; s.init = false; }
             q('inv').disabled = q('wh').disabled = q('count').disabled = q('post').disabled = q('go').disabled = !!s.running;
+            q('refresh').disabled = !!s.running;
             q('stop').disabled = !s.running;
             q('pause').disabled = !s.running;
             q('pause').textContent = s.paused ? '▶ Davom' : '⏸ Pauza';
@@ -94,7 +95,8 @@ public sealed class MarkedAuto : IDisposable
             const act = document.createElement('div');
             act.id = 'ishAutoAct'; act.className = inSlots ? 'ish-in' : 'ish-auto';
             act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled>■ To‘xtatish</button></div>' +
-              '<div class="row"><button class="b small" data-x="reset" title="Qotib qolsa: jarayonni majburan to‘xtatadi va joriy chekni tozalaydi (ombor ma’lumoti, ishlatilgan kodlar va xato bazasi saqlanadi)">⟲ Boshiga qaytarish</button></div>' +
+              '<div class="row"><button class="b small" data-x="reset" title="Qotib qolsa: jarayonni majburan to‘xtatadi, joriy chekni tozalaydi. Ombor qoldig‘i saqlanadi. Ishlatilgan kodlar va xato bazasi saqlanadi">⟲ Boshiga qaytarish</button></div>' +
+              '<div class="row"><button class="b small" data-x="refresh">↻ Inventarizatsiyani yangilash</button></div>' +
               '<div class="ish-st" id="ishAutoStatus"></div>';
             if (inSlots) { setSlot.appendChild(box); actSlot.appendChild(act); }
             else { row.parentNode.insertBefore(box, row); row.parentNode.insertBefore(act, row.nextSibling); }
@@ -108,7 +110,8 @@ public sealed class MarkedAuto : IDisposable
             };
             act.querySelector('[data-x="stop"]').onclick = () => send('stop');
             act.querySelector('[data-x="pause"]').onclick = () => send('pause');
-            act.querySelector('[data-x="reset"]').onclick = () => { if (confirm('Joriy chek tozalanib, jarayon boshiga qaytarilsinmi? (ombor ma’lumoti va xato bazasi saqlanadi)')) send('reset'); };
+            act.querySelector('[data-x="reset"]').onclick = () => { if (confirm('Joriy chek tozalansinmi? Ombor qoldig‘i saqlanadi. (ishlatilgan kodlar va xato bazasi saqlanadi)')) send('reset'); };
+            act.querySelector('[data-x="refresh"]').onclick = () => send('refresh');
             box.querySelector('[data-x="inv"]').onchange = () => send('save');
             box.querySelector('[data-x="wh"]').onchange = () => send('save');
             box.querySelector('[data-x="count"]').onchange = () => send('save');
@@ -140,6 +143,12 @@ public sealed class MarkedAuto : IDisposable
         if (m.TryGetProperty("post", out var p)) prefs.Post = p.ValueKind == JsonValueKind.True;
         if (m.TryGetProperty("invDate", out var inv) && UnmarkedOptions.ParseInventoryDate(inv.GetString()) is { } when) inventoryDate = when;
         settings.Save();
+        if (action == "refresh")
+        {
+            prefs.CapturedOn = null;
+            settings.Save();
+            Status("Inventarizatsiya keyingi «Avto boshlash» da yangilanadi. Ishlatilgan markirovkalar saqlanadi.", "warn");
+        }
         if (action == "go") _ = RunAsync();
     }
 
@@ -200,7 +209,7 @@ public sealed class MarkedAuto : IDisposable
 
     /// <summary>
     /// «⟲ Boshiga qaytarish»: avtomatika bekor qilinadi, panelda joriy chek tozalanadi («Tozalash»); panel qotib qolgan
-    /// (band) bo'lsa «To'liq to'xtatish» bilan majburan to'xtatiladi. Ombor ma'lumoti, ishlatilgan kodlar va xato bazasi saqlanadi.
+    /// (band) bo'lsa «To'liq to'xtatish» bilan majburan to'xtatiladi. Ombor qoldig‘i, ishlatilgan kodlar va xato bazasi saqlanadi.
     /// </summary>
     async Task ResetAsync()
     {
@@ -218,9 +227,9 @@ public sealed class MarkedAuto : IDisposable
                 await PanelClickAsync("abort", CancellationToken.None);
                 await Task.Delay(400);
                 await PanelClickAsync("abort", CancellationToken.None);
-                Status("Majburan to'xtatildi va joriy chek tozalandi (1C sahifasi qayta yuklanadi). Ombor ma'lumoti saqlandi.", "warn");
+                Status("Majburan to'xtatildi va joriy chek tozalandi (1C sahifasi qayta yuklanadi). Ombor qoldig‘i saqlandi.", "warn");
             }
-            else Status("Boshiga qaytarildi: joriy chek tozalandi. Ombor ma'lumoti saqlandi — «▶ Avto boshlash» ni bosing.", "ok");
+            else Status("Boshiga qaytarildi: joriy chek tozalandi, ombor qoldig‘i saqlandi — «▶ Avto boshlash» ni bosing.", "ok");
         }
         catch (Exception e) { Status("Boshiga qaytarib bo'lmadi: " + e.Message, "err"); }
     }
@@ -433,16 +442,16 @@ public sealed class MarkedAuto : IDisposable
             paused = false;
             await runner.InitAsync();
 
-            // 1) Ombor bir marta o'qiladi: shu kun shu sklad uchun panelda ma'lumot bo'lsa — inventarizatsiya va «Olish»
-            // qaytarilmaydi, panel oldingi cheklarda sotilganlarni o'zi ayirib boradi; bo'lmasa inventarizatsiya → «Olish»
+            // 1) Ombor bir marta o'qiladi: shu sklad uchun panelda ma'lumot bo'lsa — inventarizatsiya va «Olish»
+            // qaytarilmaydi, panel oldingi cheklarda sotilgan sonni va ishlatilgan markirovkalarni o'zi ayirib boradi;
+            // bo'lmasa (yoki inventarizatsiyani yangilash so‘ralganda) inventarizatsiya → «Olish»
             var have = await PanelStateAsync(ct);
-            var reuse = prefs.CapturedOn == DateTime.Today && string.Equals(prefs.CapturedWarehouse, prefs.Warehouse, StringComparison.OrdinalIgnoreCase)
-                && prefs.CapturedInventoryDate == inventoryDate
-                && Str(have, "source").Length > 0 && !Str(have, "source").StartsWith("0 ");
-            if (reuse) Status("Ombor bugun o'qilgan — qayta o'qilmaydi (" + Str(have, "source") + ")");
+            var reuse = prefs.CapturedOn is not null && string.Equals(prefs.CapturedWarehouse, prefs.Warehouse, StringComparison.OrdinalIgnoreCase)
+                && Str(have, "source").Length > 0;
+            if (reuse) Status("Ombor avval o'qilgan — qayta o'qilmaydi (" + Str(have, "source") + ")");
             else
             {
-                Status("Inventarizatsiya yangilanmoqda…");
+                Status($"Inventarizatsiya yangilanmoqda ({inventoryDate:dd.MM.yyyy HH:mm:ss})…");
                 await runner.RefreshInventoryKeepOpenAsync();
                 // «Olish» haqiqatan yangi ma'lumot o'qiganini tekshiramiz (o'qilgan vaqti o'zgaradi); xato bo'lsa — eski ma'lumot
                 // bilan davom etilmaydi: inventarizatsiya tabi qayta ochilib bir marta yana urinadi

@@ -1126,3 +1126,16 @@ test('definitive soliq.uz refusals are kept in a permanent bad-code database and
   assert.doesNotMatch(source.slice(source.indexOf('  function resetReceiptState'),source.indexOf('  async function clearUnstarted')),/badDb/);
   assert.match(source,/badDb: \{\}/);assert.match(source,/data-a="clearBadDb"/);
 });
+
+
+test('used marking codes survive more than 20000 transfers and a saved-state reload', () => {
+  const usedCodes = Object.fromEntries(Array.from({ length: 20000 }, (_, i) => ['old' + i, { receiptId: 'previous' }]));
+  const ctx = vm.createContext({ state: { usedCodes, pendingCodes: ['new'], receiptId: 'current' } });
+  vm.runInContext(source.slice(source.indexOf('  function markCodesUsed(item)'), source.indexOf('  /** An error of the document')), ctx);
+  vm.runInContext("markCodesUsed({ name: 'Tovar' })", ctx);
+  const restored = JSON.parse(JSON.stringify(ctx.state));
+  assert.equal(Object.keys(restored.usedCodes).length, 20001);
+  assert.equal(restored.usedCodes.old0.receiptId, 'previous');
+  assert.equal(restored.usedCodes.new.receiptId, 'current');
+  assert.deepEqual(restored.pendingCodes, []);
+});

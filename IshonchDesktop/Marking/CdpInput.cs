@@ -19,7 +19,7 @@ public static class CdpInput
         new Key("ArrowDown", "ArrowDown", 40), new Key("ArrowUp", "ArrowUp", 38),
         new Key("ArrowRight", "ArrowRight", 39), new Key("ArrowLeft", "ArrowLeft", 37),
         new Key("PageDown", "PageDown", 34), new Key("PageUp", "PageUp", 33),
-        new Key("Home", "Home", 36), new Key("End", "End", 35), new Key("F2", "F2", 113),
+        new Key("Home", "Home", 36), new Key("End", "End", 35), new Key("F2", "F2", 113), new Key("F9", "F9", 120),
         new Key("a", "KeyA", 65),
     }.ToDictionary(k => k.Name);
 
@@ -63,6 +63,22 @@ public static class CdpInput
         }
     }
 
+    // 4790 to'ldiruvchi (U4790Session) uchun to'g'ridan-to'g'ri chaqiriladigan buyruqlar
+    public static Task KeyAsync(CoreWebView2 core, string name, int modifiers = 0) => PressKey(core, name, modifiers);
+    public static Task ClickAsync(CoreWebView2 core, double x, double y, int count = 1) => Click(core, x, y, Math.Max(1, count));
+    public static Task InsertAsync(CoreWebView2 core, string text) =>
+        Send(core, "Input.insertText", new() { ["text"] = text });
+
+    public static async Task TypeAsync(CoreWebView2 core, string text, int delayMs = 0)
+    {
+        if (delayMs <= 0) { await TypeChars(core, text); return; }
+        foreach (var rune in text.EnumerateRunes())
+        {
+            await TypeChars(core, rune.ToString());
+            await Task.Delay(delayMs);
+        }
+    }
+
     // CDP modifikatorlari: Alt=1, Ctrl=2, Meta=4, Shift=8
     static async Task PressKey(CoreWebView2 core, string name, int modifiers)
     {
@@ -98,6 +114,7 @@ public static class CdpInput
                 "." => ("Period", 190),
                 "-" => ("Minus", 189),
                 _ when isDigit => ("Digit" + ch, 48 + (ch[0] - '0')),
+                _ when ch.Length == 1 && char.ToUpperInvariant(ch[0]) is >= 'A' and <= 'Z' => ("Key" + char.ToUpperInvariant(ch[0]), (int)char.ToUpperInvariant(ch[0])),
                 _ => ("", 0),
             };
             await Send(core, "Input.dispatchKeyEvent", new()

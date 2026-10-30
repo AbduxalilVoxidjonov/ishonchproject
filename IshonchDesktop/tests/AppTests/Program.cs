@@ -331,7 +331,7 @@ Console.WriteLine("Inventarizatsiya sanasi");
     Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseInventoryDate("2026-10-29T02:05") == when.AddSeconds(-9), "panel: soniyasiz (00)");
     Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseInventoryDate("") is null, "panel: bo'sh");
     var def = IshonchDesktop.Unmarked.UnmarkedOptions.DefaultInventoryDate();
-    Check(def.Date == DateTime.Today && def.TimeOfDay == new TimeSpan(23, 30, 0), "standart: bugun 23:30:00");
+    Check(def.Date == DateTime.Today && def.TimeOfDay == new TimeSpan(23, 59, 59), "standart: bugun 23:59:59");
 }
 
 // ---- bazalar ro'yxati: keyin qo'shilgan TestDB11 ----
@@ -353,6 +353,22 @@ Console.WriteLine("Inventarizatsiya sanasi");
     again.Bases.RemoveAll(b => b.Db == "TestDB11"); again.Save();
     var removed = new BaseStore(); removed.Load(bf, sf);
     Check(!HasTest(removed), "foydalanuvchi o'chirsa qayta qo'shilmaydi");
+}
+
+// ---- sotib bo'lmaydigan markirovkalar ----
+Console.WriteLine("Sotib bo'lmaydigan markirovkalar");
+{
+    IshonchDesktop.Marking.UnsellableStore.FilePath = Path.Combine(tmp, "unsellable.json");
+    var b = new BaseEntry { Firm = "Firma A", Inn = "123", Db = "TestDB11" };
+    JsonElement State(string codes) => JsonDocument.Parse("{\"mk1c_x\":{\"badDb\":{" + codes + "}},\"other\":{\"badDb\":{\"z\":{}}}}").RootElement;
+    IshonchDesktop.Marking.UnsellableStore.AddFromPanelState(State("\"c1\":{\"name\":\"Oltin uzuk\",\"reason\":\"sotilgan\"}"), b, "Sklad 1");
+    IshonchDesktop.Marking.UnsellableStore.AddFromPanelState(State("\"c1\":{\"name\":\"Boshqa\"},\"c2\":{\"name\":\"Oltin uzuk\"}"), b, "Sklad 2");
+    var got = IshonchDesktop.Marking.UnsellableStore.All();
+    Check(got.Count == 2, "faqat mk1c_ holatidan, takrorsiz qo'shildi");
+    var c1 = got.First(c => c.Code == "c1");
+    Check(c1.Warehouse == "Sklad 1" && c1.Name == "Oltin uzuk" && c1.Reason == "sotilgan" && c1.Firm == "Firma A", "birinchi ko'rilgan ma'lumot saqlanadi");
+    IshonchDesktop.Marking.UnsellableStore.Remove(got.Where(c => c.Code == "c2"));
+    Check(IshonchDesktop.Marking.UnsellableStore.All().Single().Code == "c1", "o'chirish");
 }
 
 listener.Stop();

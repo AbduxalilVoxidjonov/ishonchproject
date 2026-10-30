@@ -107,3 +107,7 @@ har chek uchun Реализация (накладная) → Изменить �
 (qolgani bloklab o'chiriladi) → miqdorlar → Перенести → Провести и закрыть. 1C «Остаток» xatosi bersa o'sha qator o'chirilib qayta provesti qilinadi.
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
+
+## 0.7.9 — Inventarizatsiya qoldig‘ini qayta ishlatish
+
+Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, kun almashishi yoki «Boshiga qaytarish» ularni yangilamaydi. «Inventarizatsiyani yangilash» keyingi «Avto boshlash» uchun qayta o‘qishni belgilaydi. Birinchi o‘qish va sklad almashtirishda yangi inventarizatsiya olinadi. Xato markirovkalar bosh sahifadagi tugmadan ilova ichidagi alohida tabda ochiladi.

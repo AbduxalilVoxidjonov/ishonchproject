@@ -46,6 +46,7 @@ public sealed class WebTab : UserControl
     public Func<WebTab, Task>? BeforeNavigate { get; set; }
 
     public MarkingSession? Marking { get; set; }
+    public U4790Session? U4790 { get; set; }
 
     /// <summary>Sarlavha o'zgarganda tab nomini yangilash uchun.</summary>
     public event Action<WebTab>? TitleChanged;

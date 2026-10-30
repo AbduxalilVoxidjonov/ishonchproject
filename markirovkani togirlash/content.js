@@ -1179,8 +1179,6 @@
     const time = new Date().toLocaleString('ru-RU');
     for (const code of state.pendingCodes || []) state.usedCodes[code] = { name: item.name, receiptId: state.receiptId, time };
     state.pendingCodes = [];
-    const codes = Object.keys(state.usedCodes);
-    for (const old of codes.slice(0, Math.max(0, codes.length - 20000))) delete state.usedCodes[old];
   }
 
   /** An error of the document or of the run itself: skipping the product would not help, the run pauses. */
