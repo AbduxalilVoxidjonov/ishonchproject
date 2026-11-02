@@ -88,6 +88,30 @@ public static class UnsellableStore
         Changed?.Invoke();
     }
 
+    /// <summary>E-POS tekshiruvi rad etgan kodlarni qo'shadi (avval bor bo'lsa o'zgartirilmaydi).</summary>
+    public static void AddCodes(BaseEntry baseEntry, string warehouse, IEnumerable<(string Name, string Code, string Reason)> codes)
+    {
+        var added = 0;
+        lock (Gate)
+        {
+            var map = Items();
+            foreach (var (name, code, reason) in codes)
+            {
+                var key = Key(baseEntry.Inn, baseEntry.Db, code);
+                if (map.ContainsKey(key)) continue;
+                map[key] = new UnsellableCode
+                {
+                    Code = code, Firm = baseEntry.Firm, Inn = baseEntry.Inn, Db = baseEntry.Db, Warehouse = warehouse,
+                    Name = name, Reason = reason, Time = DateTime.Now,
+                };
+                added++;
+            }
+            if (added == 0) return;
+            Save(map);
+        }
+        Changed?.Invoke();
+    }
+
     /// <summary>Tanlangan kodlarni ro'yxatdan o'chiradi (masalan, qayta tekshirilib sotilgani ma'lum bo'lsa).</summary>
     public static void Remove(IEnumerable<UnsellableCode> codes)
     {

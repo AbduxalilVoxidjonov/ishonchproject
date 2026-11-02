@@ -33,11 +33,12 @@
     await guard();
     let input = dialog();
     if (!input) {
-      const toolbar = visible(`${prefix}_ТоварыЗаполнить`);
+      // «Заполнить» tugmasi formaga qarab ikki xil nomlanadi (oddiy va «Товары, услуги, комиссия» formasi)
+      const toolbar = visible(`${prefix}_ТоварыЗаполнить`) || visible(`${prefix}_ГруппаТоварыЗаполнить`);
       if (!toolbar) throw new Error('Missing realization fill toolbar');
       await guard();
       await domClick(toolbar);
-      const menu = await wait(() => visible(`${prefix}_ТоварыЗаполнить_submenu`), 'fill submenu');
+      const menu = await wait(() => visible(`${toolbar.id}_submenu`), 'fill submenu');
       const item = leaf(menu, label);
       if (!item) throw new Error('Missing cost plus percentage menu item');
       await guard();

@@ -118,6 +118,8 @@ public sealed class MarkingSession : IDisposable
                     msg.TryGetProperty("code", out var c) ? c.GetString() : null,
                     msg.TryGetProperty("stir", out var s) ? s.GetString() : null,
                     baseEntry.Inn);
+            case "ikpuLookup":
+                return await LookupIkpuAsync(msg.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "");
             case "eposSale":
                 return await ShowSaleDialogAsync(msg.TryGetProperty("receipt", out var rc) ? rc : default);
             case "storageGet":
@@ -135,6 +137,32 @@ public sealed class MarkingSession : IDisposable
     }
 
     bool saleOpen;
+    readonly SemaphoreSlim lookupGate = new(1, 1);
+
+    /// <summary>
+    /// Panel so'rovi: tovarning IKPU si 1C nomenklatura kartochkasidan (Подбор dan oldin, IKPU noma'lum tovar uchun bir marta).
+    /// Kartochka o'zgartirilmaydi, so'ng Реализация hujjati tabiga qaytiladi.
+    /// </summary>
+    async Task<object> LookupIkpuAsync(string name)
+    {
+        if (name.Trim().Length == 0) return new { ok = false, error = "tovar nomi bo'sh" };
+        await lookupGate.WaitAsync();
+        try
+        {
+            var runner = new Unmarked.UnmarkedRunner(oneC.Core!, new Unmarked.UnmarkedOptions(0, 1, 1, 0, "", false),
+                (t, _) => Log.Write("IKPU qidiruvi: " + t), CancellationToken.None);
+            await runner.InitAsync();
+            var ikpu = await runner.LookupIkpuAsync(name);
+            Log.Write($"IKPU qidiruvi: {name} → {(ikpu.Length > 0 ? ikpu : "topilmadi")}");
+            return ikpu.Length > 0 ? new { ok = true, ikpu } : new { ok = false, ikpu, error = "nomenklatura topilmadi yoki IKPU bo'sh" };
+        }
+        catch (Exception e)
+        {
+            Log.Error("ikpuLookup", e, baseEntry);
+            return new { ok = false, ikpu = "", error = e.Message };
+        }
+        finally { lookupGate.Release(); }
+    }
 
     /// <summary>1C paneldagi "E-POS orqali sotish" bosilganda: sotish oynasini ochadi va natijani paneliga qaytaradi.</summary>
     async Task<object> ShowSaleDialogAsync(JsonElement receiptJson)

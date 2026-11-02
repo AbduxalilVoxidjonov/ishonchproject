@@ -5,8 +5,11 @@ namespace IshonchDesktop.Epos;
 
 /// <summary>
 /// 1C chekidagi bitta qator: tovar nomi, miqdori (dona; gramm tovarda — kasr) va markirovka kodlari (markirovkasizda bo'sh).
+/// <paramref name="Ikpu"/> — tovarning 1C hujjatidagi IKPU si (bo'sh — noma'lum), <paramref name="CodeIkpu"/> — panel my.soliq.uz da
+/// tekshirganda har bir kod uchun ko'rgan MXIK (kod → 17 xonali raqam; noma'lumi bo'sh).
 /// </summary>
-public sealed record ReceiptLine(string Name, decimal Quantity, decimal UnitPrice, IReadOnlyList<string> Codes);
+public sealed record ReceiptLine(string Name, decimal Quantity, decimal UnitPrice, IReadOnlyList<string> Codes,
+    string Ikpu = "", IReadOnlyDictionary<string, string>? CodeIkpu = null, int? VatPercent = null, decimal? LineTotal = null);
 
 public sealed record MarkingReceipt(string ReceiptId, bool Finished, IReadOnlyList<ReceiptLine> Lines)
 {
@@ -31,17 +34,30 @@ public sealed record MarkingReceipt(string ReceiptId, bool Finished, IReadOnlyLi
         foreach (var l in arr.EnumerateArray())
         {
             var name = l.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-            var qty = l.TryGetProperty("quantity", out var q) && q.ValueKind == JsonValueKind.Number ? (int)Math.Round(q.GetDouble()) : 0;
+            var qty = l.TryGetProperty("quantity", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetDecimal() : 0m;
             var price = l.TryGetProperty("unitPrice", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDecimal() : 0m;
             var codes = l.TryGetProperty("codes", out var c) && c.ValueKind == JsonValueKind.Array
                 ? c.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : new List<string>();
-            if (name.Length > 0 && qty > 0) lines.Add(new ReceiptLine(name, qty, price, codes));
+            var ikpu = l.TryGetProperty("ikpu", out var ik) && ik.ValueKind == JsonValueKind.String ? Digits17(ik.GetString()) : "";
+            var codeIkpu = new Dictionary<string, string>();
+            if (l.TryGetProperty("codeIkpu", out var ci) && ci.ValueKind == JsonValueKind.Object)
+                foreach (var p2 in ci.EnumerateObject())
+                    if (p2.Value.ValueKind == JsonValueKind.String && Digits17(p2.Value.GetString()) is { Length: 17 } d) codeIkpu[p2.Name] = d;
+            // 1C hujjatidagi QQS foizi (bo'lmasa — standart 12%)
+            int? vat = l.TryGetProperty("vatPercent", out var v) && v.ValueKind == JsonValueKind.Number ? (int)Math.Round(v.GetDecimal()) : null;
+            // 1C dagi qator jami (QQS bilan) — fiskal chek tiyingacha 1C bilan bir xil bo'lishi uchun
+            decimal? total = l.TryGetProperty("lineTotal", out var lt) && lt.ValueKind == JsonValueKind.Number && lt.GetDecimal() > 0 ? lt.GetDecimal() : null;
+            if (name.Length > 0 && qty > 0) lines.Add(new ReceiptLine(name, qty, price, codes, ikpu, codeIkpu, vat, total));
         }
         if (lines.Count == 0) return null;
         var id = e.TryGetProperty("receiptId", out var r) ? r.ToString() : "";
         var fin = e.TryGetProperty("finished", out var f) && f.ValueKind == JsonValueKind.True;
         return new MarkingReceipt(id, fin, lines);
     }
+
+    /// <summary>Matndagi 17 xonali IKPU (bo'lmasa bo'sh).</summary>
+    public static string Digits17(string? text) =>
+        System.Text.RegularExpressions.Regex.Match(text ?? "", @"\d{17}") is { Success: true } m ? m.Value : "";
 
     public static MarkingReceipt? Parse(JsonElement state)
     {

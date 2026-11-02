@@ -377,6 +377,9 @@
     markingCode: ['Код маркировки', 'Marking code', 'Labeling code', 'Label code'],
     quantity: ['Количество', 'Quantity', 'Qty'],
     price: ['Цена', 'Price'],
+    ikpu: ['ИКПУ', 'IKPU', 'МХИК', 'MXIK', 'ИКПУ (МХИК)'],
+    lineTotal: ['Всего', 'Total'],
+    vatRate: ['% НДС', 'НДС %', 'VAT %', '% VAT'],
     balance: ['Остаток', 'Остаток на складе', 'Balance', 'Stock', 'In stock'],
   };
 
@@ -398,6 +401,18 @@
 
   const cellOf = (row, colindex) => row.querySelector(`.gridBox[colindex="${colindex}"]`);
   const cellText = (row, colindex) => cellOf(row, colindex)?.textContent.trim() || '';
+
+  /**
+   * Ustun matni: sarlavha colindex idan keyingi sarlavhagacha bo'lgan barcha kataklar. 1C ba'zan qiymatni yashirin
+   * qo'shni katakka chizadi (sarlavhada «ИКПУ» 2, qatorda qiymat 3 da).
+   */
+  const spanText = (row, cols, colindex) => {
+    if (colindex === undefined) return '';
+    const next = Math.min(...Object.values(cols).map(Number).filter((n) => n > +colindex), Infinity);
+    return [...row.querySelectorAll('.gridBox[colindex]')]
+      .filter((b) => +b.getAttribute('colindex') >= +colindex && +b.getAttribute('colindex') < next)
+      .map((b) => b.textContent.trim()).filter(Boolean).join(' ');
+  };
 
   const gridBody = (grid) => grid.querySelector('.gridBody') || grid;
 
@@ -782,7 +797,8 @@
           finish({ verdict: response.verdict || 'unknown', operation: response.operation || '', reason: response.reason || '',
             notLoggedIn: !!response.notLoggedIn, notFound: !!response.notFound,
             lastStir: response.lastStir || '', stirMatch: response.stirMatch ?? null,
-            product: response.history?.product || '', steps: response.history?.steps?.length || 0, last: response.history?.last || null });
+            product: response.history?.product || '', mxik: ikpuDigits(response.history?.mxik),
+            steps: response.history?.steps?.length || 0, last: response.history?.last || null });
         });
       } catch (error) {
         finish({ verdict: 'unknown', reason: String(error?.message || error) });
@@ -844,6 +860,38 @@
   }
 
   const stirDigits = () => String(state.stir || '').replace(/\D/g, '');
+
+  /** 17 xonali IKPU (MXIK): matndagi birinchi 17 ta ketma-ket raqam («08516999043000000, Сув …» → «08516999043000000»). */
+  const ikpuDigits = (text) => String(text ?? '').match(/\d{17}/)?.[0] || '';
+
+  /**
+   * Tovarning to'g'ri IKPU si: 1C hujjatining «ИКПУ» ustunidan o'rganilgani (doimiy saqlanadi); hali noma'lum bo'lsa —
+   * shu chekda shu tovarning birinchi yaroqli kodining MXIK i (o'tkazishdan keyin 1C dagisi bilan solishtiriladi).
+   */
+  const expectedIkpu = (item) => state.ikpuByName?.[norm(item.name)] || state.ikpuGuess?.[norm(item.name)] || '';
+
+  /**
+   * Ochiq Реализация hujjatining «ИКПУ» ustunidan «tovar → IKPU» ni o'rganadi. Taxmin qilingan IKPU 1C dagidan farq qilsa —
+   * shu tovar kodlari noto'g'ri IKPU bilan olingan bo'lishi mumkin: ogohlantiriladi.
+   */
+  function learnIkpu(prefix) {
+    const grid = prefix && document.getElementById(`${prefix}_Товары`);
+    if (!grid) return;
+    const cols = gridColumns(grid);
+    const colName = colOf(cols, 'item');
+    const colIkpu = colOf(cols, 'ikpu');
+    if (colName === undefined || colIkpu === undefined) return;
+    if (!state.ikpuByName || typeof state.ikpuByName !== 'object') state.ikpuByName = {};
+    for (const line of gridRows(grid)) {
+      const key = norm(cellText(line, colName));
+      const ikpu = ikpuDigits(spanText(line, cols, colIkpu));
+      if (!key || !ikpu) continue;
+      const guess = state.ikpuGuess?.[key];
+      if (guess && guess !== ikpu) log(`TEKSHIRING: «${cellText(line, colName)}» kodlari IKPU ${guess} bo‘yicha olingan, 1C da tovar IKPU si ${ikpu}.`, 'error');
+      if (state.ikpuGuess) delete state.ikpuGuess[key];
+      state.ikpuByName[key] = ikpu;
+    }
+  }
 
   /**
    * A definitive refusal (sold at retail, or the last receiver is another STIR) is kept for good together with
@@ -1069,6 +1117,39 @@
         await sleep(T.afterCell);
         continue;
       }
+      // Bir chekdagi tovar bitta IKPU bilan sotiladi: kodning MXIK i tovar IKPU sidan farq qilsa, uni sotib bo'lmaydi —
+      // kod olinmaydi (o'rniga keyingi kod olinadi) va xato bazasiga yoziladi
+      const codeIkpu = ikpuDigits(checked.mxik);
+      const itemIkpu = expectedIkpu(item);
+      if (codeIkpu && itemIkpu && codeIkpu !== itemIkpu) {
+        const reason = `boshqa IKPU (${codeIkpu}, tovarniki ${itemIkpu})`;
+        noteBadCode(item, code, position, reason);
+        rememberBadDb(item, code, reason, checked);
+        if (atLeastOne(cellText(f.line, colQty))) {
+          // Pauzadan oldin 1 yozilgan bo'lsa — 0 ga qaytariladi, aks holda o'tkazishga tushadi
+          await cdp({ type: 'key', key: 'Enter' });
+          await waitFor(() => document.activeElement?.tagName === 'INPUT' && focusInMarkingGrid(document.activeElement), 4000,
+            '«Количество» tahrir maydoni', { pausable: false });
+          await cdp({ type: 'selectAll', mac: IS_MAC });
+          await cdp({ type: 'text', text: '0' });
+          await cdp({ type: 'key', key: 'Enter' });
+          await waitFor(() => document.activeElement?.tagName !== 'INPUT', 4000, `«${code}» kodidan 1 olib tashlanishi`, { pausable: false });
+        }
+        log(`↷ ${item.name}: ${position}-kod ${reason} — olinmadi, keyingisi olinadi (xato bazasiga yozildi).`, 'warn');
+        await cdp({ type: 'key', key: 'ArrowDown' });
+        await sleep(T.afterCell);
+        continue;
+      }
+      if (codeIkpu && !itemIkpu) {
+        if (!state.ikpuGuess || typeof state.ikpuGuess !== 'object') state.ikpuGuess = {};
+        state.ikpuGuess[norm(item.name)] = codeIkpu;
+      }
+      if (codeIkpu) {
+        if (!state.codeIkpu || typeof state.codeIkpu !== 'object') state.codeIkpu = {};
+        state.codeIkpu[code] = codeIkpu;
+        const keys = Object.keys(state.codeIkpu);
+        for (const old of keys.slice(0, Math.max(0, keys.length - 20000))) delete state.codeIkpu[old];
+      }
       // A code that failed only for a moment (e.g. soliq.uz did not answer) is fine now
       if (state.badCodes?.some((b) => b.code === code)) state.badCodes = state.badCodes.filter((b) => b.code !== code);
       if (state.badDb?.[code]) delete state.badDb[code];
@@ -1109,6 +1190,102 @@
     return placed;
   }
 
+  /** Price as typed into a 1C cell: no thousands separator, decimal comma only when there are kopecks. */
+  const priceText = (n) => (Math.round(n * 100) % 100 === 0 ? String(Math.round(n)) : n.toFixed(2).replace('.', ','));
+
+  /**
+   * «Товары, услуги, комиссия» hujjatida 1C narxni o'zi qo'ymaydi (komissiya tovarida tannarx yo'q, «Заполнить цены» 0 beradi):
+   * har bir qatorning «Цена» katagiga shu tovarning inventarizatsiyadagi narxi yoziladi. Qator nomi bo'yicha tovar topilmasa
+   * yoki narx allaqachon to'g'ri bo'lsa — tegilmaydi. Natija: 1C dagi «Всего».
+   */
+  async function fillPrices(prefix) {
+    const grid = document.getElementById(`${prefix}_Товары`);
+    if (!grid || !isVisible(grid)) throw new Error('Реализация jadvali topilmadi');
+    const cols = gridColumns(grid);
+    const colName = colOf(cols, 'item');
+    const colPrice = colOf(cols, 'price');
+    const colN = colOf(cols, 'rowNumber');
+    if (!colName || !colPrice) throw new Error('Реализация jadvalida «Номенклатура» yoki «Цена» ustuni topilmadi');
+    const priceOf = new Map(state.items.filter((i) => i.placed > 0 && validPrice(i)).map((i) => [norm(i.name), round2(i.price)]));
+    const rows = gridRows(grid);
+    if (!rows.length) throw new Error('Реализация jadvali bo‘sh');
+
+    // Birinchi qatorning ko'rinib turgan katagini bosib, «Цена» ustuniga strelkalar bilan o'tiladi (jadval o'zi suriladi)
+    const toPrice = async () => {
+      for (let i = 0; i < 40; i++) {
+        const f = focusedCell(grid);
+        if (!f) throw new Error('Реализация jadvalida tanlangan katak topilmadi');
+        if (f.col === colPrice) return f;
+        await cdp({ type: 'key', key: +f.col < +colPrice ? 'ArrowRight' : 'ArrowLeft' });
+        await sleep(120);
+      }
+      throw new Error('«Цена» ustuniga o‘tib bo‘lmadi');
+    };
+    const body = gridBody(grid).getBoundingClientRect();
+    const firstCell = [...rows[0].querySelectorAll('.gridBox')].find((b) => {
+      const r = b.getBoundingClientRect();
+      return r.width > 0 && r.left >= body.left && r.right <= body.right;
+    });
+    await realClick(firstCell || rows[0]);
+    await sleep(T.afterClick);
+    for (let i = 0; i < rows.length + 2 && focusedCell(grid)?.line !== gridRows(grid)[0]; i++) {
+      await cdp({ type: 'key', key: 'ArrowUp' });
+      await sleep(120);
+    }
+
+    // Oxirgi qatordan keyin ↓ bosilsa 1C yangi bo'sh qator qo'shadi — shuning uchun qatorlar soni oldindan olinadi
+    const filled = rows.filter((l) => cellText(l, colName));
+    const lastId = colN !== undefined ? cellText(filled[filled.length - 1], colN) : null;
+    let written = 0;
+    const seen = new Set();
+    for (let step = 0; step < filled.length; step++) {
+      await checkpoint();
+      const f = await toPrice();
+      const id = colN !== undefined ? cellText(f.line, colN) : String(gridRows(grid).indexOf(f.line));
+      if (seen.has(id)) break; // ↓ joyidan siljimadi: jadval oxiri
+      seen.add(id);
+      if (!cellText(f.line, colName)) throw new Error('Реализация jadvalida bo‘sh qator paydo bo‘ldi — hujjatni tekshiring');
+      const want = priceOf.get(norm(cellText(f.line, colName)));
+      const have = parseNumber(cellText(f.line, colPrice), ',');
+      if (want > 0 && !(Math.abs(have - want) < 0.005)) {
+        await cdp({ type: 'key', key: 'Enter' }); // katak tahrirlagichi
+        await waitFor(() => document.activeElement?.tagName === 'INPUT' && grid.contains(document.activeElement), 4000,
+          '«Цена» tahrir maydoni', { pausable: false });
+        await cdp({ type: 'selectAll', mac: IS_MAC });
+        await cdp({ type: 'text', text: priceText(want) });
+        await cdp({ type: 'key', key: 'Enter' });
+        await waitFor(() => document.activeElement?.tagName !== 'INPUT' || !grid.contains(document.activeElement), 4000,
+          '«Цена» yozilishi', { pausable: false });
+        await sleep(T.afterCell);
+        written++;
+      }
+      await toPrice();
+      if (lastId !== null ? id === lastId : step === filled.length - 1) break;
+      await cdp({ type: 'key', key: 'ArrowDown' });
+      await sleep(T.afterCell);
+    }
+    if (gridRows(grid).some((l) => !cellText(l, colName))) throw new Error('Реализация jadvalida bo‘sh qator paydo bo‘ldi — hujjatni tekshiring');
+    learnIkpu(prefix);
+    const total = await waitFor(() => {
+      const v = parseNumber(document.getElementById(`${prefix}_ИтогиВсего_i0`)?.value, ',');
+      return Number.isFinite(v) ? { v } : null;
+    }, 5000, '«Всего» summasi');
+    // E-POS cheki 1C hujjati bilan bir xil bo'lishi uchun: har tovarning 1C dagi «Всего» (QQS bilan), miqdori va QQS foizi
+    const byName = {};
+    for (const line of gridRows(grid)) {
+      const key = norm(cellText(line, colName));
+      if (!key) continue;
+      const qty = parseNumber(spanText(line, cols, colOf(cols, 'quantity')), ',');
+      const sum = parseNumber(spanText(line, cols, colOf(cols, 'lineTotal')), ',');
+      const vat = parseNumber(String(spanText(line, cols, colOf(cols, 'vatRate'))).replace('%', ''), ',');
+      const prev = byName[key] || { qty: 0, total: 0, vat: NaN };
+      byName[key] = { qty: prev.qty + (qty || 0), total: round2(prev.total + (sum || 0)), vat: Number.isFinite(vat) ? vat : prev.vat };
+    }
+    state.docLines = { receiptId: state.receiptId, byName };
+    log(`Narxlar yozildi: ${written} ta qator (inventarizatsiya narxi bo‘yicha). 1C dagi jami: ${fmtSum(total.v)}.`, 'info');
+    return total.v;
+  }
+
   /** The × button of the Подбор window (closes it without transferring anything). */
   const podborCloseButton = () => {
     let el = podborCheckbox();
@@ -1141,6 +1318,21 @@
     assertDocument();
     const need = Math.max(0, Math.round((item.qty - item.placed) * 10000) / 10000);
     if (!need) return;
+    // Tovarning IKPU si hali noma'lum bo'lsa — Подбор dan oldin 1C nomenklatura kartochkasidan o'qiladi (bir marta,
+    // keyin eslab qolinadi): shunda birinchi chekdayoq boshqa IKPU dagi kodlar olinmaydi
+    if (IS_DESKTOP && !state.ikpuByName?.[norm(item.name)]) {
+      let res = null;
+      try { res = await chrome.runtime.sendMessage({ type: 'ikpuLookup', version: VERSION, name: item.name }); } catch { /* bo'lmasa — birinchi kod bo'yicha */ }
+      const ikpu = ikpuDigits(res?.ikpu);
+      if (ikpu) {
+        if (!state.ikpuByName || typeof state.ikpuByName !== 'object') state.ikpuByName = {};
+        state.ikpuByName[norm(item.name)] = ikpu;
+        if (state.ikpuGuess) delete state.ikpuGuess[norm(item.name)];
+        await save();
+        log(`${item.name}: IKPU ${ikpu} (1C nomenklaturasidan).`, 'info');
+      } else log(`${item.name}: IKPU 1C nomenklaturasidan olinmadi${res?.error ? ` (${res.error})` : ''} — birinchi kod bo‘yicha aniqlanadi.`, 'warn');
+      assertDocument();
+    }
     state.current = { name: item.name, need, placed: 0 };
     log(`▶ ${item.name} — kerak: ${need} dona`);
     await openPodbor();
@@ -1171,6 +1363,7 @@
       item.note = '';
     }
     log(`✓ ${item.name}: ${placed} dona o‘tkazildi.`, 'ok');
+    try { learnIkpu(state.document?.prefix); } catch { /* IKPU ni o'rganib bo'lmasa ham chek davom etadi */ }
   }
 
   /** The transfer is confirmed: its codes belong to this receipt and are skipped by later ones. */
@@ -1220,8 +1413,11 @@
     // A new receipt gets a new clock and an empty list of bad codes; a resumed one keeps both
     if (state.clock?.task !== 'run' || state.clock.endedAt != null) {
       startClock('run');
-      state.badCodes = [];
-      state.receiptId = Date.now();
+      // To'xtatilib qayta davom ettirilgan chek o'z belgisini saqlaydi — aks holda oldin olingan kodlari E-POS ga chiqmay qoladi
+      if (!hasProgress() || state.receiptId == null) {
+        state.badCodes = [];
+        state.receiptId = Date.now();
+      }
     }
     activeTask = 'run';
     state.status = 'running';
@@ -1269,10 +1465,12 @@
       state.phase = 'pricing';
       await save();
       await checkpoint();
-      assertDocument();
-      // No markup step: the document keeps the prices 1C gave it; the total is the local sum of what was placed
+      const pricePrefix = assertDocument();
+      // No markup: each line gets its inventory price (1C leaves commission goods without a price); the total is 1C's own
       const lineTotal = (i) => (i.placed > 0 ? globalThis.ReceiptMath.lineTotals({ ...i, qty: i.placed }, 0).total : 0);
-      state.pricingResult = { total: round2(state.items.reduce((sum, i) => sum + (Number.isFinite(lineTotal(i)) ? lineTotal(i) : 0), 0)), local: true };
+      const localTotal = round2(state.items.reduce((sum, i) => sum + (Number.isFinite(lineTotal(i)) ? lineTotal(i) : 0), 0));
+      const oneCTotal = await fillPrices(pricePrefix);
+      state.pricingResult = { total: oneCTotal > 0 ? round2(oneCTotal) : localTotal, local: !(oneCTotal > 0) };
       const plannedItems = state.items.filter(i => i.qty > 0 && (i.status !== 'skip' || i.placed > 0));
       const placedItems = state.items.filter(i => i.placed > 0);
       const plannedNames = new Set(plannedItems.map(i => norm(String(i.name || '').normalize('NFKC'))));
@@ -1287,7 +1485,7 @@
       state.status = 'done';
       receiptReady = false;
       el('target').value = '';
-      log(`Jami (lokal hisob): ${fmtSum(state.pricingResult.total)}${state.receiptTarget != null ? `; maqsaddan farq: ${fmtSum(round2(state.pricingResult.total - state.receiptTarget))}` : ''}. Yakuniy summa 1C da hujjat o‘tkazilganda (QQS, 1C narxi) farq qilishi mumkin.`, 'warn');
+      log(`Jami${state.pricingResult.local ? ' (lokal hisob)' : ' (1C)'}: ${fmtSum(state.pricingResult.total)}${state.receiptTarget != null ? `; maqsaddan farq: ${fmtSum(round2(state.pricingResult.total - state.receiptTarget))}` : ''}. Yakuniy summa 1C da hujjat o‘tkazilganda (QQS, 1C narxi) farq qilishi mumkin.`, 'warn');
       const ok = state.items.filter((i) => i.status === 'ok').length;
       const short = state.items.filter((i) => i.status === 'kam').length;
       const skipped = state.items.filter((i) => i.status === 'skip' && i.qty > 0).length;
@@ -1334,7 +1532,16 @@
     }
     const lines = state.items
       .filter((i) => i.placed > 0)
-      .map((i) => ({ name: i.name, quantity: i.placed, unitPrice: Number(i.price) || 0, codes: codesByName.get(norm(i.name)) || [] }));
+      .map((i) => {
+        const codes = codesByName.get(norm(i.name)) || [];
+        // Narx — 1C hujjatidagi «Всего» ÷ miqdor (QQS bilan, 1C bilan bir xil); bo'lmasa — inventarizatsiya narxi
+        const doc = state.docLines?.receiptId === state.receiptId ? state.docLines.byName?.[norm(i.name)] : null;
+        const unitPrice = doc?.qty > 0 && doc.total > 0 ? Math.round((doc.total / doc.qty) * 100) / 100 : Number(i.price) || 0;
+        // 1C dagi qator jami (QQS bilan): fiskal chek tiyingacha 1C bilan bir xil bo'lishi uchun (miqdor mos bo'lsa)
+        const lineTotal = doc?.total > 0 && doc.qty === i.placed ? doc.total : null;
+        return { name: i.name, quantity: i.placed, unitPrice, lineTotal, vatPercent: Number.isFinite(doc?.vat) ? doc.vat : null, codes,
+          ikpu: state.ikpuByName?.[norm(i.name)] || '', codeIkpu: Object.fromEntries(codes.map((c) => [c, state.codeIkpu?.[c] || ''])) };
+      });
     return { receiptId: String(state.receiptId ?? ''), finished: state.status === 'done', lines };
   }
 

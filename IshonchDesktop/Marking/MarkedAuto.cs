@@ -165,6 +165,9 @@ public sealed class MarkedAuto : IDisposable
         Push();
     }
 
+    /// <summary>1C «Основная цена продажи (НДС сверху)»: narx ustiga qo'shiladigan QQS stavkasi.</summary>
+    const decimal VatRate = 12m;
+
     static decimal? Parse(string s) =>
         decimal.TryParse(s.Replace(" ", "").Replace(" ", "").Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
 
@@ -488,7 +491,9 @@ public sealed class MarkedAuto : IDisposable
             {
                 Status($"{k + 1}/{n}-chek: yangi Реализация…");
                 await runner.CreateMarkedDocumentAsync();
-                await PanelSetTargetAsync(targets[k], ct);
+                // Panel tovarlarni inventarizatsiya narxi (QQS'siz) bo'yicha tanlaydi, 1C esa QQS ni ustiga qo'shadi
+                // («НДС сверху») — chek jami maqsadga teng chiqishi uchun panelga QQS'siz summa beriladi
+                await PanelSetTargetAsync(Math.Round(targets[k] / (1 + VatRate / 100m)), ct);
                 await Task.Delay(800, ct);
                 Status($"{k + 1}/{n}-chek: Подбор (≈{targets[k]:N0} so'm)…");
                 await StartPanelAsync(k, ct);

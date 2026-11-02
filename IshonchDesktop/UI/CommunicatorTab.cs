@@ -41,7 +41,7 @@ public sealed class CommunicatorTab : UserControl
     };
     readonly TextBox logBox = new() { Dock = DockStyle.Bottom, Height = 120, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
 
-    const int ColName = 0, ColQty = 1, ColCodes = 2, ColIkpu = 3, ColPack = 4, ColPrice = 5, ColState = 6;
+    const int ColName = 0, ColQty = 1, ColCodes = 2, ColMarks = 3, ColIkpu = 4, ColPack = 5, ColPrice = 6, ColState = 7;
 
     public CommunicatorTab(BaseEntry baseEntry, Func<Task<WebTab>> getSoliqTab, MarkingReceipt? preset = null)
     {
@@ -59,9 +59,22 @@ public sealed class CommunicatorTab : UserControl
         payType.Items.AddRange(new object[] { "Naqd", "Karta" });
         payType.SelectedIndex = 0;
 
-        foreach (var (title, weight, ro) in new[] { ("1C tovari", 26, true), ("Dona", 5, true), ("Kodlar", 6, true),
-                     ("IKPU (MXIK)", 16, false), ("Qadoq kodi", 10, false), ("Narx (1C)", 10, true), ("Holat", 27, true) })
-            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = title, FillWeight = weight, ReadOnly = ro });
+        foreach (var (title, weight, ro) in new[] { ("1C tovari", 24, true), ("Dona", 5, true), ("Kodlar", 5, true),
+                     ("Markirovkalar", 19, false), ("IKPU (MXIK)", 14, false), ("Qadoq kodi", 8, false), ("Narx (QQS bilan)", 13, true), ("Holat", 22, true) })
+        {
+            // «Markirovkalar» — ochiladigan ro'yxat: shu qatorda sotilayotgan har bir dona uchun uning kodi
+            DataGridViewColumn col = title == "Markirovkalar"
+                ? new DataGridViewComboBoxColumn { DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton, FlatStyle = FlatStyle.Flat }
+                : new DataGridViewTextBoxColumn { ReadOnly = ro };
+            col.HeaderText = title;
+            col.FillWeight = weight;
+            grid.Columns.Add(col);
+        }
+        grid.DataError += (_, e) => e.ThrowException = false; // ro'yxatdagi matn o'zgarsa ham xato oynasi chiqmasin
+        grid.EditingControlShowing += (_, e) =>
+        {
+            if (e.Control is ComboBox box) box.DropDownWidth = Math.Max(box.Width, 520);
+        };
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
         top.Controls.AddRange(new Control[] { status, new Label { Text = "Fiskal port:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, portBox, refreshBtn });
@@ -171,6 +184,16 @@ public sealed class CommunicatorTab : UserControl
         {
             var line = new SaleLine { Source = l };
             map.Apply(line);
+            // 1C hujjatidagi IKPU — eng to'g'risi: eslab qolingan (balki eski/noto'g'ri) qiymatdan ustun turadi
+            if (l.Ikpu.Length == 17 && l.Ikpu != line.ClassCode)
+            {
+                if (line.ClassCode.Length > 0) Log($"{l.Name}: IKPU 1C dagi bo'yicha olindi ({l.Ikpu}, oldin {line.ClassCode} edi).");
+                line.ClassCode = l.Ikpu;
+                line.PackageCode = "";
+            }
+            if (l.CodeIkpu is { } known)
+                foreach (var (code, mxik) in known) line.CodeMxik[code] = mxik;
+            if (l.VatPercent is { } vat and >= 0 and <= 100) line.VatPercent = vat;
             lines.Add(line);
         }
         Log($"{lines.Count} xil tovar, {lines.Sum(l => l.Source.Quantity)} dona yuklandi.");
@@ -183,13 +206,37 @@ public sealed class CommunicatorTab : UserControl
         foreach (var l in lines)
         {
             var problem = l.Problem();
-            var i = grid.Rows.Add(l.Name, l.Source.Quantity, l.Source.Codes.Count, l.ClassCode, l.PackageCode,
-                l.Source.UnitPrice.ToString("N0"), problem ?? "tayyor");
+            var i = grid.Rows.Add(l.Name, l.Source.Quantity, l.Source.Codes.Count, null, l.ClassCode, l.PackageCode,
+                l.Source.UnitPrice.ToString("N2"), problem ?? "tayyor");
+            var marks = (DataGridViewComboBoxCell)grid.Rows[i].Cells[ColMarks];
+            marks.Items.Clear();
+            var shown = MarkItems(l);
+            marks.Items.AddRange(shown.Cast<object>().ToArray());
+            marks.Value = shown.Count > 0 ? shown[0] : null;
             grid.Rows[i].DefaultCellStyle.ForeColor = problem is null ? SystemColors.ControlText : Color.Firebrick;
         }
-        var total = lines.Sum(l => l.Source.UnitPrice * l.Source.Quantity);
-        summary.Text = lines.Count == 0 ? "" : $"Chek jami: {total:N0} so'm";
+        var total = lines.Sum(l => l.Source.LineTotal ?? l.Source.UnitPrice * l.Source.Quantity);
+        summary.Text = lines.Count == 0 ? "" : $"Chek jami: {total:N2} so'm (QQS bilan, 1C dagi «Всего» bilan bir xil)";
         UpdateButtons();
+    }
+
+    /// <summary>
+    /// Ochiladigan ro'yxat elementlari: sotiladigan dona soniga teng kodlar (tartib raqami, to'liq kod va — ma'lum bo'lsa —
+    /// MXIK; tovar IKPU sidan farq qilsa ✗ bilan). Markirovkasiz tovarda — bitta izoh.
+    /// </summary>
+    static List<string> MarkItems(SaleLine l)
+    {
+        if (!l.IsMarked) return new() { "— markirovkasiz —" };
+        var count = (int)Math.Min(l.Source.Codes.Count, Math.Ceiling(l.Source.Quantity));
+        var items = new List<string>();
+        for (var k = 0; k < count; k++)
+        {
+            var code = l.Source.Codes[k];
+            var mxik = l.CodeMxik.TryGetValue(code, out var m) ? m : "";
+            var mark = mxik.Length == 0 ? "" : mxik == l.ClassCode || l.ClassCode.Length != 17 ? $"  (MXIK {mxik})" : $"  ✗ boshqa IKPU {mxik}";
+            items.Add($"{k + 1}. {code}{mark}");
+        }
+        return items;
     }
 
     void OnCellEdited(int row, int col)
@@ -211,12 +258,30 @@ public sealed class CommunicatorTab : UserControl
         {
             foreach (var l in lines)
             {
-                if (l.ClassCode.Length != 17 && l.IsMarked)
+                if (l.IsMarked)
                 {
-                    var found = await SoliqBridge.LookupProductAsync(getSoliqTab, l.Source.Codes[0]);
-                    if (found.Mxik.Length == 17) { l.ClassCode = found.Mxik; if (found.Barcode.Length > 0) l.Barcode = found.Barcode; Log($"{l.Name}: IKPU {found.Mxik} (soliq: {found.Product})."); }
-                    else Log($"{l.Name}: IKPU topilmadi ({found.Reason}). Qo'lda kiriting.");
+                    // Har bir kodning MXIK i my.soliq.uz dan (panel tekshirganlari qayta so'ralmaydi)
+                    foreach (var code in l.Source.Codes.Where(c => !l.CodeMxik.ContainsKey(c)))
+                    {
+                        var found = await SoliqBridge.LookupProductAsync(getSoliqTab, code);
+                        if (found.Mxik.Length == 17) l.CodeMxik[code] = found.Mxik;
+                        if (found.Barcode.Length > 0) l.Barcode ??= found.Barcode;
+                    }
+                    if (l.ClassCode.Length != 17)
+                    {
+                        // 1C dagi IKPU noma'lum: kodlarning ko'pchiligi qaysi MXIK da bo'lsa — shu
+                        var common = l.CodeMxik.Values.GroupBy(m => m).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key;
+                        if (common is not null) { l.ClassCode = common; Log($"{l.Name}: IKPU {common} (kodlar bo'yicha, soliq.uz)."); }
+                        else Log($"{l.Name}: IKPU topilmadi. Qo'lda kiriting.");
+                    }
+                    foreach (var bad in l.WrongIkpuCodes())
+                        Log($"✗ {l.Name}: kod {Mask(bad)} boshqa IKPU da ({l.CodeMxik[bad]}, tovarniki {l.ClassCode}) — sotib bo'lmaydi.");
                 }
+                map.Save(l);
+            }
+            // Qadoq kodlari — Communicator dan; u ishlamasa ham yuqoridagi IKPU lar saqlanib qoladi
+            foreach (var l in lines)
+            {
                 if (l.ClassCode.Length == 17 && l.PackageCode.Length == 0)
                 {
                     var packages = await client.GetPackagesAsync(l.ClassCode);
@@ -269,6 +334,34 @@ public sealed class CommunicatorTab : UserControl
         List<SaleItem> items;
         try { items = SaleBuilder.Build(lines); }
         catch (ArgumentException e) { Log("Chek tayyor emas: " + e.Message); return; }
+
+        // Sotishdan oldin har bir kod Communicator orqali tekshiriladi: yaroqsiz yoki sotilgan kod bo'lsa chek yuborilmaydi
+        SetBusy(true);
+        var rejected = new List<(SaleLine Line, string Code, string Reason)>();
+        try
+        {
+            foreach (var l in lines.Where(l => l.IsMarked))
+                foreach (var code in l.Source.Codes.Take((int)Math.Ceiling(l.Source.Quantity)))
+                {
+                    var r = await client.ValidateMarkingAsync(code, l.ClassCode);
+                    if (!r.IsValid) rejected.Add((l, code, "kod yaroqsiz yoki IKPU ga mos emas (E-POS)"));
+                    else if (r.AlreadySold) rejected.Add((l, code, "allaqachon sotilgan (E-POS)"));
+                }
+        }
+        catch (Exception e) when (e is UzposException or IOException or HttpRequestException)
+        {
+            Problem("Kodlarni tekshirib bo'lmadi: " + e.Message + ". Sotilmadi.");
+            SetBusy(false);
+            return;
+        }
+        SetBusy(false);
+        if (rejected.Count > 0)
+        {
+            foreach (var (l, code, reason) in rejected) Log($"✗ {l.Name}: {Mask(code)} — {reason}.");
+            UnsellableStore.AddCodes(baseEntry, ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Warehouse ?? "", rejected.Select(x => (x.Line.Name, x.Code, x.Reason)));
+            Problem($"{rejected.Count} ta kod sotilmaydi — chek yuborilmadi. Bu tovarlarni 1C hujjatidan olib tashlab, chekni qayta yig'ing.");
+            return;
+        }
         var total = SaleBuilder.Total(items);
         var cash = payType.SelectedIndex == 0 ? total : 0;
         var card = payType.SelectedIndex == 1 ? total : 0;

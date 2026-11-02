@@ -125,19 +125,20 @@ test('preparation has no document actions; transfer guards and fixed anchor rema
   assert.doesNotMatch(source, /host\.style\./);
   const run = source.slice(source.indexOf('  async function runLoop()'), source.indexOf('  // Panel UI'));
   assert.doesNotMatch(run, /ReceiptMarkup/);
+  assert.match(run, /await fillPrices\(pricePrefix\)/);
   assert.match(run, /pricingResult = \{ total:/);
   assert.match(run, /if \(!receiptReady\)/);
 });
 
 
 function engineHarness({ placed = 2, fail = false } = {}) {
-  const ctx = vm.createContext({ ReceiptMath, ReceiptLedger, document: {}, IS_MAC:false,
+  const ctx = vm.createContext({ ReceiptMath, ReceiptLedger, document: {}, IS_MAC:false, IS_DESKTOP:false,
     state: { mode:'marked', status:'running', source:{warehouse:'A'}, items:[], index:0, history:[], document:{prefix:'form7'} },
     activeTask:null, resumeCount:0, StopError:class extends Error {}, saved:[], transfers:0,
     save:async function() { ctx.saved.push(JSON.parse(JSON.stringify(ctx.state))); },
     log(){}, render(){}, el:()=>({value:''}), sleep:async()=>{}, checkpoint:async()=>{},
     openPodbor:async()=>{}, enableMarkingMode:async()=>{}, searchItem:async()=>{},
-    fillQuantities:async()=>placed, closePodbor:async()=>{},
+    fillQuantities:async()=>placed, closePodbor:async()=>{}, fillPrices:async()=>0,
     transfer:async()=>{ctx.transfers++; if(fail) throw Error('timeout');},
     assertDocument:()=> 'form7', formPrefix:()=> 'form8', salesPodborButton:()=>({}),
     resetReceipt(){ctx.reset=true;}, emptyDocument:()=>true, hasProgress:()=>ctx.state.items.some(i=>i.placed>0),
@@ -1088,13 +1089,20 @@ test('the Olish button pauses and resumes the running read, and does nothing oth
 test('E-POS receipt takes the placed units and only this receipt\'s codes, per product',()=>{
   const ctx=vm.createContext({norm:s=>String(s||'').trim().toLowerCase(),IS_DESKTOP:true,activeTask:null,
     state:{receiptId:7,status:'done',inFlight:null,items:[{name:'Tovar A',placed:2,price:150000},{name:'Tovar B',placed:0,price:5},{name:'tovar c',placed:1,price:'1000'}],
-      usedCodes:{C1:{name:'TOVAR A',receiptId:7},C2:{name:'Tovar A',receiptId:7},OLD:{name:'Tovar A',receiptId:3},C3:{name:'Tovar C',receiptId:7}}}});
+      usedCodes:{C1:{name:'TOVAR A',receiptId:7},C2:{name:'Tovar A',receiptId:7},OLD:{name:'Tovar A',receiptId:3},C3:{name:'Tovar C',receiptId:7}},
+      ikpuByName:{'tovar a':'08516999043000000'},codeIkpu:{C1:'08516999043000000',C3:'08418001001005224'}}});
   vm.runInContext(source.slice(source.indexOf('  function buildEposReceipt()'),source.indexOf('  async function eposSale()')),ctx);
   const r=JSON.parse(JSON.stringify(vm.runInContext('buildEposReceipt()',ctx)));
   assert.equal(r.receiptId,'7');assert.equal(r.finished,true);
   assert.equal(r.lines.length,2);
-  assert.deepEqual(r.lines[0],{name:'Tovar A',quantity:2,unitPrice:150000,codes:['C1','C2']});
-  assert.deepEqual(r.lines[1],{name:'tovar c',quantity:1,unitPrice:1000,codes:['C3']});
+  // IKPU — 1C hujjatidan o'rganilgani; har bir kodning MXIK i — soliq.uz tekshiruvidan (noma'lumi bo'sh)
+  assert.deepEqual(r.lines[0],{name:'Tovar A',quantity:2,unitPrice:150000,lineTotal:null,codes:['C1','C2'],vatPercent:null,ikpu:'08516999043000000',codeIkpu:{C1:'08516999043000000',C2:''}});
+  assert.deepEqual(r.lines[1],{name:'tovar c',quantity:1,unitPrice:1000,lineTotal:null,vatPercent:null,codes:['C3'],ikpu:'',codeIkpu:{C3:'08418001001005224'}});
+  // 1C hujjatidan olingan narx (QQS bilan) va QQS foizi ustun turadi
+  ctx.state.docLines={receiptId:7,byName:{'tovar a':{qty:2,total:336000,vat:12}}};
+  const r2=JSON.parse(JSON.stringify(vm.runInContext('buildEposReceipt()',ctx)));
+  assert.equal(r2.lines[0].unitPrice,168000);assert.equal(r2.lines[0].lineTotal,336000);assert.equal(r2.lines[0].vatPercent,12);assert.equal(r2.lines[1].unitPrice,1000);
+  ctx.state.docLines.receiptId=6;assert.equal(vm.runInContext('buildEposReceipt()',ctx).lines[0].unitPrice,150000);
   assert.equal(vm.runInContext('eposSaleBlockReason()',ctx),null);
   ctx.state.status='running';assert.match(vm.runInContext('eposSaleBlockReason()',ctx),/bajarilmoqda/);
   ctx.state.status='done';ctx.IS_DESKTOP=false;assert.match(vm.runInContext('eposSaleBlockReason()',ctx),/faqat Ishonch dasturida/);
@@ -1138,4 +1146,52 @@ test('used marking codes survive more than 20000 transfers and a saved-state rel
   assert.equal(restored.usedCodes.old0.receiptId, 'previous');
   assert.equal(restored.usedCodes.new.receiptId, 'current');
   assert.deepEqual(restored.pendingCodes, []);
+});
+
+test('a code whose MXIK differs from the product IKPU is skipped before 1 is written, and the next code is taken', () => {
+  const fill = source.slice(source.indexOf('  async function fillQuantities('), source.indexOf('  /** The × button'));
+  const check = fill.indexOf('codeIkpu !== itemIkpu');
+  assert.ok(check > fill.indexOf("if (checked.verdict !== 'available')"), 'IKPU is compared after the soliq.uz verdict');
+  assert.ok(check < fill.indexOf("await cdp({ type: 'text', text: '1' })"), 'IKPU is compared before 1 is typed');
+  const branch = fill.slice(check, fill.indexOf('continue;', check));
+  assert.match(branch, /rememberBadDb\(item, code, reason, checked\)/);
+  assert.match(branch, /text: '0'/); // a 1 typed before a pause is taken back
+  assert.match(branch, /ArrowDown/);
+});
+
+test('product IKPU is learned from the 1C document and a wrong guess is reported', () => {
+  const logs = [];
+  // 1C: sarlavhada «ИКПУ» colindex 2, qatorda qiymat colindex 3 da (2 — yashirin)
+  const box = (col, text) => ({ textContent: text, getAttribute: () => col });
+  const line = (name, ikpu) => ({ name, ikpu, querySelectorAll: () => [box('1', name), box('3', ikpu), box('4', '1,0000')] });
+  const grid = { lines: [line('Чайник A', '08516999043000000, Сув қайнатиш учун'), line('Печь B', '08516009001003018, Микротўлқинли'), line('', '')] };
+  const ctx = vm.createContext({ state: { ikpuGuess: { 'печь b': '08516009001009999' } }, norm: s => String(s || '').trim().toLowerCase(),
+    log: (m, l) => logs.push([m, l]), document: { getElementById: id => (id === 'form9_Товары' ? grid : null) },
+    gridColumns: () => ({ Номенклатура: '1', ИКПУ: '2', Количество: '4' }), gridRows: g => g.lines,
+    cellText: (l, col) => (col === '1' ? l.name : '') });
+  vm.runInContext("const COLUMN_NAMES = { item: ['Номенклатура'], ikpu: ['ИКПУ'] }; const colOf = (cols, key) => cols[COLUMN_NAMES[key][0]];", ctx);
+  vm.runInContext(source.slice(source.lastIndexOf('  /**', source.indexOf('  const spanText =')), source.indexOf('  const gridBody =')), ctx);
+  const from = source.indexOf('  /** 17 xonali IKPU');
+  vm.runInContext(source.slice(from, source.lastIndexOf('  /**', source.indexOf('  function rememberBadDb('))), ctx);
+  assert.equal(vm.runInContext("ikpuDigits('08516999043000000, Сув')", ctx), '08516999043000000');
+  assert.equal(vm.runInContext("ikpuDigits('123')", ctx), '');
+  vm.runInContext("learnIkpu('form9')", ctx);
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.state.ikpuByName)), { 'чайник a': '08516999043000000', 'печь b': '08516009001003018' });
+  assert.equal(vm.runInContext("expectedIkpu({ name: 'Печь B' })", ctx), '08516009001003018');
+  assert.equal(logs.length, 1);
+  assert.match(logs[0][0], /TEKSHIRING/);
+  assert.equal(ctx.state.ikpuGuess['печь b'], undefined);
+});
+
+test('a resumed receipt keeps its receipt id, so codes taken before the stop still reach E-POS', () => {
+  const run = source.slice(source.indexOf('  async function runLoop()'), source.indexOf('  /** Continue after a pause:'));
+  assert.match(run, /if \(!hasProgress\(\) \|\| state\.receiptId == null\) \{\s*state\.badCodes = \[\];\s*state\.receiptId = Date\.now\(\);/);
+});
+
+test('an unknown product IKPU is read from the 1C nomenclature card before Подбор, once', () => {
+  const process = source.slice(source.indexOf('  async function processItem('), source.indexOf('  function markCodesUsed('));
+  const ask = process.indexOf("type: 'ikpuLookup'");
+  assert.ok(ask > 0 && ask < process.indexOf('await openPodbor()'), 'IKPU is asked before Подбор opens');
+  assert.match(process, /IS_DESKTOP && !state\.ikpuByName\?\.\[norm\(item\.name\)\]/);
+  assert.ok(process.indexOf('assertDocument();', ask) < process.indexOf('await openPodbor()'), 'the document is checked again after the lookup');
 });

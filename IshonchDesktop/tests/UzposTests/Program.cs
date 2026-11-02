@@ -161,6 +161,40 @@ Check(MarkingReceipt.FromJson(JsonDocument.Parse("{\"lines\":[]}").RootElement) 
     Check(built[1].Amount == 2000 && built[1].PriceTiyin == 300_000_100, "dona: 2 ta → miqdor 2000, summa 3 000 001,00");
 }
 
+Console.WriteLine("IKPU va kodlarning MXIK i:");
+{
+    // Panel yuborgan chek: tovar IKPU si 1C dan, har bir kodning MXIK i soliq.uz dan
+    var json = JsonDocument.Parse("""
+        { "receiptId": "7", "finished": true, "lines": [
+          { "name": "Choynak", "quantity": 3, "unitPrice": 100, "codes": ["K1", "K2", "K3"],
+            "ikpu": "08516999043000000", "vatPercent": 15, "codeIkpu": { "K1": "08516999043000000", "K2": "08516009001003018", "K3": "" } } ] }
+        """).RootElement;
+    var r = MarkingReceipt.FromJson(json)!;
+    var l = r.Lines[0];
+    Check(l.Ikpu == "08516999043000000", "chekda 1C dagi IKPU keladi");
+    Check(l.VatPercent == 15, "chekda 1C dagi QQS foizi keladi");
+    Check(l.CodeIkpu!.Count == 2 && l.CodeIkpu["K2"] == "08516009001003018", "kodlarning MXIK i (bo'shi tashlanadi)");
+    var sale = new SaleLine { Source = l, ClassCode = l.Ikpu, PackageCode = "1501" };
+    foreach (var (code, mxik) in l.CodeIkpu) sale.CodeMxik[code] = mxik;
+    Check(sale.WrongIkpuCodes().SequenceEqual(new[] { "K2" }), "boshqa IKPU dagi kod aniqlanadi");
+    Check(sale.Problem()?.Contains("boshqa IKPU") == true, "boshqa IKPU dagi kod bo'lsa qator sotilmaydi");
+    sale.CodeMxik["K2"] = l.Ikpu;
+    Check(sale.Problem() is null, "hamma kod tovar IKPU sida — qator tayyor");
+    Check(MarkingReceipt.Digits17("08516999043000000, Сув қайнатиш") == "08516999043000000" && MarkingReceipt.Digits17("123") == "", "IKPU matndan ajratiladi");
+}
+
+Console.WriteLine("Chek jami 1C bilan tiyingacha bir xil:");
+{
+    // 1C: 2 dona, «Всего» 2 326 302,61 — donaga 1 163 151,305: alohida yaxlitlansa chek 1 tiyin ko'p chiqardi
+    var line = new ReceiptLine("Suv isitgich", 2, 1163151.31m, new[] { "A1", "A2" }, LineTotal: 2326302.61m);
+    var built = SaleBuilder.Build(new[] { new SaleLine { Source = line, ClassCode = "08516001001002076", PackageCode = "1" } });
+    Check(SaleBuilder.Total(built) == 232630261, "markirovkali: jami aynan 2 326 302,61");
+    Check(built[0].PriceTiyin == 116315131 && built[1].PriceTiyin == 116315130, "qoldiq tiyin birinchi donaga");
+    var gold = new ReceiptLine("Oltin", 3.45m, 1000m, Array.Empty<string>(), LineTotal: 3450.01m);
+    Check(SaleBuilder.Build(new[] { new SaleLine { Source = gold, ClassCode = "71131900001000000", PackageCode = "1" } })[0].PriceTiyin == 345001,
+        "markirovkasiz: qator summasi 1C dagi jami");
+}
+
 listener.Stop();
 Console.WriteLine(failures == 0 ? "\nHAMMASI O'TDI" : $"\n{failures} TA XATO");
 return failures == 0 ? 0 : 1;

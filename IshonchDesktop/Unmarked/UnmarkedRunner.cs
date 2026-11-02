@@ -1339,4 +1339,101 @@ public sealed class UnmarkedRunner
         if (await d.ModalTextAsync() is { } text)
             throw new OneCException("1C da ochiq oyna bor, avval uni yoping: " + text);
     }
+
+    // ---- nomenklatura kartochkasidan IKPU ------------------------------------------------------
+
+    const string NomenclatureTitle = "Номенклатура";
+
+    /// <summary>
+    /// Tovarning IKPU si — 1C nomenklatura kartochkasidagi «КодИзКлассификатора». «Справочники → Номенклатура» ro'yxatida
+    /// nom bo'yicha qidiriladi, faqat nomi aynan mos qator ochiladi (mos kelmasa — bo'sh qaytadi, hech narsa ochilmaydi),
+    /// kartochka o'zgartirilmasdan yopiladi va oldin ochiq bo'lgan tab (Реализация hujjati) qayta tanlanadi.
+    /// </summary>
+    public async Task<string> LookupIkpuAsync(string name)
+    {
+        await WaitNoModalAsync();
+        var back = (await TabsAsync()).FirstOrDefault(t => t.Selected);
+        try
+        {
+            var tab = (await TabsAsync()).FirstOrDefault(t => t.Text == NomenclatureTitle);
+            if (tab is not null) await d.ClickAsync(tab.Pos);
+            else
+            {
+                // Bo'lim menyusidagi band id bo'yicha (cmd_…_txt) olinadi: ochiq hujjatdagi «Номенклатура» ustun sarlavhasi bosilmasin
+                if (await d.PosSectionAsync("Справочники") is { } sec) await d.ClickAsync(sec);
+                var item = await d.WaitAsync(() => d.PosAsync(Center(
+                    "[...document.querySelectorAll('[id^=\"cmd_\"][id$=\"_txt\"]')].find(e => e.textContent.trim() === " + Js(NomenclatureTitle) + " && e.getBoundingClientRect().width > 0)")),
+                    15000, "«Справочники» → «Номенклатура»");
+                await d.ClickAsync(item);
+            }
+            await d.WaitTrueAsync(() => d.HasAsync("СписокСтрокаПоиска_i0"), 20000, "Номенклатура ro'yxati");
+
+            var flat = string.Join(' ', name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            // Avval nomning oxiri (model odatda oxirida — natija kam bo'ladi), keyin boshi, keyin uzunroq qismi
+            var queries = new[] { flat.Length > 40 ? flat[^40..].TrimStart() : flat, flat.Length > 40 ? flat[..40] : flat, flat.Length > 100 ? flat[..100] : flat }
+                .Distinct();
+            foreach (var query in queries)
+            {
+                // 1C qidiruvi haqiqiy tugma bosishlariga javob beradi (matnni bir yo'la qo'yish filtrlamaydi)
+                await d.ClickSuffixAsync("СписокСтрокаПоиска_i0", "qidiruv maydoni", "input");
+                await d.SelectAllAsync();
+                await d.KeyAsync("Backspace");
+                await d.TypeAsync(query);
+                // 1C qidiruvi sekin (server tomonida, 10–15 soniyagacha): aynan mos qator chiqquncha kutiladi. Eski natija
+                // ro'yxatda qolsa ham xato bo'lmaydi — faqat nomi aynan mos qator ochiladi
+                var rowExpr = Center(
+                    "(() => { const n = s => String(s || '').replace(/\\s+/g, ' ').trim().toLowerCase(); const want = n(" + Js(name) + ");" +
+                    " const line = [...document.querySelectorAll('[id$=\"_Список\"] .gridBody .gridLine')].find(l => l.getBoundingClientRect().height > 0" +
+                    " && [...l.querySelectorAll('.gridBox')].some(b => n(b.textContent) === want));" +
+                    " return line ? [...line.querySelectorAll('.gridBox')].find(b => n(b.textContent) === want) : null; })()");
+                Pt? row = null;
+                for (var until = d.Now + 25000; row is null && d.Now < until;)
+                {
+                    await d.DelayAsync(400);
+                    row = await d.PosAsync(rowExpr);
+                }
+                if (row is null) continue;
+
+                // Ro'yxat qayta chizilayotgan paytda bosish bo'sh joyga tushishi mumkin: qator qayta topilib bosiladi,
+                // kartochka 10 soniyada ochilmasa — yana urinadi
+                string? ikpu = null;
+                for (var attempt = 0; attempt < 3 && ikpu is null; attempt++)
+                {
+                    await d.DelayAsync(600);
+                    if (await d.PosAsync(rowExpr) is not { } at) break;
+                    await d.ClickAsync(at, 2);
+                    for (var until = d.Now + 10000; d.Now < until;)
+                    {
+                        await d.DelayAsync(400);
+                        if (!await d.HasAsync("_КодИзКлассификатора_i0")) continue;
+                        ikpu = MarkingReceipt.Digits17(await d.ValueAsync("_КодИзКлассификатора_i0"));
+                        break;
+                    }
+                }
+                if (ikpu is null) continue;
+                await d.KeyAsync("Escape");
+                await d.WaitTrueAsync(async () => !await d.HasAsync("_КодИзКлассификатора_i0") || await d.ModalTextAsync() is not null, 8000, "kartochka yopilishi");
+                if (await d.ModalTextAsync() is not null && await d.ModalButtonAsync("Нет") is { } no) await d.ClickAsync(no);
+                return ikpu;
+            }
+            return "";
+        }
+        finally
+        {
+            // Hujjat o'zgarganda tab sarlavhasiga « *» qo'shiladi — shuning uchun belgisiz solishtiriladi
+            static string Plain(string t) => t.TrimEnd('*', ' ');
+            if (back is not null && (await TabsAsync()).FirstOrDefault(t => Plain(t.Text) == Plain(back.Text)) is { } again && !again.Selected)
+            {
+                await d.ClickAsync(again.Pos);
+                await d.DelayAsync(700);
+            }
+        }
+    }
+
+    static string Js(string s) => System.Text.Json.JsonSerializer.Serialize(s);
+
+    /// <summary>Element ifodasini <see cref="OneCDriver.PosAsync"/> kutgan {x, y} (markaz) ga o'giradi; element yo'q bo'lsa null.</summary>
+    static string Center(string elementExpr) =>
+        "(() => { const e = " + elementExpr + "; if (!e) return null; const r = e.getBoundingClientRect();" +
+        " return r.width > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()";
 }

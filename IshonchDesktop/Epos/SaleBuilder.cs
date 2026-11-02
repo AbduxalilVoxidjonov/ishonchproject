@@ -15,6 +15,13 @@ public sealed class SaleLine
     public string Name => Source.Name;
     public bool IsMarked => Source.Codes.Count > 0;
 
+    /// <summary>Har bir kodning my.soliq.uz dagi MXIK i (kod → 17 xonali; noma'lumi yo'q).</summary>
+    public Dictionary<string, string> CodeMxik { get; } = new();
+
+    /// <summary>MXIK i qatorning IKPU sidan farq qiladigan kodlar: bunday kod shu qator bilan sotilmaydi.</summary>
+    public IEnumerable<string> WrongIkpuCodes() =>
+        Source.Codes.Where(c => CodeMxik.TryGetValue(c, out var m) && m.Length == 17 && ClassCode.Length == 17 && m != ClassCode);
+
     /// <summary>Qator chek uchun tayyor emasligining sababi (tayyor bo'lsa null).</summary>
     public string? Problem()
     {
@@ -22,6 +29,7 @@ public sealed class SaleLine
         if (PackageCode.Length == 0) return "qadoq kodi yo'q";
         if (Source.UnitPrice <= 0) return "narx yo'q";
         if (IsMarked && Source.Codes.Count < Source.Quantity) return $"{Source.Quantity} dona uchun {Source.Codes.Count} ta kod bor";
+        if (WrongIkpuCodes().Count() is > 0 and var wrong) return $"{wrong} ta kod boshqa IKPU da (soliq.uz) — bu kodlarni sotib bo'lmaydi";
         return null;
     }
 }
@@ -51,14 +59,23 @@ public static class SaleBuilder
             var unit = ToTiyin(l.Source.UnitPrice);
             if (l.IsMarked)
             {
-                for (var i = 0; i < l.Source.Quantity; i++)
-                    items.Add(new SaleItem(l.ClassCode, l.PackageCode, l.Name, unit, PieceAmount,
-                        VatIncluded(unit, l.VatPercent), l.VatPercent, l.Source.Codes[i], l.Barcode));
+                // 1C qator jami bo'lsa — donalarga tiyingacha aniq bo'linadi (qoldiq tiyinlar birinchi donalarga), shunda chek
+                // jami 1C dagidan farq qilmaydi; bo'lmasa har dona birlik narxida
+                var count = (int)l.Source.Quantity;
+                var total = l.Source.LineTotal is { } lt ? ToTiyin(lt) : unit * count;
+                var each = total / count;
+                var extra = total - each * count;
+                for (var i = 0; i < count; i++)
+                {
+                    var price = each + (i < extra ? 1 : 0);
+                    items.Add(new SaleItem(l.ClassCode, l.PackageCode, l.Name, price, PieceAmount,
+                        VatIncluded(price, l.VatPercent), l.VatPercent, l.Source.Codes[i], l.Barcode));
+                }
             }
             else
             {
                 // Gramm tovarda miqdor kasr: miqdor mingdan bir ulushda (8,33 g = 8330), summa tiyingacha yaxlitlanadi
-                var price = (long)Math.Round(unit * l.Source.Quantity, MidpointRounding.AwayFromZero);
+                var price = l.Source.LineTotal is { } lt ? ToTiyin(lt) : (long)Math.Round(unit * l.Source.Quantity, MidpointRounding.AwayFromZero);
                 items.Add(new SaleItem(l.ClassCode, l.PackageCode, l.Name, price, (long)Math.Round(PieceAmount * l.Source.Quantity, MidpointRounding.AwayFromZero),
                     VatIncluded(price, l.VatPercent), l.VatPercent, null, l.Barcode));
             }
