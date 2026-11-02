@@ -124,8 +124,7 @@ test('preparation has no document actions; transfer guards and fixed anchor rema
   assert.doesNotMatch(source, /appendChild\(host\)/);
   assert.doesNotMatch(source, /host\.style\./);
   const run = source.slice(source.indexOf('  async function runLoop()'), source.indexOf('  // Panel UI'));
-  assert.doesNotMatch(run, /ReceiptMarkup/);
-  assert.match(run, /await fillPrices\(pricePrefix\)/);
+  assert.match(run, /await applyMarkup\(postedPrefix, await markupPercent\(\)\)/);
   assert.match(run, /pricingResult = \{ total:/);
   assert.match(run, /if \(!receiptReady\)/);
 });
@@ -138,7 +137,7 @@ function engineHarness({ placed = 2, fail = false } = {}) {
     save:async function() { ctx.saved.push(JSON.parse(JSON.stringify(ctx.state))); },
     log(){}, render(){}, el:()=>({value:''}), sleep:async()=>{}, checkpoint:async()=>{},
     openPodbor:async()=>{}, enableMarkingMode:async()=>{}, searchItem:async()=>{},
-    fillQuantities:async()=>placed, closePodbor:async()=>{}, fillPrices:async()=>0,
+    fillQuantities:async()=>placed, closePodbor:async()=>{}, fillPrices:async()=>0, applyMarkup:async()=>0, postKeepOpen:async p=>p, markupPercent:async()=>0,
     transfer:async()=>{ctx.transfers++; if(fail) throw Error('timeout');},
     assertDocument:()=> 'form7', formPrefix:()=> 'form8', salesPodborButton:()=>({}),
     resetReceipt(){ctx.reset=true;}, emptyDocument:()=>true, hasProgress:()=>ctx.state.items.some(i=>i.placed>0),
@@ -1194,4 +1193,41 @@ test('an unknown product IKPU is read from the 1C nomenclature card before По�
   assert.ok(ask > 0 && ask < process.indexOf('await openPodbor()'), 'IKPU is asked before Подбор opens');
   assert.match(process, /IS_DESKTOP && !state\.ikpuByName\?\.\[norm\(item\.name\)\]/);
   assert.ok(process.indexOf('assertDocument();', ask) < process.indexOf('await openPodbor()'), 'the document is checked again after the lookup');
+});
+
+test('Реализация: «Цена» is not touched; «Сумма» = «Сумма списания» + markup %', () => {
+  const fill = source.slice(source.indexOf('  async function fillPrices('), source.indexOf('  /** The × button of the Подбор window'));
+  assert.match(fill, /colOf\(cols, 'writeOff'\)/);
+  assert.match(fill, /f\.col === colTarget/);
+  assert.doesNotMatch(fill, /f\.col === colPrice/);
+  assert.match(fill, /round2\(base \* \(1 \+ markup \/ 100\)\)/);
+  const ctx = vm.createContext({ round2: n => Math.round(n * 100) / 100 });
+  assert.equal(vm.runInContext('((base, markup) => round2(base * (1 + markup / 100)))(1843333.34, 1)', ctx), 1861766.67);
+});
+
+test('markup goes through 1C «Заполнить цены (себестоимость + %)»; the dialog OK is a trusted click; manual «Сумма» is the fallback', () => {
+  const fn = source.slice(source.indexOf('  async function applyMarkup('), source.indexOf('  /** The × button of the Подбор window'));
+  assert.match(fn, /ReceiptMarkup\.apply\(\{ prefix, percent: markup \}, adapter\)/);
+  assert.match(fn, /_ФормаЗаполнить\$\/\.test\(el\?\.id \|\| ''\) \? realClick\(el\) : domClick\(el\)/);
+  assert.match(fn, /MARKUP_SUBMIT_UNKNOWN'\) throw e/);
+  assert.match(fn, /return fillPrices\(prefix, markup\)/);
+});
+
+test('when 1C re-opens the written document under a new form prefix, markup follows it only if it is the same receipt', () => {
+  const fn = source.slice(source.indexOf('  async function applyMarkup('), source.indexOf('  /** The × button of the Подбор window'));
+  assert.match(fn, /const followDocument = \(\) => \(prefix = followReceiptDocument\(prefix\)\)/);
+  const follow = source.slice(source.indexOf('  function followReceiptDocument('), source.indexOf('  /** Tanlangan 1C tabining'));
+  assert.match(follow, /names\.every\(\(n\) => ours\.has\(n\)\)/);
+  assert.match(follow, /norm\(warehouse\) !== norm\(state\.source\?\.warehouse\)/);
+  assert.match(follow, /throw docError\('Joriy chek uchun tanlangan hujjat o‘zgardi\.'\)/);
+  assert.match(follow, /return now;/);
+});
+
+test('pricing: the document is posted first («Провести», kept open), then markup is applied through «Заполнить цены»', () => {
+  const run = source.slice(source.indexOf('  async function runLoop()'), source.indexOf('  /** Continue after a pause:'));
+  assert.ok(run.indexOf('await postKeepOpen(pricePrefix)') < run.indexOf('await applyMarkup(postedPrefix'));
+  const post = source.slice(source.indexOf('  async function postKeepOpen('), source.lastIndexOf('  /**', source.indexOf("Natsenka 1C ning o'zi bilan")));
+  assert.match(post, /_ФормаПровести`/);
+  assert.doesNotMatch(post, /ПровестиИЗакрыть/);
+  assert.match(post, /!title\.endsWith\('\*'\)/);
 });

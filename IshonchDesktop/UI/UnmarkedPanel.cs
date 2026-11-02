@@ -17,6 +17,8 @@ public sealed class UnmarkedPanel : UserControl
     readonly Func<Task<WebTab>>? getSoliqTab;
     /// <summary>«E-POS orqali sotish» — avtomatik bosilmaydi: faqat foydalanuvchi bosganda provesti qilingan chekni sotadi.</summary>
     readonly Button epos = PanelStyle.Secondary(new Button { Text = "🧾  E-POS orqali sotish", Height = 36, Dock = DockStyle.Fill, Enabled = false });
+    /// <summary>1C da hozir ochiq turgan istalgan Реализация hujjatini (dastur yaratmagan bo'lsa ham) E-POS orqali sotish.</summary>
+    readonly Button sellDoc = PanelStyle.Secondary(new Button { Text = "📄  Ochiq 1C hujjatini E-POS orqali sotish", Height = 36, Dock = DockStyle.Bottom });
     /// <summary>Provesti qilingan cheklar va ular E-POS orqali sotilganmi (faylda saqlanadi — dastur qayta ochilsa ham qoladi).</summary>
     readonly PostedReceiptStore posted;
     readonly Settings settings;
@@ -140,10 +142,12 @@ public sealed class UnmarkedPanel : UserControl
 
         Controls.Add(logCard);
         Controls.Add(hint);
-        var eposRow = new Panel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(0, 0, 0, 6) };
+        var eposRow = new Panel { Dock = DockStyle.Top, Height = 84, Padding = new Padding(0, 0, 0, 6) };
         eposRow.Controls.Add(epos);
+        eposRow.Controls.Add(sellDoc);
         eposRow.Visible = baseEntry is not null && getSoliqTab is not null;
         epos.Click += (_, _) => ChooseReceiptToSell();
+        sellDoc.Click += async (_, _) => await SellOpenDocumentAsync();
         Controls.Add(eposRow);
         Controls.Add(buttons);
         Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8 });
@@ -206,6 +210,29 @@ public sealed class UnmarkedPanel : UserControl
             Log($"{receipt.ReceiptId} E-POS orqali sotildi: fiskal belgi {sold.FiscalSign}, chek № {sold.ReceiptSeq}", "ok");
         }
         UpdateEposButton();
+    }
+
+    /// <summary>
+    /// 1C da ochiq turgan Реализация hujjatini o'qib (MXIK, narx, summa, QQS, jami — hujjatdan) E-POS oynasini ochadi.
+    /// Markirovkali qatorlarning kodlari ham hujjatdan («маркирован» oynasidan) o'qiladi.
+    /// </summary>
+    async Task SellOpenDocumentAsync()
+    {
+        if (Running || tab.Core is null) return;
+        sellDoc.Enabled = false;
+        try
+        {
+            var reader = new UnmarkedRunner(tab.Core, new UnmarkedOptions(0, 1, 1, 0, "", false), (t, l) => Log(t, l), CancellationToken.None);
+            await reader.InitAsync();
+            var open = await reader.ReadOpenDocumentAsync();
+            if (open is null) { Log("1C da Реализация hujjati ochiq emas: sotiladigan hujjatni oching (tovarlar jadvali ko'rinib tursin).", "warn"); return; }
+            Log($"1C hujjati № {open.Number} ({open.Date}): {open.Receipt.Lines.Count} ta tovar" +
+                (open.MarkedRows > 0 ? $" ({open.MarkedRows} tasi markirovkali, kodlari hujjatdan o'qildi)" : "") +
+                $", jami {open.Receipt.Lines.Sum(l => l.LineTotal ?? 0):N2} — E-POS oynasi ochilmoqda", "info");
+            Sell(open.Receipt);
+        }
+        catch (Exception e) { Log("Hujjatni o'qib bo'lmadi: " + e.Message, "err"); }
+        finally { if (!IsDisposed) sellDoc.Enabled = true; }
     }
 
     public void Stop()

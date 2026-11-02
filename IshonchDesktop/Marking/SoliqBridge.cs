@@ -97,6 +97,10 @@ public static class SoliqBridge
     /// Markirovka tarixini sahifaning o'z API si orqali oladi (sahifa ichidan, foydalanuvchi sessiyasi bilan).
     /// null — bu yo'l ishlamadi (kirilmagan, sahifa boshqa joyda, javob tushunarsiz): eski usul ishlatiladi.
     /// </summary>
+    /// <summary>«Ushbu markirovka kodi topilmadi» — lotin, kirill va rus yozuvida.</summary>
+    static bool NotFoundText(string body) =>
+        Regex.IsMatch(body, "topilmadi|топилмади|не найден|not found", RegexOptions.IgnoreCase);
+
     static async Task<object?> FastCheckAsync(Func<Task<WebTab>> getTab, string code, string ours)
     {
         var tab = await getTab();
@@ -132,7 +136,7 @@ public static class SoliqBridge
 
             // «Ushbu markirovka kodi topilmadi» (yoki «не найден») — holat kodidan qat'i nazar: kod darhol tashlanadi,
             // sekin sahifa qidiruviga o'tilmaydi
-            if (body.Contains("topilmadi", StringComparison.OrdinalIgnoreCase) || body.Contains("не найден", StringComparison.OrdinalIgnoreCase))
+            if (NotFoundText(body))
                 return new { ok = true, verdict = "unknown", reason = "markirovka topilmadi", notFound = true };
 
             using var doc = JsonDocument.Parse(body);
@@ -280,7 +284,7 @@ public static class SoliqBridge
                 if (!historyOk)
                 {
                     var reason = result.TryGetProperty("reason", out var rs) ? rs.GetString() : null;
-                    return new { ok = true, verdict = "unknown", reason = string.IsNullOrEmpty(reason) ? "markirovka topilmadi" : reason };
+                    return new { ok = true, verdict = "unknown", reason = string.IsNullOrEmpty(reason) ? "markirovka topilmadi" : reason, notFound = string.IsNullOrEmpty(reason) || reason == "markirovka topilmadi" };
                 }
 
                 JsonElement? last = history.TryGetProperty("last", out var lastEl) && lastEl.ValueKind == JsonValueKind.Object ? lastEl : null;

@@ -118,6 +118,9 @@ public sealed class MarkingSession : IDisposable
                     msg.TryGetProperty("code", out var c) ? c.GetString() : null,
                     msg.TryGetProperty("stir", out var s) ? s.GetString() : null,
                     baseEntry.Inn);
+            case "markupPercent":
+                // Natsenka, % — panel «Сумма» ni «Сумма списания» dan hisoblaganda
+                return new { ok = true, percent = ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Markup ?? 0m };
             case "ikpuLookup":
                 return await LookupIkpuAsync(msg.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "");
             case "eposSale":

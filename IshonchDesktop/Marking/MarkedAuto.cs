@@ -59,17 +59,19 @@ public sealed class MarkedAuto : IDisposable
           const send = (action) => {
             const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"]');
             window.chrome?.webview?.postMessage({ kind: 'ishAuto', action,
-              warehouse: q('wh')?.value || '', count: Number(q('count')?.value) || 1, post: !!q('post')?.checked, invDate: q('inv')?.value || '' });
+              warehouse: q('wh')?.value || '', count: Number(q('count')?.value) || 1, post: !!q('post')?.checked, invDate: q('inv')?.value || '',
+              markup: Number(String(q('markup')?.value || '0').replace(',', '.')) || 0 });
           };
           window.__ishAutoApply = (s) => {
             window.__ishAutoState = s;
             const box = document.getElementById('ishAuto'); if (!box || !s) return;
             // Sozlamalar (#ishAuto) va tugmalar (#ishAutoAct) alohida bloklarda
             const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"], #ishAutoAct [data-x="' + n + '"]') || { };
-            if (s.init) { q('inv').value = s.invDate || ''; q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; s.init = false; }
-            q('inv').disabled = q('wh').disabled = q('count').disabled = q('post').disabled = q('go').disabled = !!s.running;
+            if (s.init) { q('inv').value = s.invDate || ''; q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; q('markup').value = s.markup ?? 0; s.init = false; }
+            q('inv').disabled = q('wh').disabled = q('count').disabled = q('post').disabled = q('markup').disabled = q('go').disabled = !!s.running;
             q('refresh').disabled = !!s.running;
             q('stop').disabled = !s.running;
+            q('sellDoc').disabled = !!s.running;
             q('pause').disabled = !s.running;
             q('pause').textContent = s.paused ? '▶ Davom' : '⏸ Pauza';
             const st = document.getElementById('ishAutoStatus');
@@ -89,12 +91,14 @@ public sealed class MarkedAuto : IDisposable
             box.innerHTML = (inSlots ? '' : '<div class="ish-h">⚡ Avtomatik cheklar</div>') +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Inventarizatsiya sanasi va vaqti</span><input class="inp" data-x="inv" type="datetime-local" step="1"></label></div>' +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: МАРКИРОВАН (EPOS)"></label></div>' +
+              '<div class="row"><label class="field" style="flex:1 1 100%"><span>Natsenka, % (1C «Заполнить → Заполнить цены (себестоимость + %)» bilan qo‘yiladi)</span><input class="inp" data-x="markup" type="number" min="0" max="1000" step="0.01" value="0"></label></div>' +
               '<div class="row"><input type="hidden" data-x="count" value="1">' +
               '<label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
               (inSlots ? '' : '<div class="muted">Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>');
             const act = document.createElement('div');
             act.id = 'ishAutoAct'; act.className = inSlots ? 'ish-in' : 'ish-auto';
             act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled>■ To‘xtatish</button></div>' +
+              '<div class="row"><button class="b small" data-x="sellDoc" title="1C da hozir ochiq turgan Реализация hujjatini (dastur yaratmagan bo‘lsa ham) markirovka kodlari bilan E-POS orqali sotish">📄 Ochiq 1C hujjatini E-POS orqali sotish</button></div>' +
               '<div class="row"><button class="b small" data-x="reset" title="Qotib qolsa: jarayonni majburan to‘xtatadi, joriy chekni tozalaydi. Ombor qoldig‘i saqlanadi. Ishlatilgan kodlar va xato bazasi saqlanadi">⟲ Boshiga qaytarish</button></div>' +
               '<div class="row"><button class="b small" data-x="refresh">↻ Inventarizatsiyani yangilash</button></div>' +
               '<div class="ish-st" id="ishAutoStatus"></div>';
@@ -109,6 +113,7 @@ public sealed class MarkedAuto : IDisposable
               inv.classList.remove('ish-bad'); send('go');
             };
             act.querySelector('[data-x="stop"]').onclick = () => send('stop');
+            act.querySelector('[data-x="sellDoc"]').onclick = () => send('sellDoc');
             act.querySelector('[data-x="pause"]').onclick = () => send('pause');
             act.querySelector('[data-x="reset"]').onclick = () => { if (confirm('Joriy chek tozalansinmi? Ombor qoldig‘i saqlanadi. (ishlatilgan kodlar va xato bazasi saqlanadi)')) send('reset'); };
             act.querySelector('[data-x="refresh"]').onclick = () => send('refresh');
@@ -116,6 +121,7 @@ public sealed class MarkedAuto : IDisposable
             box.querySelector('[data-x="wh"]').onchange = () => send('save');
             box.querySelector('[data-x="count"]').onchange = () => send('save');
             box.querySelector('[data-x="post"]').onchange = () => send('save');
+            box.querySelector('[data-x="markup"]').onchange = () => send('save');
             const s = window.__ishAutoState; if (s) window.__ishAutoApply({ ...s, init: true });
           };
           setInterval(build, 500);
@@ -125,7 +131,7 @@ public sealed class MarkedAuto : IDisposable
     /// <summary>Panel sahifasi tayyor bo'lganda (va qayta yuklanganda) bo'limga saqlangan qiymatlarni beradi.</summary>
     public void Push(bool init = false)
     {
-        var state = new { init, invDate = inventoryDate.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture), warehouse = prefs.Warehouse, count = Math.Clamp(prefs.Count, 1, 200), post = prefs.Post, running = Running, paused, status = statusText, level = statusLevel };
+        var state = new { init, invDate = inventoryDate.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture), warehouse = prefs.Warehouse, count = Math.Clamp(prefs.Count, 1, 200), post = prefs.Post, markup = prefs.Markup, running = Running, paused, status = statusText, level = statusLevel };
         try { _ = panel.CoreWebView2?.ExecuteScriptAsync("window.__ishAutoApply && window.__ishAutoApply(" + JsonSerializer.Serialize(state) + ")"); }
         catch { /* panel yopilgan */ }
     }
@@ -137,10 +143,12 @@ public sealed class MarkedAuto : IDisposable
         if (action == "stop") { cts?.Cancel(); return; }
         if (action == "reset") { _ = ResetAsync(); return; }
         if (action == "pause") { _ = TogglePauseAsync(); return; }
+        if (action == "sellDoc") { if (!Running) _ = SellOpenDocumentAsync(); return; }
         if (Running) return;
         if (m.TryGetProperty("warehouse", out var w)) prefs.Warehouse = (w.GetString() ?? "").Trim();
         if (m.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number) prefs.Count = Math.Clamp(c.GetInt32(), 1, 200);
         if (m.TryGetProperty("post", out var p)) prefs.Post = p.ValueKind == JsonValueKind.True;
+        if (m.TryGetProperty("markup", out var mk) && mk.ValueKind == JsonValueKind.Number) prefs.Markup = Math.Clamp(mk.GetDecimal(), 0m, 1000m);
         if (m.TryGetProperty("invDate", out var inv) && UnmarkedOptions.ParseInventoryDate(inv.GetString()) is { } when) inventoryDate = when;
         settings.Save();
         if (action == "refresh")
@@ -420,7 +428,7 @@ public sealed class MarkedAuto : IDisposable
             return;
         }
         var targets = Planner.SplitTotal(sum.Value, n, 0.25m, new Random());
-        var msg = $"Markirovkali chek: {sum:N0} so'm (1 ta chek), sklad «{prefs.Warehouse}».\n" +
+        var msg = $"Markirovkali chek: {sum:N0} so'm (1 ta chek), sklad «{prefs.Warehouse}», natsenka {prefs.Markup:0.##}%.\n" +
                   (prefs.Post ? "Chek PROVESTI QILINADI.\n" : "Chek provesti qilinmaydi (tekshirib o'zingiz provesti qilasiz).\n") + "\nBoshlansinmi?";
         if (MessageBox.Show(owner, msg, AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
@@ -491,9 +499,9 @@ public sealed class MarkedAuto : IDisposable
             {
                 Status($"{k + 1}/{n}-chek: yangi Реализация…");
                 await runner.CreateMarkedDocumentAsync();
-                // Panel tovarlarni inventarizatsiya narxi (QQS'siz) bo'yicha tanlaydi, 1C esa QQS ni ustiga qo'shadi
-                // («НДС сверху») — chek jami maqsadga teng chiqishi uchun panelga QQS'siz summa beriladi
-                await PanelSetTargetAsync(Math.Round(targets[k] / (1 + VatRate / 100m)), ct);
+                // Panel tovarlarni inventarizatsiya narxi (QQS'siz, natsenkasiz) bo'yicha tanlaydi; 1C da «Сумма» ga natsenka
+                // qo'shiladi va QQS ustiga («НДС сверху») — chek jami maqsadga teng chiqishi uchun panelga ikkalasisiz summa beriladi
+                await PanelSetTargetAsync(Math.Round(targets[k] / (1 + VatRate / 100m) / (1 + prefs.Markup / 100m)), ct);
                 await Task.Delay(800, ct);
                 Status($"{k + 1}/{n}-chek: Подбор (≈{targets[k]:N0} so'm)…");
                 await StartPanelAsync(k, ct);
@@ -535,6 +543,32 @@ public sealed class MarkedAuto : IDisposable
             try { await PanelSetTargetAsync(sum.Value, CancellationToken.None); } catch { /* panel yopilgan */ }
             Push();
         }
+    }
+
+    bool sellingDoc;
+
+    /// <summary>
+    /// «📄 Ochiq 1C hujjatini E-POS orqali sotish»: 1C da ochiq turgan Реализация (dastur yaratmagan bo'lsa ham) o'qiladi —
+    /// narx, QQS, jami, MXIK va har qatorning markirovka kodlari hujjatdan — va E-POS sotish oynasi ochiladi.
+    /// </summary>
+    async Task SellOpenDocumentAsync()
+    {
+        if (sellingDoc || oneC.Core is not { } core || baseEntry is null || getSoliqTab is null) return;
+        sellingDoc = true;
+        try
+        {
+            Status("Ochiq 1C hujjati o'qilmoqda (markirovka kodlari bilan)…");
+            var reader = new UnmarkedRunner(core, new UnmarkedOptions(0, 1, 1, 0, "", false), (t, l) => Log.Write("Hujjat o'qish: " + t), CancellationToken.None);
+            await reader.InitAsync();
+            var open = await reader.ReadOpenDocumentAsync();
+            if (open is null) { Status("1C da Реализация hujjati ochiq emas: sotiladigan hujjatni oching (tovarlar jadvali ko'rinib tursin).", "warn"); return; }
+            Status($"1C hujjati № {open.Number}: {open.Receipt.Lines.Count} ta tovar, {open.Receipt.Lines.Sum(l => l.Codes.Count)} ta kod — E-POS oynasi ochildi.");
+            using var dialog = new SaleDialog(baseEntry, getSoliqTab, open.Receipt);
+            dialog.ShowDialog(oneC.FindForm());
+            if (dialog.Result is { } sold) Status($"№ {open.Number} E-POS orqali sotildi: chek № {sold.ReceiptSeq}, fiskal belgi {sold.FiscalSign}.", "ok");
+        }
+        catch (Exception e) { Status("Hujjatni o'qib bo'lmadi: " + e.Message, "err", e.ToString()); }
+        finally { sellingDoc = false; Push(); }
     }
 
     public void Dispose() => cts?.Cancel();

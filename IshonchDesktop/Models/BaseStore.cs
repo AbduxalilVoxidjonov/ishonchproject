@@ -122,6 +122,12 @@ public sealed class Settings
 
     public Dictionary<string, MarkedPrefs> MarkedByBase { get; set; } = new();
 
+    /// <summary>Har baza o'z E-POS Communicator i va fiskal moduli bilan ishlaydi (bir bazaning cheki boshqasinikiga ketmasin).</summary>
+    public Dictionary<string, EposPrefs> EposByBase { get; set; } = new();
+
+    public EposPrefs GetEpos(string baseKey) =>
+        EposByBase.TryGetValue(baseKey, out var p) ? p : EposByBase[baseKey] = new EposPrefs();
+
     public MarkedPrefs GetMarked(string baseKey) =>
         MarkedByBase.TryGetValue(baseKey, out var p) ? p : MarkedByBase[baseKey] = new MarkedPrefs();
 
@@ -166,6 +172,15 @@ public sealed class UnmarkedPrefs
     public string? InventoryNumber { get; set; }
 }
 
+/// <summary>Bitta bazaning E-POS i: Communicator manzili va unga biriktirilgan fiskal modul.</summary>
+public sealed class EposPrefs
+{
+    /// <summary>Communicator manzili (1C dagi «Интеграции с системами параметры» dagi kabi: IP va port 8347).</summary>
+    public string Url { get; set; } = "http://localhost:8347/uzpos";
+    /// <summary>Shu bazaga biriktirilgan fiskal modul (Terminal/FactoryID); bo'sh — birinchi sotuvda biriktiriladi.</summary>
+    public string Module { get; set; } = "";
+}
+
 /// <summary>Bitta baza uchun markirovkali chek avtomatikasi sozlamalari.</summary>
 public sealed class MarkedPrefs
 {
@@ -173,6 +188,8 @@ public sealed class MarkedPrefs
     public int Count { get; set; } = 3;
     public string Warehouse { get; set; } = "";
     public bool Post { get; set; } = true;
+    /// <summary>Natsenka, %: Реализация da 1C «Заполнить цены (себестоимость + %)» bilan qo'yiladi (ishlamasa «Сумма» = «Сумма списания» × (1 + natsenka/100)).</summary>
+    public decimal Markup { get; set; }
     /// <summary>Ombor (inventarizatsiya) qaysi sklad uchun va qachon o'qilgan: shu kun shu sklad uchun qayta o'qilmaydi.</summary>
     public string CapturedWarehouse { get; set; } = "";
     public DateTime? CapturedOn { get; set; }

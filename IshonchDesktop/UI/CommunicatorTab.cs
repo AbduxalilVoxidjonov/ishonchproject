@@ -13,7 +13,14 @@ public sealed class CommunicatorTab : UserControl
 {
     readonly BaseEntry baseEntry;
     readonly Func<Task<WebTab>> getSoliqTab;
-    readonly UzposClient client = new();
+    /// <summary>Shu bazaning E-POS i: Communicator manzili va biriktirilgan fiskal modul (har baza — o'zinikiga).</summary>
+    readonly EposPrefs epos;
+    UzposClient client;
+    /// <summary>Hozir ulangan fiskal modul (Terminal/FactoryID; aniqlanmagan bo'lsa null).</summary>
+    string? connectedModule;
+    readonly TextBox urlBox = new() { Width = 250 };
+    readonly Label bindLabel = new() { AutoSize = true, Padding = new Padding(8, 6, 0, 0), ForeColor = Color.DimGray };
+    readonly Button unbindBtn = new() { Text = "Modulni almashtirish", AutoSize = true };
     readonly ProductMap map;
     readonly SoldLog soldLog;
     readonly List<SaleLine> lines = new();
@@ -51,6 +58,9 @@ public sealed class CommunicatorTab : UserControl
         this.getSoliqTab = getSoliqTab;
         map = new ProductMap(baseEntry);
         soldLog = new SoldLog(baseEntry);
+        epos = ZoomStore.Settings?.GetEpos(baseEntry.ProfileKey) ?? new EposPrefs();
+        client = new UzposClient(epos.Url);
+        urlBox.Text = epos.Url;
         Dock = DockStyle.Fill;
         Padding = new Padding(12);
         Font = new Font("Segoe UI", 9.5f);
@@ -83,6 +93,9 @@ public sealed class CommunicatorTab : UserControl
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
         top.Controls.AddRange(new Control[] { status, new Label { Text = "Fiskal port:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, portBox, refreshBtn });
+        // Har baza o'z Communicator iga (1C dagi «Интеграции с системами параметры» kabi) va o'z fiskal moduliga ulanadi
+        var eposRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
+        eposRow.Controls.AddRange(new Control[] { new Label { Text = $"{baseEntry.Db} uchun Communicator:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, urlBox, bindLabel, unbindBtn });
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
         actions.Controls.AddRange(new Control[] { loadBtn, ikpuBtn, checkBtn });
         var pay = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
@@ -93,9 +106,23 @@ public sealed class CommunicatorTab : UserControl
         Controls.Add(pay);
         Controls.Add(logBox);
         Controls.Add(actions);
+        Controls.Add(eposRow);
         Controls.Add(top);
 
         refreshBtn.Click += async (_, _) => await RefreshStatusAsync();
+        urlBox.Leave += async (_, _) => await ChangeUrlAsync();
+        urlBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await ChangeUrlAsync(); } };
+        unbindBtn.Click += (_, _) =>
+        {
+            if (epos.Module.Length == 0) return;
+            if (MessageBox.Show(this, $"{baseEntry.Db} bazasi «{epos.Module}» fiskal moduliga biriktirilgan.\nBiriktirish olib tashlansinmi? Keyingi sotuvda hozir ulangan modul biriktiriladi.",
+                    AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            epos.Module = "";
+            ZoomStore.Settings?.Save();
+            Log("Fiskal modul biriktirilishi olib tashlandi.");
+            ShowBinding();
+        };
+        ShowBinding();
         portBox.SelectedIndexChanged += async (_, _) =>
         {
             if (settingPort) return;
@@ -119,6 +146,33 @@ public sealed class CommunicatorTab : UserControl
             LoadReceipt();
             await FillIkpuAndPackagesAsync();
         };
+    }
+
+    // ---- bazaning E-POS i -----------------------------------------------------------------------
+
+    async Task ChangeUrlAsync()
+    {
+        var url = urlBox.Text.Trim();
+        if (url.Length == 0 || url == epos.Url) return;
+        if (!url.Contains("://")) url = "http://" + url;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) { Log("Communicator manzili noto'g'ri: " + url); urlBox.Text = epos.Url; return; }
+        if (u.AbsolutePath is "" or "/") url = $"{u.Scheme}://{u.Authority}/uzpos";
+        epos.Url = url;
+        urlBox.Text = url;
+        ZoomStore.Settings?.Save();
+        client.Dispose();
+        client = new UzposClient(url) { FiscalPort = int.Parse((string)portBox.SelectedItem!) };
+        Log($"{baseEntry.Db} uchun Communicator: {url}");
+        await RefreshStatusAsync();
+    }
+
+    void ShowBinding()
+    {
+        bindLabel.Text = epos.Module.Length == 0
+            ? "Fiskal modul: biriktirilmagan (birinchi sotuvda biriktiriladi)"
+            : $"Biriktirilgan modul: {epos.Module}" + (connectedModule is not null && connectedModule != epos.Module ? "  ⚠ hozir boshqa modul ulangan!" : "");
+        bindLabel.ForeColor = connectedModule is not null && epos.Module.Length > 0 && connectedModule != epos.Module ? Color.Firebrick : Color.DimGray;
+        unbindBtn.Visible = epos.Module.Length > 0;
     }
 
     // ---- holat -----------------------------------------------------------------------------
@@ -165,7 +219,9 @@ public sealed class CommunicatorTab : UserControl
     async Task ShowModuleAsync()
     {
         var name = await client.GetModuleNameAsync();
+        connectedModule = name;
         status.Text += name is null ? " — modul raqami aniqlanmadi" : $" — ulangan modul: {name}";
+        ShowBinding();
     }
 
     bool settingPort;
@@ -211,7 +267,7 @@ public sealed class CommunicatorTab : UserControl
         foreach (var l in lines)
         {
             var problem = l.Problem();
-            var i = grid.Rows.Add(l.Name, l.Source.Quantity, l.Source.Codes.Count, null, l.ClassCode, l.PackageCode,
+            var i = grid.Rows.Add(l.Name, l.Source.Quantity.ToString("0.###"), l.Source.Codes.Count, null, l.ClassCode, l.PackageCode,
                 l.NetPrice.ToString("N2"), l.NetSum.ToString("N2"), l.VatPercent + "%", l.VatSum.ToString("N2"), l.Total.ToString("N2"), problem ?? "tayyor");
             var marks = (DataGridViewComboBoxCell)grid.Rows[i].Cells[ColMarks];
             marks.Items.Clear();
@@ -343,6 +399,18 @@ public sealed class CommunicatorTab : UserControl
         try { items = SaleBuilder.Build(lines); }
         catch (ArgumentException e) { Log("Chek tayyor emas: " + e.Message); return; }
 
+        // Bu bazaning cheki faqat shu bazaga biriktirilgan fiskal modulga ketadi (boshqa baza moduli emas)
+        var module = await client.GetModuleNameAsync();
+        connectedModule = module;
+        ShowBinding();
+        if (module is null) { Problem("Ulangan fiskal modul aniqlanmadi — chek yuborilmadi («Holatni yangilash» ni bosing)."); return; }
+        if (epos.Module.Length > 0 && module != epos.Module)
+        {
+            Problem($"{baseEntry.Db} bazasi «{epos.Module}» fiskal moduliga biriktirilgan, hozir esa «{module}» ulangan — chek yuborilmadi. " +
+                    "Shu bazaning E-POS iga ulaning (yoki modul haqiqatan almashgan bo'lsa «Modulni almashtirish»).");
+            return;
+        }
+
         // Sotishdan oldin har bir kod Communicator orqali tekshiriladi: yaroqsiz yoki sotilgan kod bo'lsa chek yuborilmaydi
         SetBusy(true);
         var rejected = new List<(SaleLine Line, string Code, string Reason)>();
@@ -387,6 +455,14 @@ public sealed class CommunicatorTab : UserControl
             soldLog.Mark(receipt.ReceiptId, "yuborildi");
             var result = await client.SaleAsync(items, cash, card, "1C-" + receipt.ReceiptId, confirmRealFiscalReceipt: true);
             soldLog.Mark(receipt.ReceiptId, $"chek №{result.ReceiptSeq}, FP {result.FiscalSign}");
+            if (epos.Module.Length == 0)
+            {
+                // Birinchi sotuv: shu baza shu fiskal modulga biriktiriladi
+                epos.Module = module;
+                ZoomStore.Settings?.Save();
+                Log($"{baseEntry.Db} bazasi «{module}» fiskal moduliga biriktirildi — keyingi cheklar faqat shu modulga yuboriladi.");
+                ShowBinding();
+            }
             Result = result;
             Log($"✓ Chek yaratildi: №{result.ReceiptSeq}, fiskal belgi {result.FiscalSign}, {result.DateTime}");
             if (result.QrCodeUrl.Length > 0) Log("  QR: " + result.QrCodeUrl);

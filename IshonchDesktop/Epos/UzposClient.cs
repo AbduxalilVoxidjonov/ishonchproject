@@ -99,7 +99,7 @@ public sealed class UzposClient : IDisposable
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                using var resp = await http.PostAsync($"http://127.0.0.1:{port}/FiscalDrive/List", new StringContent("{}", Encoding.UTF8, "application/json"), cts.Token);
+                using var resp = await http.PostAsync($"http://{url.Host}:{port}/FiscalDrive/List", new StringContent("{}", Encoding.UTF8, "application/json"), cts.Token);
                 if (!resp.IsSuccessStatusCode) continue;
                 using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(cts.Token));
                 if (Describe(doc.RootElement) is { } fromList) return fromList;

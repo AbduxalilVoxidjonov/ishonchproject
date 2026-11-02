@@ -108,6 +108,13 @@ har chek uchun Реализация (накладная) → Изменить �
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 
+## 0.8.2 — Natsenka 1C orqali, ochiq hujjatni sotish, har bazaning o'z E-POS i
+
+- Markirovkali panelda «Natsenka, %»: Подбор dan keyin hujjat «Провести» qilinadi, so'ng 1C «Заполнить → Заполнить цены (себестоимость + %)» bilan natsenka qo'yiladi (ishlamasa «Сумма» = «Сумма списания» + natsenka). 1C formani qayta ochsa ham panel davom etadi.
+- Ikkala panelda «📄 Ochiq 1C hujjatini E-POS orqali sotish»: 1C da ochiq istalgan Реализация (dastur yaratmagan bo'lsa ham) — narx, QQS, MXIK va markirovka kodlari («маркирован» oynasidan) bilan.
+- Har bazaga o'z Communicator manzili; birinchi sotuvda baza fiskal modulga biriktiriladi, boshqa modulga chek yuborilmaydi.
+- «Ushbu markirovka kodi topilmadi» — kod kutmasdan tashlanadi va xato bazasiga yoziladi.
+
 ## 0.8.1 — Markirovkasiz chek ham E-POS orqali 1C bilan bir xil sotiladi
 
 - Markirovkasiz chek provesti qilinishidan oldin 1C hujjatidan har qatorning MXIK (ИКПУ), narxi, summasi, QQS va «Всего» si o'qiladi; E-POS cheki shular bilan, markirovka va shtrix kodsiz yuboriladi («Narxga foiz» qo'yilgan bo'lsa ham 1C bilan tiyingacha bir xil).

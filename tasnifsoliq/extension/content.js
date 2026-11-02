@@ -117,12 +117,17 @@
     const norm = x => String(x || "").replace(/[\x00-\x1f\x1d\s]/g, "");
     let text = "", h = null;
     // by the clock, not by a number of tries: a throttled background tab must not stretch the wait
+    // «Ushbu markirovka kodi topilmadi» chiqsa — 20 s kutilmaydi, kod darhol «topilmadi» bo'ladi (oldingi qidiruvdan
+    // qolgan xabar bilan adashmaslik uchun kamida 1,5 s o'tgach)
+    const started = Date.now();
+    const notFoundText = /markirovka kodi topilmadi|kodi topilmadi|топилмади|не найден|not found/i;
     for (const end = Date.now() + 20000; Date.now() < end; ) {
       await sleep(500);
       text = (document.querySelector("main") || document.body).innerText;
       h = parseHistory(text);
       if (h.steps.length && norm(h.code) === norm(code)) break;
       h = null;
+      if (Date.now() - started >= 1500 && notFoundText.test(text)) break;
     }
     // A missing history is a real negative result.  Do not leave the caller
     // guessing from the page text (which can still contain a previous search).

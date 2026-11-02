@@ -380,6 +380,7 @@
     ikpu: ['ИКПУ', 'IKPU', 'МХИК', 'MXIK', 'ИКПУ (МХИК)'],
     lineTotal: ['Всего', 'Total'],
     lineSum: ['Сумма', 'Sum', 'Amount'],
+    writeOff: ['Сумма списания', 'Write-off amount'],
     vatSum: ['НДС', 'VAT'],
     vatRate: ['% НДС', 'НДС %', 'VAT %', '% VAT'],
     balance: ['Остаток', 'Остаток на складе', 'Balance', 'Stock', 'In stock'],
@@ -1195,33 +1196,48 @@
   /** Price as typed into a 1C cell: no thousands separator, decimal comma only when there are kopecks. */
   const priceText = (n) => (Math.round(n * 100) % 100 === 0 ? String(Math.round(n)) : n.toFixed(2).replace('.', ','));
 
+  /** Natsenka, % — Ishonch panelidagi maydondan (Chrome kengaytmasida — 0). */
+  async function markupPercent() {
+    if (!IS_DESKTOP) return 0;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'markupPercent', version: VERSION });
+      const p = Number(res?.percent);
+      return Number.isFinite(p) && p >= 0 ? p : 0;
+    } catch { return 0; }
+  }
+
   /**
-   * «Товары, услуги, комиссия» hujjatida 1C narxni o'zi qo'ymaydi (komissiya tovarida tannarx yo'q, «Заполнить цены» 0 beradi):
-   * har bir qatorning «Цена» katagiga shu tovarning inventarizatsiyadagi narxi yoziladi. Qator nomi bo'yicha tovar topilmasa
-   * yoki narx allaqachon to'g'ri bo'lsa — tegilmaydi. Natija: 1C dagi «Всего».
+   * «Товары, услуги, комиссия» hujjatida 1C narxni o'zi qo'ymaydi: «Цена» ga tegilmaydi, har qatorning «Сумма» katagiga
+   * «Сумма списания» × (1 + natsenka/100) yoziladi — narxni 1C o'zi hisoblaydi, QQS ustiga qo'shiladi. «Сумма списания» bo'sh
+   * qator yoki summasi allaqachon to'g'ri qator o'zgartirilmaydi. Natija: 1C dagi «Всего».
    */
-  async function fillPrices(prefix) {
+  async function fillPrices(prefix, markup = 0) {
     const grid = document.getElementById(`${prefix}_Товары`);
     if (!grid || !isVisible(grid)) throw new Error('Реализация jadvali topilmadi');
     const cols = gridColumns(grid);
     const colName = colOf(cols, 'item');
     const colPrice = colOf(cols, 'price');
+    const colTarget = colOf(cols, 'lineSum');
+    const colWriteOff = colOf(cols, 'writeOff');
     const colN = colOf(cols, 'rowNumber');
-    if (!colName || !colPrice) throw new Error('Реализация jadvalida «Номенклатура» yoki «Цена» ustuni topilmadi');
-    const priceOf = new Map(state.items.filter((i) => i.placed > 0 && validPrice(i)).map((i) => [norm(i.name), round2(i.price)]));
+    if (!colName || !colTarget || colWriteOff === undefined) throw new Error('Реализация jadvalida «Номенклатура», «Сумма» yoki «Сумма списания» ustuni topilmadi');
+    const sumFor = (line) => {
+      const base = parseNumber(spanText(line, cols, colWriteOff), ',');
+      return base > 0 ? round2(base * (1 + markup / 100)) : NaN;
+    };
     const rows = gridRows(grid);
     if (!rows.length) throw new Error('Реализация jadvali bo‘sh');
 
-    // Birinchi qatorning ko'rinib turgan katagini bosib, «Цена» ustuniga strelkalar bilan o'tiladi (jadval o'zi suriladi)
+    // Birinchi qatorning ko'rinib turgan katagini bosib, «Сумма» ustuniga strelkalar bilan o'tiladi (jadval o'zi suriladi)
     const toPrice = async () => {
       for (let i = 0; i < 40; i++) {
         const f = focusedCell(grid);
         if (!f) throw new Error('Реализация jadvalida tanlangan katak topilmadi');
-        if (f.col === colPrice) return f;
-        await cdp({ type: 'key', key: +f.col < +colPrice ? 'ArrowRight' : 'ArrowLeft' });
+        if (f.col === colTarget) return f;
+        await cdp({ type: 'key', key: +f.col < +colTarget ? 'ArrowRight' : 'ArrowLeft' });
         await sleep(120);
       }
-      throw new Error('«Цена» ustuniga o‘tib bo‘lmadi');
+      throw new Error('«Сумма» ustuniga o‘tib bo‘lmadi');
     };
     const body = gridBody(grid).getBoundingClientRect();
     const firstCell = [...rows[0].querySelectorAll('.gridBox')].find((b) => {
@@ -1247,17 +1263,18 @@
       if (seen.has(id)) break; // ↓ joyidan siljimadi: jadval oxiri
       seen.add(id);
       if (!cellText(f.line, colName)) throw new Error('Реализация jadvalida bo‘sh qator paydo bo‘ldi — hujjatni tekshiring');
-      const want = priceOf.get(norm(cellText(f.line, colName)));
-      const have = parseNumber(cellText(f.line, colPrice), ',');
-      if (want > 0 && !(Math.abs(have - want) < 0.005)) {
+      const want = sumFor(f.line);
+      const have = parseNumber(spanText(f.line, cols, colTarget), ',');
+      if (!(want > 0)) log(`${cellText(f.line, colName)}: «Сумма списания» bo‘sh — «Сумма» yozilmadi, tekshiring.`, 'warn');
+      else if (!(Math.abs(have - want) < 0.005)) {
         await cdp({ type: 'key', key: 'Enter' }); // katak tahrirlagichi
         await waitFor(() => document.activeElement?.tagName === 'INPUT' && grid.contains(document.activeElement), 4000,
-          '«Цена» tahrir maydoni', { pausable: false });
+          '«Сумма» tahrir maydoni', { pausable: false });
         await cdp({ type: 'selectAll', mac: IS_MAC });
         await cdp({ type: 'text', text: priceText(want) });
         await cdp({ type: 'key', key: 'Enter' });
         await waitFor(() => document.activeElement?.tagName !== 'INPUT' || !grid.contains(document.activeElement), 4000,
-          '«Цена» yozilishi', { pausable: false });
+          '«Сумма» yozilishi', { pausable: false });
         await sleep(T.afterCell);
         written++;
       }
@@ -1267,11 +1284,26 @@
       await sleep(T.afterCell);
     }
     if (gridRows(grid).some((l) => !cellText(l, colName))) throw new Error('Реализация jadvalida bo‘sh qator paydo bo‘ldi — hujjatni tekshiring');
+    const total = await captureDocLines(prefix);
+    log(`«Сумма» yozildi: ${written} ta qator («Сумма списания» + ${markup}% natsenka). 1C dagi jami: ${fmtSum(total)}.`, 'info');
+    return total;
+  }
+
+  /**
+   * Narxlar qo'yilgandan keyin hujjatdan: «tovar → IKPU» o'rganiladi va E-POS uchun har tovarning 1C dagi «Цена», «Сумма»,
+   * «НДС», «Всего», miqdori va QQS foizi eslab qolinadi. Natija: 1C dagi «Всего».
+   */
+  async function captureDocLines(prefix) {
+    const grid = document.getElementById(`${prefix}_Товары`);
+    if (!grid) throw new Error('Реализация jadvali topilmadi');
+    const cols = gridColumns(grid);
+    const colName = colOf(cols, 'item');
+    const colPrice = colOf(cols, 'price');
     learnIkpu(prefix);
     const total = await waitFor(() => {
       const v = parseNumber(document.getElementById(`${prefix}_ИтогиВсего_i0`)?.value, ',');
       return Number.isFinite(v) ? { v } : null;
-    }, 5000, '«Всего» summasi');
+    }, 5000, '«Всего» summasi', { pausable: false });
     // E-POS cheki 1C hujjati bilan bir xil bo'lishi uchun: har tovarning 1C dagi «Всего» (QQS bilan), miqdori va QQS foizi
     const byName = {};
     for (const line of gridRows(grid)) {
@@ -1288,8 +1320,98 @@
         vatSum: round2(prev.vatSum + (vatSum || 0)), vat: Number.isFinite(vat) ? vat : prev.vat, price: Number.isFinite(price) ? price : prev.price };
     }
     state.docLines = { receiptId: state.receiptId, byName };
-    log(`Narxlar yozildi: ${written} ta qator (inventarizatsiya narxi bo‘yicha). 1C dagi jami: ${fmtSum(total.v)}.`, 'info');
     return total.v;
+  }
+
+  /**
+   * 1C hujjatni yozgan/provesti qilganda formani yangi raqam bilan qayta ochadi (form31 → form32). Ko'rinib turgan forma
+   * o'sha chek bo'lsa (sklad va tovarlar shu chekniki) — yangi forma prefiksi qaytadi va hujjat belgisi yangilanadi;
+   * boshqa hujjat bo'lsa — to'xtatiladi.
+   */
+  function followReceiptDocument(prefix) {
+    const now = formPrefix(salesPodborButton());
+    if (now && now === prefix) return prefix;
+    const grid = now && document.getElementById(`${now}_Товары`);
+    const cols = grid ? gridColumns(grid) : {};
+    const colName = colOf(cols, 'item');
+    const ours = new Set(state.items.filter((i) => i.placed > 0).map((i) => norm(i.name)));
+    const names = grid && colName !== undefined ? gridRows(grid).map((l) => norm(cellText(l, colName))).filter(Boolean) : [];
+    const warehouse = document.getElementById(`${now}_Склад_i0`)?.value || '';
+    if (!names.length || !names.every((n) => ours.has(n)) || norm(warehouse) !== norm(state.source?.warehouse))
+      throw docError('Joriy chek uchun tanlangan hujjat o‘zgardi.');
+    log(`1C hujjatni yozib, formani qayta ochdi (${prefix} → ${now}) — shu hujjatda davom etilmoqda.`, 'info');
+    if (state.document) state.document = documentIdentity(now);
+    return now;
+  }
+
+  /** Tanlangan 1C tabining sarlavhasi (hujjat o'zgartirilgan bo'lsa oxirida «*»). */
+  const selectedTabTitle = () => document.querySelector('#openedCell_cont .openedItem.select')?.textContent?.trim() || '';
+
+  /**
+   * «Провести» (hujjat yopilmaydi): 1C tannarxni («Сумма списания») provesti paytida hisoblaydi — natsenka shundan keyin
+   * «Заполнить цены (себестоимость + %)» bilan qo'yiladi. 1C provesti qila olmasa (xabar chiqarsa) ish to'xtatiladi.
+   */
+  async function postKeepOpen(prefix) {
+    const btn = document.getElementById(`${prefix}_ФормаПровести`);
+    if (!btn || !isVisible(btn)) throw docError('Hujjatda «Провести» tugmasi topilmadi');
+    await realClick(btn);
+    let current = prefix;
+    await waitFor(() => {
+      try { current = followReceiptDocument(current); } catch { return false; }
+      const number = document.getElementById(`${current}_Номер_i0`)?.value?.trim();
+      const title = selectedTabTitle();
+      return number && title && !title.endsWith('*');
+    }, 90000, '«Провести» (1C xabarini tekshiring)', { pausable: false }); // forma qayta chizilayotganda hujjat tekshiruvi yo'q
+    if (state.document) state.document = documentIdentity(current);
+    log(`Hujjat provesti qilindi (№ ${document.getElementById(`${current}_Номер_i0`)?.value?.trim() || '?'}) — endi natsenka qo‘yiladi.`, 'info');
+    return current;
+  }
+
+  /**
+   * Natsenka 1C ning o'zi bilan: «Заполнить» → «Заполнить цены (себестоимость + %)» → foiz → «Заполнить» (OK).
+   * Dialogdagi «Заполнить» tugmasi faqat haqiqiy (trusted) bosishga javob beradi — shu tugma realClick bilan bosiladi.
+   * 1C narx qo'ya olmasa (jami 0) yoki buyruq ishlamasa — «Сумма» = «Сумма списания» + natsenka qo'lda yoziladi.
+   */
+  async function applyMarkup(prefix, markup) {
+    const followDocument = () => (prefix = followReceiptDocument(prefix));
+    const sameForm = async () => followDocument();
+    const adapter = {
+      document, isVisible, realClick, cdp, parseNumber, mac: IS_MAC, timeout: 15000,
+      // 1C formani qayta chizayotganda umumiy hujjat tekshiruvi (checkpoint) xato bermasin — hujjatni followDocument kuzatadi
+      waitFor: (fn, timeout, what) => waitFor(fn, timeout, what, { pausable: false }),
+      domClick: async (el) => (/_ФормаЗаполнить$/.test(el?.id || '') ? realClick(el) : domClick(el)),
+      assertDocument: sameForm,
+    };
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const r = await globalThis.ReceiptMarkup.apply({ prefix, percent: markup }, adapter);
+        followDocument();
+        if (state.document?.prefix === prefix) state.document = documentIdentity(prefix); // 1C yozgan bo'lsa — yangi raqam/sana
+        if (r.total > 0) {
+          const total = await captureDocLines(prefix);
+          log(`Natsenka ${markup}% «Заполнить цены (себестоимость + %)» bilan qo‘yildi. 1C dagi jami: ${fmtSum(total)}.`, 'info');
+          return total;
+        }
+        log('«Заполнить цены» narx qo‘ymadi (jami 0) — «Сумма» = «Сумма списания» + natsenka qo‘lda yoziladi.', 'warn');
+        break;
+      } catch (e) {
+        if (e?.code === 'MARKUP_SUBMIT_UNKNOWN') throw e; // natija noaniq — qayta urinib bo'lmaydi, hujjatni tekshirish kerak
+        await sleep(1500);
+        followDocument();
+        if (state.document?.prefix === prefix) state.document = documentIdentity(prefix);
+        if (attempt === 1) {
+          // Menyu ochiq qolgan bo'lsa yopiladi va 1C hujjatni yozib bo'lgach yana uriniladi
+          const menu = [...document.querySelectorAll(`[id^="${prefix}_"][id$="_submenu"]`)].find(isVisible);
+          const toolbar = document.getElementById(`${prefix}_ТоварыЗаполнить`) || document.getElementById(`${prefix}_ГруппаТоварыЗаполнить`);
+          if (menu && toolbar) domClick(toolbar);
+          log(`«Заполнить цены» birinchi urinishda ochilmadi (${e?.message || e}) — qayta urinilmoqda…`, 'warn');
+          await sleep(2000);
+          continue;
+        }
+        log(`«Заполнить цены» ishlamadi (${e?.message || e}) — «Сумма» = «Сумма списания» + natsenka qo‘lda yoziladi.`, 'warn');
+      }
+    }
+    return fillPrices(prefix, markup);
   }
 
   /** The × button of the Подбор window (closes it without transferring anything). */
@@ -1472,10 +1594,12 @@
       await save();
       await checkpoint();
       const pricePrefix = assertDocument();
-      // No markup: each line gets its inventory price (1C leaves commission goods without a price); the total is 1C's own
+      // Markup through 1C «Заполнить цены (себестоимость + %)» (fallback: «Сумма» = «Сумма списания» + markup); the total is 1C's own
       const lineTotal = (i) => (i.placed > 0 ? globalThis.ReceiptMath.lineTotals({ ...i, qty: i.placed }, 0).total : 0);
       const localTotal = round2(state.items.reduce((sum, i) => sum + (Number.isFinite(lineTotal(i)) ? lineTotal(i) : 0), 0));
-      const oneCTotal = await fillPrices(pricePrefix);
+      // Avval «Провести» (1C tannarxni hisoblaydi), keyin «Заполнить цены (себестоимость + %)» bilan natsenka
+      const postedPrefix = IS_DESKTOP ? await postKeepOpen(pricePrefix) : pricePrefix;
+      const oneCTotal = await applyMarkup(postedPrefix, await markupPercent());
       state.pricingResult = { total: oneCTotal > 0 ? round2(oneCTotal) : localTotal, local: !(oneCTotal > 0) };
       const plannedItems = state.items.filter(i => i.qty > 0 && (i.status !== 'skip' || i.placed > 0));
       const placedItems = state.items.filter(i => i.placed > 0);

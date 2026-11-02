@@ -1345,7 +1345,8 @@ public sealed class UnmarkedRunner
     // ---- E-POS uchun hujjat qatorlari ----------------------------------------------------------
 
     /// <summary>Реализация hujjatidagi bitta qator: 1C dagi IKPU, miqdor, narx (QQS'siz), summa, QQS va jami.</summary>
-    public sealed record DocLine(string Name, string Ikpu, decimal Qty, decimal? Price, decimal? Sum, int? VatRate, decimal? Vat, decimal? Total);
+    public sealed record DocLine(string Name, string Ikpu, decimal Qty, decimal? Price, decimal? Sum, int? VatRate, decimal? Vat, decimal? Total,
+        bool Marked = false);
 
     // Sarlavhada ustun bitta colindex, qatorda qiymat yonidagi yashirin katakda bo'lishi mumkin (masalan «ИКПУ»): shu
     // sarlavhadan keyingi sarlavhagacha bo'lgan kataklar o'qiladi
@@ -1365,7 +1366,7 @@ public sealed class UnmarkedRunner
           };
           return [...g.querySelectorAll('.gridBody .gridLine')].map(l => ({ name: span(l, 'Номенклатура'), ikpu: span(l, 'ИКПУ'),
             qty: span(l, 'Количество'), price: span(l, 'Цена'), sum: span(l, 'Сумма'), rate: span(l, '% НДС'), vat: span(l, 'НДС'),
-            total: span(l, 'Всего') })).filter(r => r.name);
+            total: span(l, 'Всего'), mark: span(l, 'Маркировка') })).filter(r => r.name);
         })()
         """;
 
@@ -1383,11 +1384,78 @@ public sealed class UnmarkedRunner
                 var rate = OneCDriver.ParseNumber(S("rate").Replace("%", ""));
                 list.Add(new DocLine(S("name"), MarkingReceipt.Digits17(S("ikpu")), OneCDriver.ParseNumber(S("qty")) ?? 0,
                     OneCDriver.ParseNumber(S("price")), OneCDriver.ParseNumber(S("sum")), rate is { } x ? (int)Math.Round(x) : null,
-                    OneCDriver.ParseNumber(S("vat")), OneCDriver.ParseNumber(S("total"))));
+                    OneCDriver.ParseNumber(S("vat")), OneCDriver.ParseNumber(S("total")),
+                    S("mark").Contains("маркирован", StringComparison.OrdinalIgnoreCase) && !S("mark").Contains("не ", StringComparison.OrdinalIgnoreCase)));
             }
         }
         catch (Exception ex) { log("Hujjat qatorlarini o'qib bo'lmadi (E-POS narxi reja bo'yicha): " + ex.Message, "warn"); }
         return list;
+    }
+
+    /// <summary>
+    /// 1C da hozir ochiq turgan Реализация hujjati (dastur yaratmagan bo'lsa ham) — «E-POS orqali sotish» uchun chek.
+    /// Narx, summa, QQS, jami va MXIK hujjatdan; chek belgisi — hujjat raqami va sanasi (bir hujjat ikki marta sotilmaydi).
+    /// Hujjat ochiq bo'lmasa — null. Markirovkali qatorlar <see cref="OpenDocument.MarkedRows"/> da sanaladi (kodlari alohida o'qiladi).
+    /// </summary>
+    public async Task<OpenDocument?> ReadOpenDocumentAsync()
+    {
+        var doc = await ReadDocLinesAsync();
+        if (doc.Count == 0) return null;
+        var number = (await d.ValueAsync("_Номер_i0"))?.Trim() ?? "";
+        var date = (await d.ValueAsync("_Дата_i0"))?.Trim() ?? "";
+        var lines = new List<ReceiptLine>();
+        for (var i = 0; i < doc.Count; i++)
+        {
+            var l = doc[i];
+            if (l.Qty <= 0) continue;
+            // Markirovkali qator: kodlari «маркирован» havolasi ochadigan oynadan o'qiladi (oyna saqlanmasdan yopiladi)
+            IReadOnlyList<string> codes = l.Marked ? await ReadRowCodesAsync(i) : Array.Empty<string>();
+            lines.Add(l.Total is > 0
+                ? new ReceiptLine(l.Name, l.Qty, Math.Round(l.Total.Value / l.Qty, 2), codes, l.Ikpu, null, l.VatRate, l.Total, l.Price, l.Sum, l.Vat)
+                : new ReceiptLine(l.Name, l.Qty, l.Price ?? 0, codes, l.Ikpu, null, l.VatRate));
+        }
+        if (lines.Count == 0) return null;
+        return new OpenDocument(new MarkingReceipt($"1C {number} {date}".Trim(), true, lines), number, date, doc.Count(l => l.Marked));
+    }
+
+    public sealed record OpenDocument(MarkingReceipt Receipt, string Number, string Date, int MarkedRows);
+
+    const string CodesGrid = "_СписокКодовМаркировки";
+
+    /// <summary>
+    /// Hujjatning <paramref name="row"/>-qatori (0 dan) markirovka kodlari: «Маркировка» ustunidagi «маркирован» bosiladi,
+    /// «Введите маркировки для товара» oynasidagi iste'mol qadog'i kodlari o'qiladi va oyna hech narsa saqlamasdan yopiladi.
+    /// </summary>
+    async Task<List<string>> ReadRowCodesAsync(int row)
+    {
+        var linkExpr = Center(
+            "(() => { const g = [...document.querySelectorAll('div.grid[id$=\"_Товары\"]')].find(x => x.getBoundingClientRect().width > 0);" +
+            " if (!g) return null; const l = [...g.querySelectorAll('.gridBody .gridLine')][" + row + "]; if (!l) return null;" +
+            " l.scrollIntoView({ block: 'nearest' }); return [...l.querySelectorAll('span')].find(s => s.textContent.trim() === 'маркирован') || null; })()");
+        // 1C birinchi bosishda ko'pincha faqat qatorni tanlaydi — oyna ochilmasa havola qayta topilib yana bosiladi
+        var opened = false;
+        for (var attempt = 0; attempt < 3 && !opened; attempt++)
+        {
+            if (await d.PosAsync(linkExpr) is not { } at) throw new OneCException($"{row + 1}-qatorning «маркирован» havolasi topilmadi");
+            await d.ClickAsync(at);
+            for (var until = d.Now + 3000; d.Now < until && !opened;) { await d.DelayAsync(300); opened = await d.HasAsync(CodesGrid); }
+        }
+        if (!opened) throw new OneCException($"{row + 1}-qatorning markirovka kodlari oynasi ochilmadi");
+        await d.DelayAsync(500);
+        var e = await d.EvalAsync(
+            "(() => { const g = [...document.querySelectorAll('div.grid[id$=\"" + CodesGrid + "\"]')].find(x => x.getBoundingClientRect().width > 0);" +
+            " if (!g || /Групп|Трансп/.test(g.id)) return []; return [...g.querySelectorAll('.gridBody .gridLine')]" +
+            ".map(l => [...l.querySelectorAll('.gridBox')].map(b => b.textContent.trim()).filter(Boolean).join('')).filter(Boolean); })()");
+        var codes = e.ValueKind == JsonValueKind.Array ? e.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : new List<string>();
+        // Yopish: Esc (o'zgartirilmagan oyna yopiladi); yopilmasa — oynaning «Закрыть» tugmasi
+        await d.KeyAsync("Escape");
+        for (var until = d.Now + 5000; d.Now < until && await d.HasAsync(CodesGrid);) await d.DelayAsync(300);
+        if (await d.HasAsync(CodesGrid) && await d.PosAsync(Center(
+                "[...document.querySelectorAll('[title=\"Закрыть\"], [title=\"Close\"]')].filter(x => x.getBoundingClientRect().width > 0).pop() || null")) is { } close)
+            await d.ClickAsync(close);
+        if (await d.ModalTextAsync() is not null && await d.ModalButtonAsync("Нет") is { } no) await d.ClickAsync(no);
+        await d.WaitTrueAsync(async () => !await d.HasAsync(CodesGrid), 8000, "markirovka kodlari oynasi yopilishi");
+        return codes;
     }
 
     /// <summary>
