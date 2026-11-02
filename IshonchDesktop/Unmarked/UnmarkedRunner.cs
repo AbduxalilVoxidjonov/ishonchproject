@@ -250,6 +250,8 @@ public sealed class UnmarkedRunner
 
                     // Hujjatdagi qatorlar (rejadagi tartibda); qoldiq yetmagan qatorlar o'chirilsa shu ro'yxatdan ham chiqariladi
                     var docRows = Enumerable.Range(0, idx.Count).ToList();
+                    // E-POS cheki 1C bilan bir xil bo'lishi uchun: «Провести и закрыть» hujjatni yopadi — qatorlar oldin o'qiladi
+                    var docLines = await ReadDocLinesAsync();
                     var result = await PostAsync();
                     for (var round = 0; !result.Ok && round < 3; round++)
                     {
@@ -266,6 +268,7 @@ public sealed class UnmarkedRunner
                         if (bad.Count == 0 || bad.Count >= docRows.Count) break;
                         if (!await RemoveDocRowsAsync(bad)) break;
                         foreach (var r in bad.OrderByDescending(x => x)) docRows.RemoveAt(r - 1);
+                        docLines = await ReadDocLinesAsync();
                         result = await PostAsync();
                     }
                     if (result.Ok)
@@ -278,9 +281,8 @@ public sealed class UnmarkedRunner
                         doneSum = sum;
                         foreach (var j in docRows) used[idx[j]] = used.GetValueOrDefault(idx[j]) + plan.Lines[j].Qty;
                         log($"{k + 1}-chek provesti qilindi ✓ ({docRows.Count} ta tovar, ≈{Fmt(realTotal)} so'm)", "ok");
-                        Posted.Add(new MarkingReceipt($"{k + 1}-chek", true, docRows
-                            .Select(j => new ReceiptLine(full[idx[j]].Name, plan.Lines[j].Qty, Math.Round(Unit(idx[j]), 2), Array.Empty<string>()))
-                            .ToList()));
+                        Posted.Add(new MarkingReceipt($"U{DateTime.Now:yyyyMMdd-HHmmss}-{k + 1}", true,
+                            ReceiptLines(docRows.Select(j => (full[idx[j]].Name, plan.Lines[j].Qty, Math.Round(Unit(idx[j]), 2))).ToList(), docLines)));
                         if (docRows.Count < idx.Count) PlanFrom(k + 1); // o'chirilgan qatorlar qoldig'i bilan keyingilar qayta rejalanadi
                         break;
                     }
@@ -1338,6 +1340,74 @@ public sealed class UnmarkedRunner
     {
         if (await d.ModalTextAsync() is { } text)
             throw new OneCException("1C da ochiq oyna bor, avval uni yoping: " + text);
+    }
+
+    // ---- E-POS uchun hujjat qatorlari ----------------------------------------------------------
+
+    /// <summary>Реализация hujjatidagi bitta qator: 1C dagi IKPU, miqdor, narx (QQS'siz), summa, QQS va jami.</summary>
+    public sealed record DocLine(string Name, string Ikpu, decimal Qty, decimal? Price, decimal? Sum, int? VatRate, decimal? Vat, decimal? Total);
+
+    // Sarlavhada ustun bitta colindex, qatorda qiymat yonidagi yashirin katakda bo'lishi mumkin (masalan «ИКПУ»): shu
+    // sarlavhadan keyingi sarlavhagacha bo'lgan kataklar o'qiladi
+    const string DocLinesJs = """
+        (() => {
+          const g = [...document.querySelectorAll('div.grid[id$="_Товары"]')].find(x => x.getBoundingClientRect().width > 0);
+          if (!g) return null;
+          const head = {};
+          g.querySelectorAll('.gridHead .gridBox[colindex]').forEach(b => { const t = b.textContent.trim(); if (t && !(t in head)) head[t] = +b.getAttribute('colindex'); });
+          const cols = Object.values(head).sort((a, b) => a - b);
+          const span = (line, title) => {
+            const c = head[title]; if (c === undefined) return '';
+            const next = cols.find(n => n > c) ?? Infinity;
+            return [...line.querySelectorAll('.gridBox[colindex]')]
+              .filter(b => +b.getAttribute('colindex') >= c && +b.getAttribute('colindex') < next)
+              .map(b => b.textContent.trim()).filter(Boolean).join(' ');
+          };
+          return [...g.querySelectorAll('.gridBody .gridLine')].map(l => ({ name: span(l, 'Номенклатура'), ikpu: span(l, 'ИКПУ'),
+            qty: span(l, 'Количество'), price: span(l, 'Цена'), sum: span(l, 'Сумма'), rate: span(l, '% НДС'), vat: span(l, 'НДС'),
+            total: span(l, 'Всего') })).filter(r => r.name);
+        })()
+        """;
+
+    /// <summary>Ochiq Реализация hujjatining qatorlari (o'qib bo'lmasa — bo'sh ro'yxat; chek reja bo'yicha qoladi).</summary>
+    async Task<List<DocLine>> ReadDocLinesAsync()
+    {
+        var list = new List<DocLine>();
+        try
+        {
+            var e = await d.EvalAsync(DocLinesJs);
+            if (e.ValueKind != JsonValueKind.Array) return list;
+            foreach (var r in e.EnumerateArray())
+            {
+                string S(string n) => r.TryGetProperty(n, out var v) ? v.GetString() ?? "" : "";
+                var rate = OneCDriver.ParseNumber(S("rate").Replace("%", ""));
+                list.Add(new DocLine(S("name"), MarkingReceipt.Digits17(S("ikpu")), OneCDriver.ParseNumber(S("qty")) ?? 0,
+                    OneCDriver.ParseNumber(S("price")), OneCDriver.ParseNumber(S("sum")), rate is { } x ? (int)Math.Round(x) : null,
+                    OneCDriver.ParseNumber(S("vat")), OneCDriver.ParseNumber(S("total"))));
+            }
+        }
+        catch (Exception ex) { log("Hujjat qatorlarini o'qib bo'lmadi (E-POS narxi reja bo'yicha): " + ex.Message, "warn"); }
+        return list;
+    }
+
+    /// <summary>
+    /// E-POS chek qatorlari: har tovar uchun 1C hujjatidagi qator (nomi va miqdori mos) topilsa — IKPU, narx, summa, QQS va jami
+    /// 1C dagidan; topilmasa — reja bo'yicha (inventarizatsiya narxi + QQS).
+    /// </summary>
+    public static List<ReceiptLine> ReceiptLines(List<(string Name, decimal Qty, decimal Unit)> planned, List<DocLine> doc)
+    {
+        static string Norm(string t) => string.Join(' ', t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        var free = doc.ToList();
+        var lines = new List<ReceiptLine>();
+        foreach (var (name, qty, unit) in planned)
+        {
+            var hit = free.FirstOrDefault(x => Norm(x.Name) == Norm(name) && x.Qty == qty && x.Total > 0);
+            if (hit is null) { lines.Add(new ReceiptLine(name, qty, unit, Array.Empty<string>())); continue; }
+            free.Remove(hit);
+            lines.Add(new ReceiptLine(name, qty, Math.Round(hit.Total!.Value / qty, 2), Array.Empty<string>(), hit.Ikpu, null,
+                hit.VatRate, hit.Total, hit.Price, hit.Sum, hit.Vat));
+        }
+        return lines;
     }
 
     // ---- nomenklatura kartochkasidan IKPU ------------------------------------------------------

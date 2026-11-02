@@ -96,6 +96,16 @@ public static class SaleBuilder
     }
 
     public static long Total(IEnumerable<SaleItem> items) => items.Sum(i => i.PriceTiyin);
+
+    /// <summary>
+    /// MXIK qadoqlari ichidan o'lchov birligi: dona tovarda «dona/шт», gramm tovarda (oltin) «gramm/грамм»; topilmasa — birinchisi.
+    /// </summary>
+    public static Package PreferPiece(IReadOnlyList<Package> packages, bool weight = false)
+    {
+        var pattern = weight ? "gramm|грамм|gram" : "dona|штук|шт|piece|pcs";
+        return packages.FirstOrDefault(p => System.Text.RegularExpressions.Regex.IsMatch(p.Name, pattern,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase)) ?? packages[0];
+    }
 }
 
 /// <summary>1C tovar nomi → IKPU va qadoq kodi. Bir marta aniqlansa eslab qolinadi (baza bo'yicha alohida).</summary>

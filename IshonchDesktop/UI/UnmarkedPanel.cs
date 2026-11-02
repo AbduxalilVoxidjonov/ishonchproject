@@ -17,8 +17,8 @@ public sealed class UnmarkedPanel : UserControl
     readonly Func<Task<WebTab>>? getSoliqTab;
     /// <summary>«E-POS orqali sotish» — avtomatik bosilmaydi: faqat foydalanuvchi bosganda provesti qilingan chekni sotadi.</summary>
     readonly Button epos = PanelStyle.Secondary(new Button { Text = "🧾  E-POS orqali sotish", Height = 36, Dock = DockStyle.Fill, Enabled = false });
-    /// <summary>Provesti qilingan cheklar va ular E-POS orqali sotilganmi.</summary>
-    readonly List<(MarkingReceipt Receipt, bool Sold)> posted = new();
+    /// <summary>Provesti qilingan cheklar va ular E-POS orqali sotilganmi (faylda saqlanadi — dastur qayta ochilsa ham qoladi).</summary>
+    readonly PostedReceiptStore posted;
     readonly Settings settings;
     readonly UnmarkedPrefs prefs;
     readonly TextBox target = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
@@ -56,6 +56,8 @@ public sealed class UnmarkedPanel : UserControl
         this.settings = settings;
         BaseTitle = baseTitle;
         prefs = settings.GetUnmarked(baseKey);
+        posted = new PostedReceiptStore(baseKey);
+        HandleCreated += (_, _) => UpdateEposButton(); // oldingi ishga tushirishdan qolgan sotilmagan cheklar
 
         var ru = CultureInfo.GetCultureInfo("ru-RU");
         target.Text = prefs.Target.ToString("0.##", CultureInfo.InvariantCulture);
@@ -170,7 +172,7 @@ public sealed class UnmarkedPanel : UserControl
     void UpdateEposButton()
     {
         if (IsDisposed) return;
-        var left = posted.Count(p => !p.Sold);
+        var left = posted.Items.Count(p => !p.Sold);
         epos.Enabled = left > 0 && !Running;
         epos.Text = left > 0 ? $"🧾  E-POS orqali sotish ({left} ta chek)" : "🧾  E-POS orqali sotish";
     }
@@ -178,27 +180,29 @@ public sealed class UnmarkedPanel : UserControl
     /// <summary>Sotilmagan chekni tanlaydi (bittasi bo'lsa — o'zi) va E-POS sotish oynasini ochadi.</summary>
     void ChooseReceiptToSell()
     {
-        var unsold = posted.Where(p => !p.Sold).Select(p => p.Receipt).ToList();
+        var unsold = posted.Items.Where(p => !p.Sold).Select(p => p.Receipt).ToList();
+        IshonchDesktop.Models.Log.Write($"E-POS (markirovkasiz): {unsold.Count} ta sotilmagan chek, ishlayapti={Running}");
         if (unsold.Count == 0 || Running) return;
         if (unsold.Count == 1) { Sell(unsold[0]); return; }
         var menu = new ContextMenuStrip { Font = new Font("Segoe UI", 10f) };
         foreach (var r in unsold)
         {
-            var sum = r.Lines.Sum(l => l.UnitPrice * l.Quantity);
-            menu.Items.Add($"{r.ReceiptId} — {sum:N0} so'm ({r.Lines.Count} ta tovar)", null, (_, _) => Sell(r));
+            var sum = r.Lines.Sum(l => l.LineTotal ?? l.UnitPrice * l.Quantity);
+            var when = posted.Items.First(p => p.Receipt.ReceiptId == r.ReceiptId).Time;
+            menu.Items.Add($"{when:dd.MM HH:mm} — {sum:N2} so'm ({r.Lines.Count} ta tovar)", null, (_, _) => Sell(r));
         }
         menu.Show(epos, new Point(0, epos.Height));
     }
 
     void Sell(MarkingReceipt receipt)
     {
-        if (baseEntry is null || getSoliqTab is null) return;
+        if (baseEntry is null || getSoliqTab is null) { IshonchDesktop.Models.Log.Write("E-POS (markirovkasiz): baza yoki soliq tabi yo'q"); return; }
+        IshonchDesktop.Models.Log.Write($"E-POS (markirovkasiz): {receipt.ReceiptId} sotish oynasi ochilmoqda ({receipt.Lines.Count} qator)");
         using var dialog = new SaleDialog(baseEntry, getSoliqTab, receipt);
         dialog.ShowDialog(FindForm());
         if (dialog.Result is { } sold)
         {
-            var i = posted.FindIndex(p => ReferenceEquals(p.Receipt, receipt));
-            if (i >= 0) posted[i] = (receipt, true);
+            posted.MarkSold(receipt.ReceiptId);
             Log($"{receipt.ReceiptId} E-POS orqali sotildi: fiskal belgi {sold.FiscalSign}, chek № {sold.ReceiptSeq}", "ok");
         }
         UpdateEposButton();
@@ -311,8 +315,7 @@ public sealed class UnmarkedPanel : UserControl
                 r.Error is null && !r.Stopped ? "ok" : "warn", null, report: false); // xatoning o'zi yuqorida yozilgan
             // To'xtatilgan yoki xato bilan tugagan bo'lsa — keyingi «Boshlash» qolgan cheklardan davom ettira oladi
             // Provesti qilingan cheklar «E-POS orqali sotish» uchun eslab qolinadi (o'zi sotilmaydi)
-            foreach (var receipt in runner.Posted)
-                if (!posted.Any(p => ReferenceEquals(p.Receipt, receipt))) posted.Add((receipt, false));
+            foreach (var receipt in runner.Posted) posted.Add(receipt);
             UpdateEposButton();
             if (options.Post && (r.Error is not null || cts.IsCancellationRequested) && runner.CanResume)
             {

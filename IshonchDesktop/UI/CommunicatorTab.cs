@@ -293,8 +293,10 @@ public sealed class CommunicatorTab : UserControl
                     var packages = await client.GetPackagesAsync(l.ClassCode);
                     if (packages.Count > 0)
                     {
-                        l.PackageCode = packages[0].Code;
-                        Log($"{l.Name}: qadoq {packages[0].Code} ({packages[0].Name}){(packages.Count > 1 ? $", yana {packages.Count - 1} ta variant bor, kerak bo'lsa qo'lda o'zgartiring" : "")}.");
+                        // Chekda o'lchov birligi «dona» bo'ladi (soliq.uz dagi fiskal chekdagi kabi): «dona/шт» qadog'i afzal
+                        var pick = SaleBuilder.PreferPiece(packages, weight: l.Source.Quantity != decimal.Truncate(l.Source.Quantity));
+                        l.PackageCode = pick.Code;
+                        Log($"{l.Name}: qadoq {pick.Code} ({pick.Name}){(packages.Count > 1 ? $", yana {packages.Count - 1} ta variant bor, kerak bo'lsa qo'lda o'zgartiring" : "")}.");
                     }
                     else Log($"{l.Name}: qadoq topilmadi (IKPU Communicator bazasida yo'q).");
                 }

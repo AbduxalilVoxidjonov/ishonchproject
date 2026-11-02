@@ -201,6 +201,19 @@ Console.WriteLine("Chek jami 1C bilan tiyingacha bir xil:");
         "markirovkasiz: qator summasi 1C dagi jami");
 }
 
+Console.WriteLine("O'lchov birligi:");
+{
+    var packs = new List<Package> { new("1500", "quti"), new("1501", "dona"), new("1502", "gramm") };
+    Check(SaleBuilder.PreferPiece(packs).Code == "1501", "dona tovar — «dona»");
+    Check(SaleBuilder.PreferPiece(packs, weight: true).Code == "1502", "gramm tovar — «gramm»");
+    Check(SaleBuilder.PreferPiece(new List<Package> { new("9", "quti") }).Code == "9", "mos yo'q — birinchisi");
+    // Markirovkasiz qator: kod va shtrix kod yuborilmaydi (soliq.uz dagi chekdagi kabi «-»)
+    var item = SaleBuilder.Build(new[] { new SaleLine { Source = new ReceiptLine("Скутер", 1, 1191536.64m, Array.Empty<string>(), LineTotal: 1191536.64m),
+        ClassCode = "08710100200000000", PackageCode = "1501" } })[0];
+    Check(item.Label is null && item.Barcode is null && item.PriceTiyin == 119153664 && item.VatTiyin == 12766464 && item.Amount == 1000,
+        "markirovkasiz: 1 dona, 1 191 536,64, QQS 127 664,64, kodsiz");
+}
+
 listener.Stop();
 Console.WriteLine(failures == 0 ? "\nHAMMASI O'TDI" : $"\n{failures} TA XATO");
 return failures == 0 ? 0 : 1;

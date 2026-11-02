@@ -108,6 +108,12 @@ har chek uchun Реализация (накладная) → Изменить �
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 
+## 0.8.1 — Markirovkasiz chek ham E-POS orqali 1C bilan bir xil sotiladi
+
+- Markirovkasiz chek provesti qilinishidan oldin 1C hujjatidan har qatorning MXIK (ИКПУ), narxi, summasi, QQS va «Всего» si o'qiladi; E-POS cheki shular bilan, markirovka va shtrix kodsiz yuboriladi («Narxga foiz» qo'yilgan bo'lsa ham 1C bilan tiyingacha bir xil).
+- O'lchov birligi: dona tovarda «dona», gramm tovarda «gramm» qadog'i tanlanadi.
+- Provesti qilingan markirovkasiz cheklar faylga saqlanadi — dastur qayta ochilsa ham «E-POS orqali sotish» ro'yxatida qoladi, sotilgani belgilanadi.
+
 ## 0.8.0 — Markirovkali chek: narx, IKPU va E-POS 1C bilan bir xil
 
 - Подбор dan keyin «Товары, услуги, комиссия» hujjatining har qatoriga inventarizatsiya narxi yoziladi (avval narx bo'sh, hujjat 0 so'm bilan provesti bo'lardi). 1C QQS ni ustiga qo'shadi, shuning uchun chek jami maqsad summaga teng chiqadi.

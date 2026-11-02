@@ -371,6 +371,29 @@ Console.WriteLine("Sotib bo'lmaydigan markirovkalar");
     Check(IshonchDesktop.Marking.UnsellableStore.All().Single().Code == "c1", "o'chirish");
 }
 
+// ---- markirovkasiz chek: 1C hujjati qatorlari va saqlanishi ----
+Console.WriteLine("Markirovkasiz chek E-POS uchun");
+{
+    var doc = new List<IshonchDesktop.Unmarked.UnmarkedRunner.DocLine>
+    {
+        new("Скутер  2х колесный", "08710100200000000", 1, 1063872.00m, 1063872.00m, 12, 127664.64m, 1191536.64m),
+    };
+    var lines = IshonchDesktop.Unmarked.UnmarkedRunner.ReceiptLines(
+        new() { ("Скутер 2х колесный", 1m, 1191536m), ("Boshqa tovar", 2m, 500m) }, doc);
+    Check(lines[0].Ikpu == "08710100200000000" && lines[0].LineTotal == 1191536.64m && lines[0].VatSum == 127664.64m
+        && lines[0].VatPercent == 12 && lines[0].Codes.Count == 0, "1C qatori: MXIK, jami, QQS 1C dan, markirovkasiz");
+    Check(lines[1].LineTotal is null && lines[1].UnitPrice == 500m, "hujjatda topilmagan qator — reja bo'yicha");
+
+    var rfile = Path.Combine(tmp, "unmarked-receipts.json");
+    var rstore = new IshonchDesktop.Epos.PostedReceiptStore("x", rfile);
+    rstore.Add(new IshonchDesktop.Epos.MarkingReceipt("U1", true, lines));
+    rstore.Add(new IshonchDesktop.Epos.MarkingReceipt("U1", true, lines));
+    rstore.MarkSold("U1");
+    var reload = new IshonchDesktop.Epos.PostedReceiptStore("x", rfile);
+    Check(reload.Items.Count == 1 && reload.Items[0].Sold && reload.Items[0].Receipt.Lines[0].Ikpu == "08710100200000000",
+        "cheklar faylga saqlanadi, takrorlanmaydi, sotilgani belgilanadi");
+}
+
 listener.Stop();
 try { Directory.Delete(tmp, true); } catch { }
 Console.WriteLine(failures == 0 ? "\nHAMMASI YAXSHI" : $"\n{failures} ta xato");
