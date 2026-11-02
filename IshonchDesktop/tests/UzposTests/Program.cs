@@ -190,6 +190,12 @@ Console.WriteLine("Chek jami 1C bilan tiyingacha bir xil:");
     var built = SaleBuilder.Build(new[] { new SaleLine { Source = line, ClassCode = "08516001001002076", PackageCode = "1" } });
     Check(SaleBuilder.Total(built) == 232630261, "markirovkali: jami aynan 2 326 302,61");
     Check(built[0].PriceTiyin == 116315131 && built[1].PriceTiyin == 116315130, "qoldiq tiyin birinchi donaga");
+    // Jadvaldagi 1C ustunlari: 1C dan kelgan qiymatlar o'zgarishsiz; kelmasa jami ichidan hisoblanadi
+    var shown = new SaleLine { Source = line with { NetPrice = 1038527.95m, NetSum = 2077055.90m, VatSum = 249246.71m } };
+    Check(shown.NetPrice == 1038527.95m && shown.NetSum == 2077055.90m && shown.VatSum == 249246.71m && shown.Total == 2326302.61m,
+        "1C dagi Цена/Сумма/НДС/Всего ko'rsatiladi");
+    var calc = new SaleLine { Source = new ReceiptLine("X", 2, 1120m, new[] { "a", "b" }, LineTotal: 2240m) };
+    Check(calc.VatSum == 240m && calc.NetSum == 2000m && calc.NetPrice == 1000m, "1C qiymatlari bo'lmasa — 12% QQS jami ichidan");
     var gold = new ReceiptLine("Oltin", 3.45m, 1000m, Array.Empty<string>(), LineTotal: 3450.01m);
     Check(SaleBuilder.Build(new[] { new SaleLine { Source = gold, ClassCode = "71131900001000000", PackageCode = "1" } })[0].PriceTiyin == 345001,
         "markirovkasiz: qator summasi 1C dagi jami");

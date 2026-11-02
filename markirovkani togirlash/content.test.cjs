@@ -1096,12 +1096,12 @@ test('E-POS receipt takes the placed units and only this receipt\'s codes, per p
   assert.equal(r.receiptId,'7');assert.equal(r.finished,true);
   assert.equal(r.lines.length,2);
   // IKPU — 1C hujjatidan o'rganilgani; har bir kodning MXIK i — soliq.uz tekshiruvidan (noma'lumi bo'sh)
-  assert.deepEqual(r.lines[0],{name:'Tovar A',quantity:2,unitPrice:150000,lineTotal:null,codes:['C1','C2'],vatPercent:null,ikpu:'08516999043000000',codeIkpu:{C1:'08516999043000000',C2:''}});
-  assert.deepEqual(r.lines[1],{name:'tovar c',quantity:1,unitPrice:1000,lineTotal:null,vatPercent:null,codes:['C3'],ikpu:'',codeIkpu:{C3:'08418001001005224'}});
+  assert.deepEqual(r.lines[0],{name:'Tovar A',quantity:2,unitPrice:150000,lineTotal:null,netPrice:null,netSum:null,vatSum:null,codes:['C1','C2'],vatPercent:null,ikpu:'08516999043000000',codeIkpu:{C1:'08516999043000000',C2:''}});
+  assert.deepEqual(r.lines[1],{name:'tovar c',quantity:1,unitPrice:1000,lineTotal:null,netPrice:null,netSum:null,vatSum:null,vatPercent:null,codes:['C3'],ikpu:'',codeIkpu:{C3:'08418001001005224'}});
   // 1C hujjatidan olingan narx (QQS bilan) va QQS foizi ustun turadi
-  ctx.state.docLines={receiptId:7,byName:{'tovar a':{qty:2,total:336000,vat:12}}};
+  ctx.state.docLines={receiptId:7,byName:{'tovar a':{qty:2,total:336000,net:300000,vatSum:36000,price:150000,vat:12}}};
   const r2=JSON.parse(JSON.stringify(vm.runInContext('buildEposReceipt()',ctx)));
-  assert.equal(r2.lines[0].unitPrice,168000);assert.equal(r2.lines[0].lineTotal,336000);assert.equal(r2.lines[0].vatPercent,12);assert.equal(r2.lines[1].unitPrice,1000);
+  assert.equal(r2.lines[0].unitPrice,168000);assert.equal(r2.lines[0].lineTotal,336000);assert.equal(r2.lines[0].netPrice,150000);assert.equal(r2.lines[0].netSum,300000);assert.equal(r2.lines[0].vatSum,36000);assert.equal(r2.lines[0].vatPercent,12);assert.equal(r2.lines[1].unitPrice,1000);
   ctx.state.docLines.receiptId=6;assert.equal(vm.runInContext('buildEposReceipt()',ctx).lines[0].unitPrice,150000);
   assert.equal(vm.runInContext('eposSaleBlockReason()',ctx),null);
   ctx.state.status='running';assert.match(vm.runInContext('eposSaleBlockReason()',ctx),/bajarilmoqda/);

@@ -22,6 +22,18 @@ public sealed class SaleLine
     public IEnumerable<string> WrongIkpuCodes() =>
         Source.Codes.Where(c => CodeMxik.TryGetValue(c, out var m) && m.Length == 17 && ClassCode.Length == 17 && m != ClassCode);
 
+    /// <summary>Qator jami QQS bilan (1C dagi «Всего»; bo'lmasa narx × miqdor).</summary>
+    public decimal Total => Source.LineTotal ?? Source.UnitPrice * Source.Quantity;
+
+    /// <summary>QQS summasi (1C dagi «НДС»; bo'lmasa jami ichidan hisoblanadi).</summary>
+    public decimal VatSum => Source.VatSum ?? Math.Round(Total * VatPercent / (100m + VatPercent), 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>Summa QQS'siz (1C dagi «Сумма»).</summary>
+    public decimal NetSum => Source.NetSum ?? Total - VatSum;
+
+    /// <summary>Bir dona narxi QQS'siz (1C dagi «Цена»).</summary>
+    public decimal NetPrice => Source.NetPrice ?? (Source.Quantity > 0 ? Math.Round(NetSum / Source.Quantity, 2, MidpointRounding.AwayFromZero) : 0);
+
     /// <summary>Qator chek uchun tayyor emasligining sababi (tayyor bo'lsa null).</summary>
     public string? Problem()
     {

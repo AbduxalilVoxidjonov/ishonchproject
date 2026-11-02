@@ -9,7 +9,8 @@ namespace IshonchDesktop.Epos;
 /// tekshirganda har bir kod uchun ko'rgan MXIK (kod → 17 xonali raqam; noma'lumi bo'sh).
 /// </summary>
 public sealed record ReceiptLine(string Name, decimal Quantity, decimal UnitPrice, IReadOnlyList<string> Codes,
-    string Ikpu = "", IReadOnlyDictionary<string, string>? CodeIkpu = null, int? VatPercent = null, decimal? LineTotal = null);
+    string Ikpu = "", IReadOnlyDictionary<string, string>? CodeIkpu = null, int? VatPercent = null, decimal? LineTotal = null,
+    decimal? NetPrice = null, decimal? NetSum = null, decimal? VatSum = null);
 
 public sealed record MarkingReceipt(string ReceiptId, bool Finished, IReadOnlyList<ReceiptLine> Lines)
 {
@@ -47,7 +48,10 @@ public sealed record MarkingReceipt(string ReceiptId, bool Finished, IReadOnlyLi
             int? vat = l.TryGetProperty("vatPercent", out var v) && v.ValueKind == JsonValueKind.Number ? (int)Math.Round(v.GetDecimal()) : null;
             // 1C dagi qator jami (QQS bilan) — fiskal chek tiyingacha 1C bilan bir xil bo'lishi uchun
             decimal? total = l.TryGetProperty("lineTotal", out var lt) && lt.ValueKind == JsonValueKind.Number && lt.GetDecimal() > 0 ? lt.GetDecimal() : null;
-            if (name.Length > 0 && qty > 0) lines.Add(new ReceiptLine(name, qty, price, codes, ikpu, codeIkpu, vat, total));
+            // 1C dagi kabi ko'rsatish uchun: «Цена» va «Сумма» (QQS'siz), «НДС» summasi
+            decimal? Num(string n) => l.TryGetProperty(n, out var x) && x.ValueKind == JsonValueKind.Number ? x.GetDecimal() : null;
+            if (name.Length > 0 && qty > 0)
+                lines.Add(new ReceiptLine(name, qty, price, codes, ikpu, codeIkpu, vat, total, Num("netPrice"), Num("netSum"), Num("vatSum")));
         }
         if (lines.Count == 0) return null;
         var id = e.TryGetProperty("receiptId", out var r) ? r.ToString() : "";

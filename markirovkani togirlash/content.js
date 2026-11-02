@@ -379,6 +379,8 @@
     price: ['Цена', 'Price'],
     ikpu: ['ИКПУ', 'IKPU', 'МХИК', 'MXIK', 'ИКПУ (МХИК)'],
     lineTotal: ['Всего', 'Total'],
+    lineSum: ['Сумма', 'Sum', 'Amount'],
+    vatSum: ['НДС', 'VAT'],
     vatRate: ['% НДС', 'НДС %', 'VAT %', '% VAT'],
     balance: ['Остаток', 'Остаток на складе', 'Balance', 'Stock', 'In stock'],
   };
@@ -1278,8 +1280,12 @@
       const qty = parseNumber(spanText(line, cols, colOf(cols, 'quantity')), ',');
       const sum = parseNumber(spanText(line, cols, colOf(cols, 'lineTotal')), ',');
       const vat = parseNumber(String(spanText(line, cols, colOf(cols, 'vatRate'))).replace('%', ''), ',');
-      const prev = byName[key] || { qty: 0, total: 0, vat: NaN };
-      byName[key] = { qty: prev.qty + (qty || 0), total: round2(prev.total + (sum || 0)), vat: Number.isFinite(vat) ? vat : prev.vat };
+      const net = parseNumber(spanText(line, cols, colOf(cols, 'lineSum')), ',');
+      const vatSum = parseNumber(spanText(line, cols, colOf(cols, 'vatSum')), ',');
+      const price = parseNumber(spanText(line, cols, colPrice), ',');
+      const prev = byName[key] || { qty: 0, total: 0, net: 0, vatSum: 0, vat: NaN, price: NaN };
+      byName[key] = { qty: prev.qty + (qty || 0), total: round2(prev.total + (sum || 0)), net: round2(prev.net + (net || 0)),
+        vatSum: round2(prev.vatSum + (vatSum || 0)), vat: Number.isFinite(vat) ? vat : prev.vat, price: Number.isFinite(price) ? price : prev.price };
     }
     state.docLines = { receiptId: state.receiptId, byName };
     log(`Narxlar yozildi: ${written} ta qator (inventarizatsiya narxi bo‘yicha). 1C dagi jami: ${fmtSum(total.v)}.`, 'info');
@@ -1538,8 +1544,13 @@
         const doc = state.docLines?.receiptId === state.receiptId ? state.docLines.byName?.[norm(i.name)] : null;
         const unitPrice = doc?.qty > 0 && doc.total > 0 ? Math.round((doc.total / doc.qty) * 100) / 100 : Number(i.price) || 0;
         // 1C dagi qator jami (QQS bilan): fiskal chek tiyingacha 1C bilan bir xil bo'lishi uchun (miqdor mos bo'lsa)
-        const lineTotal = doc?.total > 0 && doc.qty === i.placed ? doc.total : null;
-        return { name: i.name, quantity: i.placed, unitPrice, lineTotal, vatPercent: Number.isFinite(doc?.vat) ? doc.vat : null, codes,
+        const same = doc?.total > 0 && doc.qty === i.placed;
+        const lineTotal = same ? doc.total : null;
+        // 1C dagi kabi ko'rsatish uchun: narx va summa QQS'siz, QQS summasi (miqdor mos bo'lsa)
+        const netPrice = same && Number.isFinite(doc.price) ? doc.price : null;
+        const netSum = same && doc.net > 0 ? doc.net : null;
+        const vatSum = same && Number.isFinite(doc.vatSum) ? doc.vatSum : null;
+        return { name: i.name, quantity: i.placed, unitPrice, lineTotal, netPrice, netSum, vatSum, vatPercent: Number.isFinite(doc?.vat) ? doc.vat : null, codes,
           ikpu: state.ikpuByName?.[norm(i.name)] || '', codeIkpu: Object.fromEntries(codes.map((c) => [c, state.codeIkpu?.[c] || ''])) };
       });
     return { receiptId: String(state.receiptId ?? ''), finished: state.status === 'done', lines };

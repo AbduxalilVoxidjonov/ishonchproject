@@ -41,7 +41,8 @@ public sealed class CommunicatorTab : UserControl
     };
     readonly TextBox logBox = new() { Dock = DockStyle.Bottom, Height = 120, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
 
-    const int ColName = 0, ColQty = 1, ColCodes = 2, ColMarks = 3, ColIkpu = 4, ColPack = 5, ColPrice = 6, ColState = 7;
+    const int ColName = 0, ColQty = 1, ColCodes = 2, ColMarks = 3, ColIkpu = 4, ColPack = 5,
+        ColNetPrice = 6, ColNetSum = 7, ColVatRate = 8, ColVatSum = 9, ColTotal = 10, ColState = 11;
 
     public CommunicatorTab(BaseEntry baseEntry, Func<Task<WebTab>> getSoliqTab, MarkingReceipt? preset = null)
     {
@@ -59,8 +60,10 @@ public sealed class CommunicatorTab : UserControl
         payType.Items.AddRange(new object[] { "Naqd", "Karta" });
         payType.SelectedIndex = 0;
 
-        foreach (var (title, weight, ro) in new[] { ("1C tovari", 24, true), ("Dona", 5, true), ("Kodlar", 5, true),
-                     ("Markirovkalar", 19, false), ("IKPU (MXIK)", 14, false), ("Qadoq kodi", 8, false), ("Narx (QQS bilan)", 13, true), ("Holat", 22, true) })
+        // Narx ustunlari 1C hujjatidagi kabi: Narx va Summa — QQS'siz, keyin % QQS, QQS summasi va Jami (QQS bilan = «Всего»)
+        foreach (var (title, weight, ro) in new[] { ("1C tovari", 20, true), ("Dona", 5, true), ("Kod", 4, true),
+                     ("Markirovkalar", 16, false), ("IKPU (MXIK)", 13, false), ("Qadoq", 6, false),
+                     ("Narx", 11, true), ("Summa", 12, true), ("QQS %", 6, true), ("QQS", 11, true), ("Jami", 12, true), ("Holat", 15, true) })
         {
             // «Markirovkalar» — ochiladigan ro'yxat: shu qatorda sotilayotgan har bir dona uchun uning kodi
             DataGridViewColumn col = title == "Markirovkalar"
@@ -70,6 +73,8 @@ public sealed class CommunicatorTab : UserControl
             col.FillWeight = weight;
             grid.Columns.Add(col);
         }
+        foreach (var col in new[] { ColQty, ColCodes, ColNetPrice, ColNetSum, ColVatRate, ColVatSum, ColTotal })
+            grid.Columns[col].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
         grid.DataError += (_, e) => e.ThrowException = false; // ro'yxatdagi matn o'zgarsa ham xato oynasi chiqmasin
         grid.EditingControlShowing += (_, e) =>
         {
@@ -207,7 +212,7 @@ public sealed class CommunicatorTab : UserControl
         {
             var problem = l.Problem();
             var i = grid.Rows.Add(l.Name, l.Source.Quantity, l.Source.Codes.Count, null, l.ClassCode, l.PackageCode,
-                l.Source.UnitPrice.ToString("N2"), problem ?? "tayyor");
+                l.NetPrice.ToString("N2"), l.NetSum.ToString("N2"), l.VatPercent + "%", l.VatSum.ToString("N2"), l.Total.ToString("N2"), problem ?? "tayyor");
             var marks = (DataGridViewComboBoxCell)grid.Rows[i].Cells[ColMarks];
             marks.Items.Clear();
             var shown = MarkItems(l);
@@ -215,8 +220,9 @@ public sealed class CommunicatorTab : UserControl
             marks.Value = shown.Count > 0 ? shown[0] : null;
             grid.Rows[i].DefaultCellStyle.ForeColor = problem is null ? SystemColors.ControlText : Color.Firebrick;
         }
-        var total = lines.Sum(l => l.Source.LineTotal ?? l.Source.UnitPrice * l.Source.Quantity);
-        summary.Text = lines.Count == 0 ? "" : $"Chek jami: {total:N2} so'm (QQS bilan, 1C dagi «Всего» bilan bir xil)";
+        var total = lines.Sum(l => l.Total);
+        summary.Text = lines.Count == 0 ? ""
+            : $"Summa: {lines.Sum(l => l.NetSum):N2}   QQS: {lines.Sum(l => l.VatSum):N2}   Chek jami: {total:N2} so'm (1C dagi «Всего» bilan bir xil)";
         UpdateButtons();
     }
 
@@ -439,8 +445,10 @@ public sealed class SaleDialog : Form
     public SaleDialog(BaseEntry baseEntry, Func<Task<WebTab>> getSoliqTab, MarkingReceipt receipt)
     {
         Text = "E-POS orqali sotish — " + baseEntry.Firm;
-        Size = new Size(1100, 760);
-        MinimumSize = new Size(820, 560);
+        // 1C dagi kabi narx ustunlari ko'p: kengroq ochiladi (ekrandan katta bo'lmasin)
+        var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Size = new Size(Math.Min(1500, screen.Width - 40), Math.Min(800, screen.Height - 40));
+        MinimumSize = new Size(900, 560);
         StartPosition = FormStartPosition.CenterParent;
         tab = new CommunicatorTab(baseEntry, getSoliqTab, receipt) { Dock = DockStyle.Fill };
         Controls.Add(tab);
