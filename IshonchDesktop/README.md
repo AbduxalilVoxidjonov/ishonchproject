@@ -108,6 +108,13 @@ har chek uchun Реализация (накладная) → Изменить �
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 
+## 0.8.0 — Markirovkali chek: narx, IKPU va E-POS 1C bilan bir xil
+
+- Подбор dan keyin «Товары, услуги, комиссия» hujjatining har qatoriga inventarizatsiya narxi yoziladi (avval narx bo'sh, hujjat 0 so'm bilan provesti bo'lardi). 1C QQS ni ustiga qo'shadi, shuning uchun chek jami maqsad summaga teng chiqadi.
+- Tovarning IKPU si 1C nomenklatura kartochkasidan («Код из классификатора») bir marta o'qiladi va eslab qolinadi. Подбор da MXIK i boshqa IKPU dagi markirovka olinmaydi — o'rniga keyingisi olinadi, rad etilgan kod «Sotib bo'lmaydigan markirovkalar» ga yoziladi.
+- To'xtatilib davom ettirilgan chekning kodlari E-POS oynasidan yo'qolmaydi.
+- E-POS orqali sotish: IKPU 1C dan, har bir kodning MXIK i tekshiriladi, «Markirovkalar» ochiladigan ro'yxati; jadvalda 1C dagi kabi Narx, Summa, QQS %, QQS, Jami; chek jami 1C dagi «Всего» bilan tiyingacha bir xil; sotishdan oldin kodlar Communicator orqali avtomatik tekshiriladi.
+
 ## 0.7.9 — Inventarizatsiya qoldig‘ini qayta ishlatish
 
 Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, kun almashishi yoki «Boshiga qaytarish» ularni yangilamaydi. «Inventarizatsiyani yangilash» keyingi «Avto boshlash» uchun qayta o‘qishni belgilaydi. Birinchi o‘qish va sklad almashtirishda yangi inventarizatsiya olinadi. Xato markirovkalar bosh sahifadagi tugmadan ilova ichidagi alohida tabda ochiladi.
