@@ -108,6 +108,13 @@ har chek uchun Реализация (накладная) → Изменить �
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 
+## 0.8.3 — IKPU qidiruvi faqat kerak bo'lganda; «Подбор» ochilmay qolishi tuzatildi
+
+- 1C nomenklaturasidan IKPU o'qish endi har tovarda emas, faqat bir tovarning kodlari turli MXIK da chiqqandagina ishlaydi: shunda «Подбор» yopiladi, IKPU o'qiladi va tovar qaytadan olinadi. Qolgan tovarlarda ~30 soniya yo'qotilmaydi.
+- «Подбор» tugmasi bosilishi 1C da yo'qolsa, haqiqiy bosish bilan takrorlanadi (oyna ekranda bo'lsa — qayta bosilmaydi); kutish tugasa xabarda ekran holati ko'rsatiladi.
+- Nomenklaturadan qaytganda hujjat tabi o'z o'rni bo'yicha topiladi va «Подбор» tugmasi ko'ringuncha kutiladi.
+- IKPU ketma-ket 2 marta o'qilmasa, qidiruv shu ishga tushirishda o'chiriladi.
+
 ## 0.8.2 — Natsenka 1C orqali, ochiq hujjatni sotish, har bazaning o'z E-POS i
 
 - Markirovkali panelda «Natsenka, %»: Подбор dan keyin hujjat «Провести» qilinadi, so'ng 1C «Заполнить → Заполнить цены (себестоимость + %)» bilan natsenka qo'yiladi (ishlamasa «Сумма» = «Сумма списания» + natsenka). 1C formani qayta ochsa ham panel davom etadi.

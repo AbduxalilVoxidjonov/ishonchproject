@@ -1187,14 +1187,6 @@ test('a resumed receipt keeps its receipt id, so codes taken before the stop sti
   assert.match(run, /if \(!hasProgress\(\) \|\| state\.receiptId == null\) \{\s*state\.badCodes = \[\];\s*state\.receiptId = Date\.now\(\);/);
 });
 
-test('an unknown product IKPU is read from the 1C nomenclature card before Подбор, once', () => {
-  const process = source.slice(source.indexOf('  async function processItem('), source.indexOf('  function markCodesUsed('));
-  const ask = process.indexOf("type: 'ikpuLookup'");
-  assert.ok(ask > 0 && ask < process.indexOf('await openPodbor()'), 'IKPU is asked before Подбор opens');
-  assert.match(process, /IS_DESKTOP && !state\.ikpuByName\?\.\[norm\(item\.name\)\]/);
-  assert.ok(process.indexOf('assertDocument();', ask) < process.indexOf('await openPodbor()'), 'the document is checked again after the lookup');
-});
-
 test('Реализация: «Цена» is not touched; «Сумма» = «Сумма списания» + markup %', () => {
   const fill = source.slice(source.indexOf('  async function fillPrices('), source.indexOf('  /** The × button of the Подбор window'));
   assert.match(fill, /colOf\(cols, 'writeOff'\)/);
@@ -1239,9 +1231,22 @@ test('a swallowed «Подбор» click is repeated, never while a Подбор
   assert.match(fn, /screenReport\(\)/); // the final error says what the screen showed
 });
 
-test('IKPU lookups from the 1C nomenclature switch off after two failures in a row', () => {
-  const run = source.slice(source.indexOf('  async function processItem('), source.indexOf('  function markCodesUsed('));
-  assert.match(run, /ikpuLookupFailures < 2/);
-  assert.match(run, /\+\+ikpuLookupFailures >= 2/);
-  assert.match(run, /if \(ikpu\) ikpuLookupFailures = 0/);
+
+test('the nomenclature lookup runs only when the codes of one product disagree on the MXIK; the product is then taken again', () => {
+  const item = source.slice(source.indexOf('  async function processItem('), source.indexOf('  function markCodesUsed('));
+  assert.doesNotMatch(item.slice(0, item.indexOf('await openPodbor()')), /ikpuLookup/); // no lookup before the first Подбор
+  assert.match(item, /if \(!e\?\.needIkpu\) throw e;/);
+  assert.ok(item.indexOf('await closePodbor();') < item.indexOf('await lookupIkpu(item);'), 'Подбор is closed before the lookup');
+  assert.ok(item.indexOf('await lookupIkpu(item);') < item.lastIndexOf('placed = await fillQuantities(item, need);'), 'the product is taken again after it');
+  const fill = source.slice(source.indexOf('  async function fillQuantities('), source.indexOf('  /** The × button'));
+  assert.match(fill, /!state\.ikpuByName\?\.\[norm\(item\.name\)\] && canLookupIkpu\(item\)/);
+  assert.ok(fill.indexOf('needIkpu: true') < fill.indexOf('const reason = `boshqa IKPU'), 'a mixed-IKPU code is not recorded as bad before 1C is asked');
+});
+
+test('IKPU lookup: one try per product, switched off after two failures in a row, reset by a success', () => {
+  const fn = source.slice(source.indexOf('  const ikpuLookedUp = new Set();'), source.indexOf('  async function processItem('));
+  assert.match(fn, /ikpuLookedUp\.add\(norm\(item\.name\)\)/);
+  assert.match(fn, /ikpuLookupFailures < 2/);
+  assert.match(fn, /\+\+ikpuLookupFailures >= 2/);
+  assert.match(fn, /ikpuLookupFailures = 0/);
 });

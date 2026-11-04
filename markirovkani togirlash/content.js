@@ -1148,6 +1148,9 @@
       const codeIkpu = ikpuDigits(checked.mxik);
       const itemIkpu = expectedIkpu(item);
       if (codeIkpu && itemIkpu && codeIkpu !== itemIkpu) {
+        // 1C dagi IKPU hali noma'lum (faqat birinchi kodning MXIK i taxmin) — kodlar bir-biriga zid: avval 1C dan so'raladi
+        if (!state.ikpuByName?.[norm(item.name)] && canLookupIkpu(item))
+          throw Object.assign(new Error('Kodlar turli IKPU da'), { needIkpu: true, codeIkpu, itemIkpu });
         const reason = `boshqa IKPU (${codeIkpu}, tovarniki ${itemIkpu})`;
         noteBadCode(item, code, position, reason);
         rememberBadDb(item, code, reason, checked);
@@ -1466,40 +1469,68 @@
     await sleep(T.afterClick);
   }
 
+  /** IKPU lookups through the 1C nomenclature already tried for a product (one try per product and page load). */
+  const ikpuLookedUp = new Set();
+
+  /** The nomenclature lookup is allowed for a product: desktop app, not tried yet for it, not switched off after failures. */
+  const canLookupIkpu = (item) => IS_DESKTOP && !ikpuLookedUp.has(norm(item.name)) && ikpuLookupFailures < 2;
+
+  /**
+   * The product's IKPU from its 1C nomenclature card (about 30 s on a slow 1C, so it runs only when a product's codes
+   * disagree on the MXIK). The Подбор form must be closed: the lookup switches 1C tabs. Remembered once found.
+   */
+  async function lookupIkpu(item) {
+    ikpuLookedUp.add(norm(item.name));
+    if (!IS_DESKTOP || ikpuLookupFailures >= 2) return '';
+    let res = null;
+    const t0 = Date.now();
+    try { res = await chrome.runtime.sendMessage({ type: 'ikpuLookup', version: VERSION, name: item.name }); } catch { /* bo'lmasa — birinchi kod bo'yicha */ }
+    log(`IKPU qidiruvi ${Math.round((Date.now() - t0) / 1000)} s davom etdi.`, 'info');
+    const ikpu = ikpuDigits(res?.ikpu);
+    if (ikpu) {
+      if (!state.ikpuByName || typeof state.ikpuByName !== 'object') state.ikpuByName = {};
+      state.ikpuByName[norm(item.name)] = ikpu;
+      if (state.ikpuGuess) delete state.ikpuGuess[norm(item.name)];
+      await save();
+      ikpuLookupFailures = 0;
+      log(`${item.name}: IKPU ${ikpu} (1C nomenklaturasidan).`, 'info');
+      return ikpu;
+    }
+    // Ketma-ket ikki marta olinmasa, qidiruv shu ishga tushirishda to'xtatiladi: har tovarga 30 s yo'qotilmasin
+    if (++ikpuLookupFailures >= 2) log('IKPU nomenklaturadan ketma-ket 2 marta olinmadi — qidiruv shu ishga tushirishda o‘chirildi (IKPU birinchi kod bo‘yicha aniqlanadi).', 'warn');
+    log(`${item.name}: IKPU 1C nomenklaturasidan olinmadi${res?.error ? ` (${res.error})` : ''} — birinchi kod bo‘yicha aniqlanadi.`, 'warn');
+    return '';
+  }
+
   async function processItem(item) {
     if (state.legacyModeBlocked) throw docError('Eski markirovkasiz chek bloklangan: yangi bo‘sh hujjatda «Yangi chekni boshlash» kerak.');
     if (state.inFlight) throw docError('O‘tkazish natijasini tasdiqlang; qayta o‘tkazish bloklangan.');
     assertDocument();
     const need = Math.max(0, Math.round((item.qty - item.placed) * 10000) / 10000);
     if (!need) return;
-    // Tovarning IKPU si hali noma'lum bo'lsa — Подбор dan oldin 1C nomenklatura kartochkasidan o'qiladi (bir marta,
-    // keyin eslab qolinadi): shunda birinchi chekdayoq boshqa IKPU dagi kodlar olinmaydi
-    if (IS_DESKTOP && !state.ikpuByName?.[norm(item.name)] && ikpuLookupFailures < 2) {
-      let res = null;
-      const t0 = Date.now();
-      try { res = await chrome.runtime.sendMessage({ type: 'ikpuLookup', version: VERSION, name: item.name }); } catch { /* bo'lmasa — birinchi kod bo'yicha */ }
-      log(`IKPU qidiruvi ${Math.round((Date.now() - t0) / 1000)} s davom etdi.`, 'info');
-      const ikpu = ikpuDigits(res?.ikpu);
-      if (ikpu) {
-        if (!state.ikpuByName || typeof state.ikpuByName !== 'object') state.ikpuByName = {};
-        state.ikpuByName[norm(item.name)] = ikpu;
-        if (state.ikpuGuess) delete state.ikpuGuess[norm(item.name)];
-        await save();
-        log(`${item.name}: IKPU ${ikpu} (1C nomenklaturasidan).`, 'info');
-      } else {
-        // Ketma-ket ikki marta olinmasa, qidiruv shu ishga tushirishda to'xtatiladi: har tovarga 30 s yo'qotilmasin
-        if (++ikpuLookupFailures >= 2) log('IKPU nomenklaturadan ketma-ket 2 marta olinmadi — qidiruv shu ishga tushirishda o‘chirildi (IKPU birinchi kod va hujjat bo‘yicha aniqlanadi).', 'warn');
-        log(`${item.name}: IKPU 1C nomenklaturasidan olinmadi${res?.error ? ` (${res.error})` : ''} — birinchi kod bo‘yicha aniqlanadi.`, 'warn');
-      }
-      if (ikpu) ikpuLookupFailures = 0;
-      assertDocument();
-    }
     state.current = { name: item.name, need, placed: 0 };
     log(`▶ ${item.name} — kerak: ${need} dona`);
     await openPodbor();
     await enableMarkingMode();
     await searchItem(item);
-    const placed = await fillQuantities(item, need);
+    let placed;
+    try {
+      placed = await fillQuantities(item, need);
+    } catch (e) {
+      if (!e?.needIkpu) throw e;
+      // Bir tovarning kodlari turli IKPU da: qaysi biri to'g'riligini 1C nomenklaturasi aytadi. Hech narsa o'tkazilmagan —
+      // Подбор yopiladi (yozilgan «1» lar tashlanadi), IKPU o'qiladi va tovar qaytadan olinadi
+      log(`${item.name}: kodlar turli IKPU da (${e.codeIkpu} va ${e.itemIkpu}) — to‘g'risi 1C nomenklaturasidan aniqlanadi, tovar qayta olinadi.`, 'warn');
+      state.pendingCodes = [];
+      await closePodbor();
+      await lookupIkpu(item);
+      assertDocument();
+      state.current = { name: item.name, need, placed: 0 };
+      await openPodbor();
+      await enableMarkingMode();
+      await searchItem(item);
+      placed = await fillQuantities(item, need);
+    }
     if (placed < need) {
       item.status = 'kam';
       item.note = `Markirovka kodi yetmadi: ${placed} / ${need}`;
