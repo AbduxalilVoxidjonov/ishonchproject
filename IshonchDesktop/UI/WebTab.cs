@@ -67,6 +67,13 @@ public sealed class WebTab : UserControl
         bar.Controls.Add(zoomMinus);
         bar.Controls.Add(zoomReset);
         bar.Controls.Add(zoomPlus);
+        // my.soliq.uz tabida: bir bosishda «Markirovka kodini tekshirish» bo'limiga o'tadi
+        if (profileKey == "soliq" || profileKey.StartsWith("soliq-"))
+        {
+            var check = new Button { Text = "Markirovkani tekshirish", Width = LogicalToDeviceUnits(170), Dock = DockStyle.Left };
+            check.Click += (_, _) => Navigate("https://my.soliq.uz/remotes-services/markirovka/product_markirovka");
+            bar.Controls.Add(check);
+        }
         bar.Controls.Add(reload);
         bar.Controls.Add(forward);
         bar.Controls.Add(back);
