@@ -927,12 +927,35 @@
   };
   const focusInMarkingGrid = (el) => !!el && !!markingGrid()?.contains(el);
 
+  /** The Подбор form is on screen (its title) even if its marking checkbox has not been drawn yet. */
+  const podborFormVisible = () =>
+    [...document.querySelectorAll('div,span')].some((e) => e.children.length === 0 && isVisible(e) && /^Подбор номенклатуры/.test(e.textContent.trim()));
+
+  /** What the screen shows right now: shown in the timeout error so a stuck run can be understood from the log alone. */
+  const screenReport = () => {
+    const tab = document.querySelector('#openedCell_cont .openedItem.select')?.textContent?.trim() || '?';
+    const button = salesPodborButton();
+    const modal = [...document.querySelectorAll('.pressDefault, [id^="modalSurface"]')].some(isVisible);
+    return `tab «${tab.slice(0, 50)}», Подбор tugmasi ${button ? 'bor' : 'yo‘q'}, oyna ${podborFormVisible() ? 'chizilgan' : 'yo‘q'}${modal ? ', 1C dialogi ochiq' : ''}`;
+  };
+
+  /**
+   * Opens Подбор. A click that 1C swallows (right after a tab switch or while the page is busy) used to cost the whole product:
+   * the click is repeated (the second and third one trusted) as long as no Подбор form is on screen, so two forms never open.
+   */
   async function openPodbor() {
-    if (!podborCheckbox()) {
-      const btn = await waitFor(salesPodborButton, 5000, 'Реализация hujjatidagi «Подбор» tugmasi');
-      domClick(btn);
+    if (podborCheckbox()) return;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const btn = await waitFor(salesPodborButton, 8000, 'Реализация hujjatidagi «Подбор» tugmasi');
+      if (!podborFormVisible()) { if (attempt === 1) domClick(btn); else await realClick(btn); }
+      if (attempt > 1) log(`«Подбор» ochilmadi — ${attempt}-urinish (${screenReport()}).`, 'warn');
+      try {
+        await waitFor(podborCheckbox, attempt < 3 ? 7000 : T.openForm, '«Подбор» oynasi');
+        return;
+      } catch (e) {
+        if (attempt === 3) throw new Error(`${e.message} (${screenReport()})`);
+      }
     }
-    await waitFor(podborCheckbox, T.openForm, '«Подбор» oynasi');
   }
 
   async function enableMarkingMode() {
@@ -1414,6 +1437,9 @@
     return fillPrices(prefix, markup);
   }
 
+  /** IKPU lookups through the 1C nomenclature that failed in a row (two in a row switch the lookups off until the page reloads). */
+  let ikpuLookupFailures = 0;
+
   /** The × button of the Подбор window (closes it without transferring anything). */
   const podborCloseButton = () => {
     let el = podborCheckbox();
@@ -1448,9 +1474,11 @@
     if (!need) return;
     // Tovarning IKPU si hali noma'lum bo'lsa — Подбор dan oldin 1C nomenklatura kartochkasidan o'qiladi (bir marta,
     // keyin eslab qolinadi): shunda birinchi chekdayoq boshqa IKPU dagi kodlar olinmaydi
-    if (IS_DESKTOP && !state.ikpuByName?.[norm(item.name)]) {
+    if (IS_DESKTOP && !state.ikpuByName?.[norm(item.name)] && ikpuLookupFailures < 2) {
       let res = null;
+      const t0 = Date.now();
       try { res = await chrome.runtime.sendMessage({ type: 'ikpuLookup', version: VERSION, name: item.name }); } catch { /* bo'lmasa — birinchi kod bo'yicha */ }
+      log(`IKPU qidiruvi ${Math.round((Date.now() - t0) / 1000)} s davom etdi.`, 'info');
       const ikpu = ikpuDigits(res?.ikpu);
       if (ikpu) {
         if (!state.ikpuByName || typeof state.ikpuByName !== 'object') state.ikpuByName = {};
@@ -1458,7 +1486,12 @@
         if (state.ikpuGuess) delete state.ikpuGuess[norm(item.name)];
         await save();
         log(`${item.name}: IKPU ${ikpu} (1C nomenklaturasidan).`, 'info');
-      } else log(`${item.name}: IKPU 1C nomenklaturasidan olinmadi${res?.error ? ` (${res.error})` : ''} — birinchi kod bo‘yicha aniqlanadi.`, 'warn');
+      } else {
+        // Ketma-ket ikki marta olinmasa, qidiruv shu ishga tushirishda to'xtatiladi: har tovarga 30 s yo'qotilmasin
+        if (++ikpuLookupFailures >= 2) log('IKPU nomenklaturadan ketma-ket 2 marta olinmadi — qidiruv shu ishga tushirishda o‘chirildi (IKPU birinchi kod va hujjat bo‘yicha aniqlanadi).', 'warn');
+        log(`${item.name}: IKPU 1C nomenklaturasidan olinmadi${res?.error ? ` (${res.error})` : ''} — birinchi kod bo‘yicha aniqlanadi.`, 'warn');
+      }
+      if (ikpu) ikpuLookupFailures = 0;
       assertDocument();
     }
     state.current = { name: item.name, need, placed: 0 };

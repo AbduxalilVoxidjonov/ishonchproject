@@ -122,10 +122,30 @@ test('openPodbor waits for live checkbox and clicks opener only for closed dialo
   for(const opened of [false,true]) {
     let ready=opened, clicks=0;
     const ctx=vm.createContext({podborCheckbox:()=>ready?{}:null,salesPodborButton:()=>({}),
+      podborFormVisible:()=>false,screenReport:()=>'',log(){},realClick:async()=>{clicks++;ready=true;},
       domClick:()=>{clicks++;ready=true;},T:{openForm:100},
       waitFor:async predicate=>{const value=predicate();assert.ok(value);return value;}});
     vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),ctx);
     await vm.runInContext('openPodbor()',ctx);
     assert.equal(clicks,opened?0:1);
   }
+});
+
+test('openPodbor repeats a swallowed click with a trusted click, but not while a Подбор form is already drawn',async()=>{
+  // 1) the first (synthetic) click is lost: the second, trusted click opens the form
+  let ready=false, synthetic=0, trusted=0, waits=0;
+  const ctx=vm.createContext({podborCheckbox:()=>ready?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>false,
+    screenReport:()=>'tab',log(){},T:{openForm:100},domClick:()=>{synthetic++;},realClick:async()=>{trusted++;ready=true;},
+    waitFor:async(predicate,_t,what)=>{const v=predicate();if(v)return v;if(/oynasi/.test(what)&&++waits===1)throw new Error('Kutish vaqti tugadi');return predicate()||predicate;}});
+  vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),ctx);
+  await vm.runInContext('openPodbor()',ctx);
+  assert.deepEqual([synthetic,trusted],[1,1]);
+  // 2) a form is already on screen (slow 1C): nobody clicks again, the call only waits
+  let clicks=0, tries=0;
+  const slow=vm.createContext({podborCheckbox:()=>tries>=2?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>true,
+    screenReport:()=>'',log(){},T:{openForm:100},domClick:()=>{clicks++;},realClick:async()=>{clicks++;},
+    waitFor:async(predicate,_t,what)=>{if(/oynasi/.test(what)){tries++;if(tries<2)throw new Error('Kutish vaqti tugadi');}return predicate()||{};}});
+  vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),slow);
+  await vm.runInContext('openPodbor()',slow);
+  assert.equal(clicks,0); // the form is on screen: no click at all, the call only waits for its checkbox
 });

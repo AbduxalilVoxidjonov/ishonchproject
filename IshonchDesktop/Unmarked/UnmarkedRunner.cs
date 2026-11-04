@@ -1490,7 +1490,9 @@ public sealed class UnmarkedRunner
     public async Task<string> LookupIkpuAsync(string name)
     {
         await WaitNoModalAsync();
-        var back = (await TabsAsync()).FirstOrDefault(t => t.Selected);
+        var tabsBefore = await TabsAsync();
+        var back = tabsBefore.FirstOrDefault(t => t.Selected);
+        var backIndex = back is null ? -1 : tabsBefore.IndexOf(back);
         try
         {
             var tab = (await TabsAsync()).FirstOrDefault(t => t.Text == NomenclatureTitle);
@@ -1558,13 +1560,46 @@ public sealed class UnmarkedRunner
         }
         finally
         {
-            // Hujjat o'zgarganda tab sarlavhasiga « *» qo'shiladi — shuning uchun belgisiz solishtiriladi
-            static string Plain(string t) => t.TrimEnd('*', ' ');
-            if (back is not null && (await TabsAsync()).FirstOrDefault(t => Plain(t.Text) == Plain(back.Text)) is { } again && !again.Selected)
+            await ReturnToTabAsync(back, backIndex);
+        }
+    }
+
+    /// <summary>
+    /// Qidiruvdan keyin oldingi (Реализация hujjati) tabiga qaytadi. Bir xil sarlavhali bir nechta tab bo'lishi mumkin
+    /// (oldingi to'xtagan hujjatlar) — shuning uchun avval tabning o'z o'rni (indeksi), keyin sarlavha bo'yicha topiladi.
+    /// Qaytgach hujjat formasi (Подбор tugmasi) ko'ringuncha kutiladi: 1C sekin bo'lsa «Подбор» bosishi yo'qolmasin.
+    /// </summary>
+    async Task ReturnToTabAsync(TabInfo? back, int backIndex)
+    {
+        if (back is null) return;
+        // Hujjat o'zgarganda tab sarlavhasiga « *» qo'shiladi — shuning uchun belgisiz solishtiriladi
+        static string Plain(string t) => t.TrimEnd('*', ' ');
+        try
+        {
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                await d.ClickAsync(again.Pos);
-                await d.DelayAsync(700);
+                var tabs = await TabsAsync();
+                var again = backIndex >= 0 && backIndex < tabs.Count && Plain(tabs[backIndex].Text) == Plain(back.Text)
+                    ? tabs[backIndex]
+                    : tabs.FirstOrDefault(t => Plain(t.Text) == Plain(back.Text));
+                if (again is null) { log($"Hujjat tabi topilmadi: «{back.Text}» — IKPU qidiruvidan keyin qaytib bo'lmadi.", "warn"); return; }
+                if (!again.Selected)
+                {
+                    await d.ClickAsync(again.Pos);
+                    await d.DelayAsync(700);
+                }
+                // Forma ko'rinib, «Подбор» tugmasi paydo bo'lishi kutiladi
+                for (var until = d.Now + 8000; d.Now < until;)
+                {
+                    if (await d.HasAsync("_ТоварыПодборТовары")) { await d.DelayAsync(1200); return; }
+                    await d.DelayAsync(300);
+                }
             }
+            log("IKPU qidiruvidan keyin hujjat formasi ko'rinmadi (Подбор tugmasi yo'q).", "warn");
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log("Hujjat tabiga qaytishda xato: " + e.Message, "warn");
         }
     }
 
