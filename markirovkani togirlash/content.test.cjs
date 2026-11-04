@@ -1250,3 +1250,17 @@ test('IKPU lookup: one try per product, switched off after two failures in a row
   assert.match(fn, /\+\+ikpuLookupFailures >= 2/);
   assert.match(fn, /ikpuLookupFailures = 0/);
 });
+
+test('capture does not scroll back up when the table was read from row 1 without gaps (row count unknown)', () => {
+  const fn = source.slice(source.indexOf('  async function captureRows('), source.indexOf('    // 1C prints numbers in the user'));
+  assert.match(fn, /key === 'PageUp' && !rowCount && readFromTop\(\)/);
+  assert.match(fn, /rows\.size === max/);
+  assert.match(fn, /if \(!rows\.has\(1\)\) return false;/);
+  // the PageUp pass is only skipped, never removed: a table that started in the middle is still read upwards
+  assert.match(fn, /\['PageDown', 'PageUp'\]/);
+  const ctx = vm.createContext({});
+  const read = vm.runInContext(`(rows => { const readFromTop = () => { if (!rows.has(1)) return false; let max = 0; for (const n of rows.keys()) if (n > max) max = n; return rows.size === max; }; return readFromTop(); })`, ctx);
+  assert.equal(read(new Map([[1, 'a'], [2, 'b'], [3, 'c']])), true);
+  assert.equal(read(new Map([[5, 'a'], [6, 'b']])), false); // started in the middle: go up
+  assert.equal(read(new Map([[1, 'a'], [3, 'c']])), false); // a gap: go up
+});

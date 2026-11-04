@@ -600,7 +600,19 @@
       collect();
       // Full capture: down to the end, then back up to the very top. Going back passes rows that are
       // already read, so "no new rows" must not stop it — only a viewport that no longer moves does.
+      // Qator soni noma'lum bo'lsa (yorliqda «Товары (N)» yo'q) pastga oxirigacha tushilgach hammasi o'qilganini bilmaymiz — lekin
+      // 1, 2, 3 … max qatorlar uzluksiz o'qilgan bo'lsa (boshidan boshlangan), yuqoriga qaytish kerak emas
+      const readFromTop = () => {
+        if (!rows.has(1)) return false;
+        let max = 0;
+        for (const n of rows.keys()) if (n > max) max = n;
+        return rows.size === max;
+      };
       for (const key of !bounds ? ['PageDown', 'PageUp'] : ['PageDown']) {
+        if (key === 'PageUp' && !rowCount && readFromTop()) {
+          log(`Jadval 1-qatordan boshlab o‘qildi (${rows.size} qator) — yuqoriga qaytish kerak emas.`, 'info');
+          continue;
+        }
         let idle = 0;
         while (idle < 3 && !complete()) {
           await checkpoint();
