@@ -65,7 +65,42 @@ public static class CdpInput
 
     // 4790 to'ldiruvchi (U4790Session) uchun to'g'ridan-to'g'ri chaqiriladigan buyruqlar
     public static Task KeyAsync(CoreWebView2 core, string name, int modifiers = 0) => PressKey(core, name, modifiers);
-    public static Task ClickAsync(CoreWebView2 core, double x, double y, int count = 1) => Click(core, x, y, Math.Max(1, count));
+    /// <summary>
+    /// Brauzer masshtabi 100% emas bo'lsa DevTools koordinatalari CSS pikselga teng kelmaydi (x * zoom).
+    /// Sahifa nuqtasi (CSS piksel) beriladi, masshtab haqiqiy sichqoncha harakati bilan o'lchanadi (o'lcham o'zgarmaguncha eslab qolinadi).
+    /// </summary>
+    public static async Task ClickAsync(CoreWebView2 core, double x, double y, int count = 1)
+    {
+        var s = await ScaleAsync(core);
+        await Click(core, Math.Round(x / s), Math.Round(y / s), Math.Max(1, count));
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CoreWebView2, System.Runtime.CompilerServices.StrongBox<(string Sig, double Scale)>> Scales = new();
+
+    static async Task<double> ScaleAsync(CoreWebView2 core)
+    {
+        try
+        {
+            const string sigJs = "devicePixelRatio + '|' + innerWidth + '|' + innerHeight";
+            var sig = (await core.ExecuteScriptAsync(sigJs)).Trim('"');
+            var box = Scales.GetOrCreateValue(core);
+            if (box.Value.Sig == sig && box.Value.Scale > 0) return box.Value.Scale;
+            await core.ExecuteScriptAsync("window.__ishMv=null;if(!window.__ishMvL){window.__ishMvL=1;addEventListener('mousemove',e=>{if(e.isTrusted)window.__ishMv=e.clientX},true)}");
+            await Send(core, "Input.dispatchMouseEvent", new() { ["type"] = "mouseMoved", ["x"] = 200, ["y"] = 200 });
+            double scale = 1;
+            for (var i = 0; i < 10; i++)
+            {
+                await Task.Delay(30);
+                var raw = await core.ExecuteScriptAsync("window.__ishMv");
+                if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seen) && seen > 0)
+                { scale = seen / 200.0; break; }
+            }
+            if (Math.Abs(scale - 1) < 0.02) scale = 1;
+            box.Value = (sig, scale);
+            return scale;
+        }
+        catch { return 1; }
+    }
     public static Task InsertAsync(CoreWebView2 core, string text) =>
         Send(core, "Input.insertText", new() { ["text"] = text });
 
