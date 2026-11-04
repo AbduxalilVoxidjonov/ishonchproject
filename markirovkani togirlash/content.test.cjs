@@ -1226,7 +1226,7 @@ test('pricing: the document is posted first («Провести», kept open), t
 
 test('a swallowed «Подбор» click is repeated, never while a Подбор form is already on screen', () => {
   const fn = source.slice(source.indexOf('  async function openPodbor()'), source.indexOf('  async function enableMarkingMode()'));
-  assert.match(fn, /for \(let attempt = 1; attempt <= 3; attempt\+\+\)/);
+  assert.match(fn, /for \(let attempt = 1; attempt <= 2; attempt\+\+\)/);
   assert.match(fn, /if \(!podborFormVisible\(\)\) \{ if \(attempt === 1\) domClick\(btn\); else await realClick\(btn\); \}/);
   assert.match(fn, /screenReport\(\)/); // the final error says what the screen showed
 });

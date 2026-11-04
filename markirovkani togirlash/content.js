@@ -943,13 +943,56 @@
   const podborFormVisible = () =>
     [...document.querySelectorAll('div,span')].some((e) => e.children.length === 0 && isVisible(e) && /^Подбор номенклатуры/.test(e.textContent.trim()));
 
+  /** The question / error dialog 1C shows over the page: its text and button labels (null when there is none). */
+  const oneCDialog = () => {
+    const messages = [...document.querySelectorAll('[id$="_Message"]')].filter(isVisible);
+    if (!messages.length) return null;
+    const text = String(messages[messages.length - 1].textContent || '').replace(/\s+/g, ' ').trim();
+    const buttons = [...document.querySelectorAll('.pressButton')].filter(isVisible).map((b) => b.textContent.trim()).filter(Boolean);
+    return { text, buttons };
+  };
+
   /** What the screen shows right now: shown in the timeout error so a stuck run can be understood from the log alone. */
   const screenReport = () => {
     const tab = document.querySelector('#openedCell_cont .openedItem.select')?.textContent?.trim() || '?';
     const button = salesPodborButton();
-    const modal = [...document.querySelectorAll('.pressDefault, [id^="modalSurface"]')].some(isVisible);
-    return `tab «${tab.slice(0, 50)}», Подбор tugmasi ${button ? 'bor' : 'yo‘q'}, oyna ${podborFormVisible() ? 'chizilgan' : 'yo‘q'}${modal ? ', 1C dialogi ochiq' : ''}`;
+    const dialog = oneCDialog();
+    // Dialog matni topilmasa ham: 1C ning modal qatlami, ko'rinib turgan formalar va 1C xabarlar oynasidagi oxirgi xatolar
+    // (1C ko'pincha xatoni dialogda emas, shu xabarlar oynasida yozadi: «Не заполнено поле …»)
+    const surface = [...document.querySelectorAll('[id^="modalSurface"]')].some(isVisible);
+    const forms = [...new Set([...document.querySelectorAll('[id^="form"]')].filter(isVisible).map((e) => formPrefix(e)).filter(Boolean))].join(',');
+    const messages = [...document.querySelectorAll('[id^="msg"].gridLine')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-3);
+    return `tab «${tab.slice(0, 50)}», Подбор tugmasi ${button ? 'bor' : 'yo‘q'}, oyna ${podborFormVisible() ? 'chizilgan' : 'yo‘q'}, formalar: ${forms || '—'}` +
+      (dialog ? `, 1C dialogi: «${dialog.text.slice(0, 300)}» [${dialog.buttons.join(' | ')}]` : surface ? ', 1C modal qatlami ochiq' : '') +
+      (messages.length ? `, 1C xabarlari: «${messages.join('» «').slice(0, 400)}»` : '');
   };
+
+  /**
+   * 1C asked to write the new document before it opens Подбор («Данные еще не записаны … записать?»). Writing the draft is
+   * part of the normal flow: «Да» is pressed, 1C re-opens the form under a new prefix (same number and date) and the run
+   * follows it. Any other dialog is not guessed at: the run stops and shows its text.
+   */
+  async function answerPodborDialog() {
+    const dialog = oneCDialog();
+    if (!dialog) return false;
+    const isWrite = /записа|не записан|запис/i.test(dialog.text) && !/провед|удал|закры/i.test(dialog.text);
+    const yes = isWrite ? [...document.querySelectorAll('.pressButton')].filter(isVisible).find((b) => /^(Да|Записать|Yes)$/i.test(b.textContent.trim())) : null;
+    if (!yes) throw docError(`1C dialogi ochiq: «${dialog.text.slice(0, 300)}» [${dialog.buttons.join(' | ')}] — dialogga o‘zingiz javob bering va «Davom» ni bosing.`);
+    log(`1C so‘radi: «${dialog.text.slice(0, 200)}» — «${yes.textContent.trim()}» bosildi (hujjat qoralama sifatida yoziladi).`, 'info');
+    const before = state.document?.prefix;
+    await realClick(yes);
+    // 1C hujjatni yozib, formani qayta ochadi (yangi prefiks): raqam va sana o'sha bo'lsa — shu hujjat; umumiy tekshiruvsiz kutiladi
+    await waitFor(() => !oneCDialog() && salesPodborButton(), 30000, 'hujjat yozilishi', { pausable: false });
+    const now = formPrefix(salesPodborButton());
+    if (state.document && now && now !== before) {
+      const id = documentIdentity(now);
+      if (id.number === state.document.number && id.date === state.document.date) state.document = id;
+      else throw docError('Joriy chek uchun tanlangan hujjat o‘zgardi.');
+      log(`Hujjat yozildi, forma qayta ochildi (${before} → ${now}) — shu hujjatda davom etilmoqda.`, 'info');
+      await save();
+    }
+    return true;
+  }
 
   /**
    * Opens Подбор. A click that 1C swallows (right after a tab switch or while the page is busy) used to cost the whole product:
@@ -957,15 +1000,22 @@
    */
   async function openPodbor() {
     if (podborCheckbox()) return;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Sekin 1C da Подбор oynasi 20–40 soniyada ochilishi mumkin (ombor qoldig'i yuklanadi): shu paytda qayta bosish ikkinchi oyna
+    // ochib yuborardi. Shuning uchun birinchi bosishdan keyin uzoq kutiladi; ochilmasa — haqiqiy bosish bilan bir marta takrorlanadi
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await answerPodborDialog(); // oldingi bosishdan qolgan 1C savoli bo'lsa — javob beriladi yoki ish to'xtaydi
       const btn = await waitFor(salesPodborButton, 8000, 'Реализация hujjatidagi «Подбор» tugmasi');
       if (!podborFormVisible()) { if (attempt === 1) domClick(btn); else await realClick(btn); }
       if (attempt > 1) log(`«Подбор» ochilmadi — ${attempt}-urinish (${screenReport()}).`, 'warn');
       try {
-        await waitFor(podborCheckbox, attempt < 3 ? 7000 : T.openForm, '«Подбор» oynasi');
+        await waitFor(() => podborCheckbox() || oneCDialog(), attempt === 1 ? 25000 : 60000, '«Подбор» oynasi');
+        if (podborCheckbox()) return;
+        // Bosishdan keyin 1C savol berdi (hujjatni yozish): javob beriladi va Подбор qayta ochiladi
+        await answerPodborDialog();
+        await waitFor(podborCheckbox, 60000, '«Подбор» oynasi');
         return;
       } catch (e) {
-        if (attempt === 3) throw new Error(`${e.message} (${screenReport()})`);
+        if (e?.document || attempt === 2) throw e?.document ? e : new Error(`${e.message} (${screenReport()})`);
       }
     }
   }

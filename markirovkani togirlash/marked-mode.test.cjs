@@ -122,7 +122,7 @@ test('openPodbor waits for live checkbox and clicks opener only for closed dialo
   for(const opened of [false,true]) {
     let ready=opened, clicks=0;
     const ctx=vm.createContext({podborCheckbox:()=>ready?{}:null,salesPodborButton:()=>({}),
-      podborFormVisible:()=>false,screenReport:()=>'',log(){},realClick:async()=>{clicks++;ready=true;},
+      podborFormVisible:()=>false,screenReport:()=>'',log(){},oneCDialog:()=>null,answerPodborDialog:async()=>false,realClick:async()=>{clicks++;ready=true;},
       domClick:()=>{clicks++;ready=true;},T:{openForm:100},
       waitFor:async predicate=>{const value=predicate();assert.ok(value);return value;}});
     vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),ctx);
@@ -134,7 +134,7 @@ test('openPodbor waits for live checkbox and clicks opener only for closed dialo
 test('openPodbor repeats a swallowed click with a trusted click, but not while a Подбор form is already drawn',async()=>{
   // 1) the first (synthetic) click is lost: the second, trusted click opens the form
   let ready=false, synthetic=0, trusted=0, waits=0;
-  const ctx=vm.createContext({podborCheckbox:()=>ready?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>false,
+  const ctx=vm.createContext({podborCheckbox:()=>ready?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>false,oneCDialog:()=>null,answerPodborDialog:async()=>false,
     screenReport:()=>'tab',log(){},T:{openForm:100},domClick:()=>{synthetic++;},realClick:async()=>{trusted++;ready=true;},
     waitFor:async(predicate,_t,what)=>{const v=predicate();if(v)return v;if(/oynasi/.test(what)&&++waits===1)throw new Error('Kutish vaqti tugadi');return predicate()||predicate;}});
   vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),ctx);
@@ -142,10 +142,50 @@ test('openPodbor repeats a swallowed click with a trusted click, but not while a
   assert.deepEqual([synthetic,trusted],[1,1]);
   // 2) a form is already on screen (slow 1C): nobody clicks again, the call only waits
   let clicks=0, tries=0;
-  const slow=vm.createContext({podborCheckbox:()=>tries>=2?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>true,
+  const slow=vm.createContext({podborCheckbox:()=>tries>=2?{}:null,salesPodborButton:()=>({}),podborFormVisible:()=>true,oneCDialog:()=>null,answerPodborDialog:async()=>false,
     screenReport:()=>'',log(){},T:{openForm:100},domClick:()=>{clicks++;},realClick:async()=>{clicks++;},
     waitFor:async(predicate,_t,what)=>{if(/oynasi/.test(what)){tries++;if(tries<2)throw new Error('Kutish vaqti tugadi');}return predicate()||{};}});
   vm.runInContext(extract('  async function openPodbor()', '  async function enableMarkingMode()'),slow);
   await vm.runInContext('openPodbor()',slow);
   assert.equal(clicks,0); // the form is on screen: no click at all, the call only waits for its checkbox
+});
+
+function dialogHarness(dialog, buttons) {
+  const clicked = [];
+  const make = text => ({ textContent: text, getBoundingClientRect: () => ({ width: 10, height: 10 }) });
+  const ctx = vm.createContext({
+    isVisible: () => true, norm: s => String(s).toLowerCase(), save: async () => {}, log(){}, clicked,
+    docError: m => Object.assign(new Error(m), { document: true }),
+    state: { document: { prefix: 'form5', number: '0000-1454', date: '02.11.2026 14:56:01' } },
+    realClick: async b => { clicked.push(b.textContent); ctx.dialog = null; },
+    salesPodborButton: () => ({ id: 'form6_ТоварыПодборТовары' }), formPrefix: () => 'form6',
+    documentIdentity: p => ({ prefix: p, number: '0000-1454', date: '02.11.2026 14:56:01' }),
+    waitFor: async fn => fn(),
+    document: { querySelectorAll: sel => (sel === '[id$="_Message"]' ? (ctx.dialog ? [make(dialog)] : []) : sel === '.pressButton' ? (ctx.dialog ? buttons.map(make) : []) : []) },
+    dialog,
+  });
+  vm.runInContext(extract('  const oneCDialog = () =>', '  /** What the screen shows right now'), ctx);
+  vm.runInContext(extract('  async function answerPodborDialog()', '  async function openPodbor()'), ctx);
+  return ctx;
+}
+
+test('1C asks to write the new document: «Да» is pressed and the new form prefix is followed (same number and date)', async () => {
+  const ctx = dialogHarness('Данные еще не записаны. Записать документ?', ['Да', 'Нет', 'Отмена']);
+  assert.equal(await vm.runInContext('answerPodborDialog()', ctx), true);
+  assert.deepEqual(ctx.clicked, ['Да']);
+  assert.equal(ctx.state.document.prefix, 'form6');
+});
+
+test('any other 1C dialog stops the run with its text instead of skipping products', async () => {
+  const ctx = dialogHarness('Поле Договор не заполнено', ['ОК']);
+  await assert.rejects(vm.runInContext('answerPodborDialog()', ctx), (e) => e.document === true && /Договор/.test(e.message) && /ОК/.test(e.message));
+  assert.deepEqual(ctx.clicked, []);
+  const del = dialogHarness('Удалить документ? Записать изменения?', ['Да', 'Нет']);
+  await assert.rejects(vm.runInContext('answerPodborDialog()', del), (e) => e.document === true);
+  assert.deepEqual(del.clicked, []);
+});
+
+test('no dialog: nothing is pressed', async () => {
+  const ctx = dialogHarness('', []); ctx.dialog = null;
+  assert.equal(await vm.runInContext('answerPodborDialog()', ctx), false);
 });
