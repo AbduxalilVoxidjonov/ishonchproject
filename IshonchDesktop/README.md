@@ -145,3 +145,6 @@ Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 ## 0.7.9 — Inventarizatsiya qoldig‘ini qayta ishlatish
 
 Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, kun almashishi yoki «Boshiga qaytarish» ularni yangilamaydi. «Inventarizatsiyani yangilash» keyingi «Avto boshlash» uchun qayta o‘qishni belgilaydi. Birinchi o‘qish va sklad almashtirishda yangi inventarizatsiya olinadi. Xato markirovkalar bosh sahifadagi tugmadan ilova ichidagi alohida tabda ochiladi.
+
+## 0.8.5 — 4790 to'ldiruvchisi masshtab (zoom) ga moslanadi
+- 4790 bosishlari brauzer masshtabi 100% bo'lmaganda ham aniq nuqtaga tushadi (masshtab o'lchanadi).
