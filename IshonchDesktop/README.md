@@ -108,6 +108,13 @@ har chek uchun Реализация (накладная) → Изменить �
 Menyu «Markirovkasiz sotish → Barcha ochiq panellarda boshlash» — ochiq bazalarning hammasida bir vaqtda. Ish paytida 1C oynasiga tegmang.
 Summa maydonlari minglarga ajratiladi (markirovkali panelda ham).
 
+## 0.8.4 — «Подбор» ochilmasa aniq tashxis; «Olish» da keraksiz yuqoriga qaytish yo'q
+
+- «Olish»: jadval 1-qatordan uzluksiz o'qilgan bo'lsa (qator soni yorliqda ko'rinmasa ham), yuqoriga qaytilmaydi — vaqt tejaladi.
+- «Подбор» ochilmasa: birinchi bosishdan keyin 25 s kutiladi (sekin 1C da oyna kech ochiladi), keyin bir marta haqiqiy bosish va 60 s kutish; soxta «1C dialogi» belgisi olib tashlandi.
+- Xato xabarida ekran holati: tab, formalar, 1C dialogi (matn va tugmalar), 1C xabarlar oynasidagi oxirgi xatolar.
+- 1C «hujjatni yozing» deb so'rasa, «Да» bosiladi va yangi formada davom etiladi; boshqa dialog bo'lsa ish matni bilan to'xtaydi (tovarlar tashlab ketilmaydi).
+
 ## 0.8.3 — IKPU qidiruvi faqat kerak bo'lganda; «Подбор» ochilmay qolishi tuzatildi
 
 - 1C nomenklaturasidan IKPU o'qish endi har tovarda emas, faqat bir tovarning kodlari turli MXIK da chiqqandagina ishlaydi: shunda «Подбор» yopiladi, IKPU o'qiladi va tovar qaytadan olinadi. Qolgan tovarlarda ~30 soniya yo'qotilmaydi.
