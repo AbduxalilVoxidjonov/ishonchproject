@@ -6,7 +6,7 @@ using ExcelDataReader;
 namespace IshonchDesktop.Doverennost;
 
 /// <summary>1C bank ko'chirmasi (Список.xls) dagi bitta chiqim qatori.</summary>
-public sealed record BankRow(int Line, DateOnly Date, decimal Amount, string Purpose, string Counterparty, string Operation)
+public sealed record BankRow(int Line, DateOnly Date, decimal Amount, string Purpose, string Counterparty, string Operation, string Contract = "")
 {
     /// <summary>Bank o'z xizmati uchun olgan komissiya (dovernis kerak emas): «Bank xizmatlari», IPAK YO'LI va h.k.</summary>
     public bool LooksLikeBankFee =>
@@ -40,7 +40,7 @@ public static class BankStatement
         var head = rows[0].Select(c => (c?.ToString() ?? "").Trim().ToLowerInvariant()).ToList();
         int Col(params string[] names) => head.FindIndex(h => names.Any(n => h == n));
         var cDate = Col("дата"); var cOut = Col("списание"); var cPurpose = Col("назначение платежа");
-        var cParty = Col("контрагент"); var cOp = Col("вид операции");
+        var cParty = Col("контрагент"); var cOp = Col("вид операции"); var cContract = Col("договор");
         if (cDate < 0 || cOut < 0 || cParty < 0) throw new InvalidDataException("Faylda «Дата», «Списание», «Контрагент» ustunlari topilmadi");
         for (var i = 1; i < rows.Count; i++)
         {
@@ -50,7 +50,7 @@ public static class BankStatement
             var amount = ParseAmount(Raw(cOut));
             var date = ParseDate(Raw(cDate));
             if (amount is not > 0 || date is null) continue;
-            result.Add(new BankRow(i + 1, date.Value, amount.Value, S(cPurpose), S(cParty), S(cOp)));
+            result.Add(new BankRow(i + 1, date.Value, amount.Value, S(cPurpose), S(cParty), S(cOp), S(cContract)));
         }
         return result;
     }

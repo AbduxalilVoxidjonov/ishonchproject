@@ -141,6 +141,7 @@ public sealed class DoverennostRunner
                 await DiscardAsync();
                 return CreateOutcome.CounterpartyNotFound;
             }
+            await SetContractAsync(p.Contract);
             await SetGoodsAsync(p.GoodsName, p.Amount);
             await SaveAsync(p.Number);
             await CloseFormAsync();
@@ -246,6 +247,46 @@ public sealed class DoverennostRunner
         }
         await d.KeyAsync("Escape");
         return false;
+    }
+
+    /// <summary>
+    /// Договор: shartnoma raqami bo'yicha qidiriladi; topilmasa 1C o'zi qo'ygan (odatda «Основной договор») qoladi.
+    /// </summary>
+    async Task SetContractAsync(string number)
+    {
+        const string field = "_ДоговорКонтрагента_i0";
+        var current = (await d.ValueAsync(field))?.Trim() ?? "";
+        if (number.Length == 0) return;
+        var want = Norm(number);
+        if (Norm(current).Contains(want)) return;
+        await d.ClickSuffixAsync(field, "Договор maydoni", "input");
+        await d.DelayAsync(150);
+        await d.SelectAllAsync();
+        await d.TypeAsync(number);
+        Pt? item = null;
+        var until = d.Now + 5000;
+        while (item is null && d.Now < until)
+        {
+            await d.DelayAsync(300);
+            var e = await d.EvalAsync("window.__ish.listItems()");
+            if (e.ValueKind != JsonValueKind.Array) continue;
+            foreach (var li in e.EnumerateArray())
+                if (Norm(li.GetProperty("t").GetString()).Contains(want))
+                    item = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
+        }
+        if (item is { } it)
+        {
+            await d.ClickAsync(it);
+            await d.DelayAsync(600);
+            if (Norm(await d.ValueAsync(field)).Contains(want)) { log($"Договор: {await d.ValueAsync(field)}", "info"); return; }
+        }
+        // Topilmadi: oldingi qiymatga (Основной договор) qaytamiz
+        await d.KeyAsync("Escape");
+        await d.SelectAllAsync();
+        await d.TypeAsync(current.Length > 0 ? current : "Основной договор");
+        await d.KeyAsync("Tab");
+        await d.DelayAsync(500);
+        log($"Договор №{number} topilmadi — «{await d.ValueAsync(field)}» qoldi", "warn");
     }
 
     async Task SetGoodsAsync(string goodsName, decimal amount)

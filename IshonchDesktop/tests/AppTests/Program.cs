@@ -425,6 +425,16 @@ Console.WriteLine("Dovernis rejasi");
     Check(dup[0].Status == IshonchDesktop.Doverennost.PlanStatus.Exists && dup[0].ExistingNumber == "455", "shu sana va kontragentda hujjat bor — yaratilmaydi");
     Check(IshonchDesktop.Doverennost.DoverennostPlanner.GoodsNameFrom("00665 01.02.2025 даги 348-сонли шартномага асосан 2026 йил сентябр ойи учун қўриқлаш хизмат учун #023163#")
         .Contains("қўриқлаш хизмат") && !IshonchDesktop.Doverennost.DoverennostPlanner.GoodsNameFrom("00665 01.02.2025 даги 348-сонли шартномага асосан x #1#").Contains("#"), "tovar nomi to'lov maqsadidan");
+    var GN = IshonchDesktop.Doverennost.DoverennostPlanner.GoodsNameFrom;
+    var CN = IshonchDesktop.Doverennost.DoverennostPlanner.ContractNumberFrom;
+    Check(GN("00599 20.01.2025 даги №20/01-2 сонли шартномага асосан олинадиган  хар хил турдаги маиший техника тупламлари, ошхона анжомлари мобил телефонлар,эл.техникалар ва болалар уйинчоклари учун тулов")
+        == "хар хил турдаги маиший техника тупламлари, ошхона анжомлари мобил телефонлар,эл.техникалар ва болалар уйинчоклари", "тovar nomi: «асосан … учун тулов» orasi");
+    Check(GN("00599сог дог № 67-MUZ от 13.01.2025 года за Мобильные телефоны и аксессуары") == "Мобильные телефоны и аксессуары", "tovar nomi: ruscha «за …»");
+    Check(GN("00647 01.03.2026 йил кунги №354-сонли шартномага асосан 2026 йил октябр ойи учун бино ижара тулови утказилди. #324117#") == "бино ижара", "tovar nomi: oy/yil va «утказилди» olib tashlanadi");
+    Check(CN("№348 от 01.02.2025", "") == "348", "shartnoma raqami: Договор ustunidan");
+    Check(CN("", "00599 20.01.2025 даги №20/01-2 сонли шартномага асосан x") == "20/01-2", "shartnoma raqami: №20/01-2 сонли");
+    Check(CN("", "00665 01.02.2025 даги 348-сонли шартномага асосан x") == "348", "shartnoma raqami: 348-сонли");
+    Check(CN("№Bank xizmatlari shartnomasi от 22.09.2020", "za xizmat") == "", "bank shartnomasi raqam hisoblanmaydi");
     var parsed = IshonchDesktop.Doverennost.BankStatement.Parse(new List<object?[]>
     {
         new object?[] { "Дата", "Списание", "Назначение платежа", "Контрагент", "Вид операции" },
@@ -444,7 +454,7 @@ try { Directory.Delete(tmp, true); } catch { }
         Console.WriteLine($"  Haqiqiy fayl: {all.Count} chiqim, komissiyasiz {noFee.Count}, kontragentlar {noFee.Select(r => r.Counterparty).Distinct().Count()}");
         Check(all.Count > 10 && noFee.Count < all.Count, "Список.xls o'qiladi, bank komissiyasi ajratiladi");
         foreach (var p in IshonchDesktop.Doverennost.DoverennostPlanner.Build(noFee.Take(8), new List<IshonchDesktop.Doverennost.ExistingDoc> { new("418", new DateOnly(2024, 12, 19), "x") }))
-            Console.WriteLine($"    {p.Date:dd.MM} №{p.Number} {p.Amount:N0} {p.Counterparty} | {p.GoodsName}");
+            Console.WriteLine($"    {p.Date:dd.MM} №{p.Number} {p.Amount:N0} {p.Counterparty} | dog:{p.Contract} | {p.GoodsName}");
     }
 }
 listener.Stop();

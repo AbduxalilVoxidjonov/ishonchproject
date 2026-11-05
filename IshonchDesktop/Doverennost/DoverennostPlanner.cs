@@ -14,6 +14,8 @@ public sealed class PlanItem
     public DateOnly Date { get; init; }
     public decimal Amount { get; init; }
     public string GoodsName { get; set; } = "";
+    /// <summary>Shartnoma raqami (to'lov ma'lumotidan): 1C da Договор shu raqam bo'yicha qidiriladi; topilmasa — «Основной договор».</summary>
+    public string Contract { get; set; } = "";
     public string Number { get; set; } = "";
     public PlanStatus Status { get; set; } = PlanStatus.New;
     /// <summary>Allaqachon bo'lsa — mavjud hujjat raqami.</summary>
@@ -33,17 +35,46 @@ public static class DoverennostPlanner
         return m.Success ? int.Parse(m.Groups[1].Value) : null;
     }
 
-    /// <summary>To'lov maqsadidan qisqa tovar nomi: boshidagi hujjat raqami, shartnoma ma'lumoti va #kod# olib tashlanadi.</summary>
+    /// <summary>
+    /// To'lov maqsadidan tovar nomi: «…шартномага асосан <tovar> учун тулов» → tovar; ruscha «… за <tovar>» → tovar.
+    /// Boshidagi hujjat raqami, #kod# va oy/yil ko'rsatkichi olib tashlanadi.
+    /// </summary>
     public static string GoodsNameFrom(string purpose)
     {
-        var s = purpose ?? "";
-        s = Regex.Replace(s, @"#[^#]*#", " ");
-        s = Regex.Replace(s, @"^\s*\d{3,6}\s+", "");
-        s = Regex.Replace(s, @"\d{1,2}\.\d{1,2}\.\d{2,4}\s*(йил\s*кунги|даги|года|г\.?)?", " ", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, @"№\s*[\w/\-]+\s*(-?\s*сонли)?\s*(шартномага|договор\w*)?\s*(асосан|основании)?", " ", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, @"[\w/\-]+\s*-?\s*сонли\s*шартномага\s*асосан", " ", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, @"\s+", " ").Trim(' ', ',', '.', ';', '-');
-        return s.Length > 0 ? s : (purpose ?? "").Trim();
+        var s = Regex.Replace(purpose ?? "", @"#[^#]*#", " ");
+        s = Regex.Replace(s, @"\s+", " ").Trim();
+        var m = Regex.Match(s, @"асосан\s+(.+)$", RegexOptions.IgnoreCase);
+        if (!m.Success) m = Regex.Match(s, @"(?:^|\s)за\s+(.+)$", RegexOptions.IgnoreCase);
+        var t = m.Success ? m.Groups[1].Value : s;
+        if (!m.Success)
+        {
+            t = Regex.Replace(t, @"^\s*\d{3,6}\s+", "");
+            t = Regex.Replace(t, @"\d{1,2}\.\d{1,2}\.\d{2,4}\s*(йил\s*кунги|даги|года|г\.?)?", " ", RegexOptions.IgnoreCase);
+            t = Regex.Replace(t, @"[\w/\-]+\s*-?\s*сонли\s*шартномага", " ", RegexOptions.IgnoreCase);
+        }
+        t = t.Trim(' ', ',', '.', ';', '-');
+        t = Regex.Replace(t, @"^(олинадиган|олинган|олган|олинувчи)\s+", "", RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"^\d{4}\s*(йил|йилги)?\s*\S+\s+ойи\s+(учун\s+)?", "", RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"\s+(учун)?\s*(тулов|тўлов)(и)?(\s+(утказилди|ўтказилди|килинди))?\s*$", "", RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"\s+(утказилди|ўтказилди)\s*$", "", RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"\s+учун\s*$", "", RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"\s+", " ").Trim(' ', ',', '.', ';', '-');
+        return t.Length > 0 ? t : (purpose ?? "").Trim();
+    }
+
+    /// <summary>
+    /// Shartnoma raqami: avval Excelning «Договор» ustunidan («№348 от 01.02.2025» → 348), bo'lmasa to'lov maqsadidan
+    /// («№20/01-2 сонли шартномага», «348-сонли шартномага»). Topilmasa bo'sh.
+    /// </summary>
+    public static string ContractNumberFrom(string? contractCell, string? purpose)
+    {
+        var m = Regex.Match(contractCell ?? "", @"№\s*(.+?)\s+от", RegexOptions.IgnoreCase);
+        if (m.Success && !Regex.IsMatch(m.Groups[1].Value, @"Bank|оферта", RegexOptions.IgnoreCase)) return m.Groups[1].Value.Trim();
+        var p = purpose ?? "";
+        m = Regex.Match(p, @"№\s*([^\s]+?)(?:\s*-?\s*сонли|\s+от|\s+шартном|\s|$)", RegexOptions.IgnoreCase);
+        if (m.Success) return m.Groups[1].Value.Trim('-', ' ');
+        m = Regex.Match(p, @"([\w/\-]+?)\s*-?\s*сонли\s*шартномага", RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value.Trim('-', ' ') : "";
     }
 
     /// <summary>
@@ -62,6 +93,7 @@ public static class DoverennostPlanner
                 Date = rows[0].Date,
                 Amount = rows.Sum(r => r.Amount),
                 GoodsName = GoodsNameFrom(rows[0].Purpose),
+                Contract = rows.Select(r => ContractNumberFrom(r.Contract, r.Purpose)).FirstOrDefault(c => c.Length > 0) ?? "",
                 Rows = rows,
             };
         }).OrderBy(p => p.Date).ThenBy(p => p.Counterparty, StringComparer.OrdinalIgnoreCase).ToList();

@@ -19,6 +19,8 @@ public sealed class DoverennostPanel : UserControl
     readonly Button makePlan = PanelStyle.Primary(new Button { Text = "📋  Reja tuzish (1C ni o'qiydi)", Height = 34, Width = 300, Enabled = false });
     readonly Button create = PanelStyle.Primary(new Button { Text = "▶  Dovernislarni yaratish", Height = 34, Width = 220, Enabled = false });
     readonly Button stop = PanelStyle.Secondary(new Button { Text = "■  To'xtatish", Height = 34, Width = 120, Enabled = false }, danger: true);
+    readonly CheckedListBox partyList = new() { Dock = DockStyle.Top, Height = 110, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
+    readonly CheckBox onlyParties = new() { Text = "Faqat tanlangan kontragentlar", Checked = true, AutoSize = true, Margin = new Padding(12, 8, 0, 0) };
     readonly DataGridView rowsGrid = Grid();
     readonly DataGridView planGrid = Grid();
     readonly RichTextBox logBox = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = Color.White, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
@@ -48,7 +50,7 @@ public sealed class DoverennostPanel : UserControl
         header.Controls.Add(new Label { Text = "Dovernis yaratish (Excel)", Dock = DockStyle.Fill, Font = PanelStyle.Title, ForeColor = Color.FromArgb(15, 23, 42), TextAlign = ContentAlignment.MiddleLeft });
         header.Controls.Add(close);
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 78, Padding = new Padding(0, 4, 0, 0) };
-        top.Controls.AddRange(new Control[] { pick, hideFees, fileLabel });
+        top.Controls.AddRange(new Control[] { pick, hideFees, onlyParties, fileLabel });
         var bar1 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 84, Padding = new Padding(0, 4, 0, 0) };
         bar1.Controls.AddRange(new Control[] { all, none, makePlan });
         var bar2 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 4, 0, 0) };
@@ -60,13 +62,14 @@ public sealed class DoverennostPanel : UserControl
         rowsGrid.Columns["sum"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
 
         planGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "go", HeaderText = "✓", Width = 36 });
-        foreach (var (n, h, w, ro) in new[] { ("num", "Raqam", 64, false), ("date", "Sana", 80, true), ("party", "Kontragent", 180, true), ("sum", "Summa", 100, true), ("goods", "Tovar nomi (tahrirlash mumkin)", 300, false), ("state", "Holat", 130, true) })
+        foreach (var (n, h, w, ro) in new[] { ("num", "Raqam", 64, false), ("date", "Sana", 80, true), ("party", "Kontragent", 180, true), ("sum", "Summa", 100, true), ("contract", "Shartnoma №", 90, false), ("goods", "Tovar nomi (tahrirlash mumkin)", 300, false), ("state", "Holat", 130, true) })
             planGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = n, HeaderText = h, Width = w, ReadOnly = ro });
         planGrid.Columns["sum"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
 
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 260 };
         var rowsHost = new Panel { Dock = DockStyle.Fill };
         rowsHost.Controls.Add(rowsGrid);
+        rowsHost.Controls.Add(partyList);
         rowsHost.Controls.Add(bar1);
         var planHost = new Panel { Dock = DockStyle.Fill };
         var lower = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 200 };
@@ -81,7 +84,9 @@ public sealed class DoverennostPanel : UserControl
         Controls.Add(header);
 
         pick.Click += (_, _) => PickFile();
-        hideFees.CheckedChanged += (_, _) => FillRows();
+        hideFees.CheckedChanged += (_, _) => { FillParties(); FillRows(); };
+        onlyParties.CheckedChanged += (_, _) => FillRows();
+        partyList.ItemCheck += (_, _) => BeginInvoke(FillRows);
         all.Click += (_, _) => { foreach (DataGridViewRow r in rowsGrid.Rows) r.Cells["pick"].Value = true; };
         none.Click += (_, _) => { foreach (DataGridViewRow r in rowsGrid.Rows) r.Cells["pick"].Value = false; };
         makePlan.Click += async (_, _) => await MakePlanAsync();
@@ -112,6 +117,8 @@ public sealed class DoverennostPanel : UserControl
         {
             loaded = BankStatement.Load(dlg.FileName);
             fileLabel.Text = Path.GetFileName(dlg.FileName) + $" — {loaded.Count} ta chiqim";
+            partyList.Items.Clear();
+            FillParties();
             FillRows();
             plan.Clear();
             planGrid.Rows.Clear();
@@ -125,11 +132,22 @@ public sealed class DoverennostPanel : UserControl
         }
     }
 
+    /// <summary>Kontragentlar ro'yxati (nechta to'lov borligi bilan); belgilanganlari saqlanib qoladi.</summary>
+    void FillParties()
+    {
+        var checkedNames = partyList.CheckedItems.Cast<string>().Select(x => x.Split('	')[0]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        partyList.Items.Clear();
+        foreach (var g in loaded.Where(r => !(hideFees.Checked && r.LooksLikeBankFee)).GroupBy(r => r.Counterparty).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            partyList.Items.Add($"{g.Key}	({g.Count()})", checkedNames.Contains(g.Key));
+    }
+
     void FillRows()
     {
+        var parties = partyList.CheckedItems.Cast<string>().Select(x => x.Split('	')[0]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var filter = onlyParties.Checked && parties.Count > 0;
         var picked = rowsGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["pick"].Value is true).Select(r => (int)r.Tag!).ToHashSet();
         rowsGrid.Rows.Clear();
-        foreach (var r in loaded.Where(r => !(hideFees.Checked && r.LooksLikeBankFee)))
+        foreach (var r in loaded.Where(r => !(hideFees.Checked && r.LooksLikeBankFee) && (!filter || parties.Contains(r.Counterparty))))
         {
             var i = rowsGrid.Rows.Add(picked.Contains(r.Line), r.Date.ToString("dd.MM.yyyy"), r.Counterparty, r.Amount.ToString("N0", CultureInfo.GetCultureInfo("ru-RU")), r.Purpose);
             rowsGrid.Rows[i].Tag = r.Line;
@@ -171,7 +189,7 @@ public sealed class DoverennostPanel : UserControl
             {
                 var state = p.Status switch { PlanStatus.Exists => $"allaqachon bor (№{p.ExistingNumber})", PlanStatus.NoNumber => "raqam aniqlanmadi", _ => "yangi" };
                 var i = planGrid.Rows.Add(p.Status == PlanStatus.New, p.Number, p.Date.ToString("dd.MM.yyyy"), p.Counterparty,
-                    p.Amount.ToString("N0", CultureInfo.GetCultureInfo("ru-RU")), p.GoodsName, state);
+                    p.Amount.ToString("N0", CultureInfo.GetCultureInfo("ru-RU")), p.Contract, p.GoodsName, state);
                 planGrid.Rows[i].Tag = p;
                 if (p.Status != PlanStatus.New) planGrid.Rows[i].DefaultCellStyle.ForeColor = PanelStyle.Muted;
             }
@@ -200,6 +218,7 @@ public sealed class DoverennostPanel : UserControl
                 // Jadvalda tahrirlangan raqam va tovar nomi olinadi
                 p.Number = (row.Cells["num"].Value?.ToString() ?? "").Trim();
                 p.GoodsName = (row.Cells["goods"].Value?.ToString() ?? "").Trim();
+                p.Contract = (row.Cells["contract"].Value?.ToString() ?? "").Trim();
                 if (p.Number.Length == 0 || p.GoodsName.Length == 0) { row.Cells["state"].Value = "raqam/nom yo'q"; continue; }
                 try
                 {
