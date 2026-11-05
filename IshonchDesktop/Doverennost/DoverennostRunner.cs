@@ -26,8 +26,26 @@ public sealed class DoverennostRunner
         this.ct = ct;
     }
 
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CoreWebView2, object> DialogHooked = new();
+
+    /// <summary>
+    /// «Номер заполняется при записи автоматически. Продолжить редактирование?» — bu 1C ning emas, brauzerning o'z oynasi
+    /// (JavaScript confirm), shuning uchun DOM orqali ko'rinmaydi: shu savolga «OK» deb javob beriladi (nomer qo'lda yoziladi).
+    /// </summary>
+    static void HookNumberPrompt(CoreWebView2 core)
+    {
+        if (DialogHooked.TryGetValue(core, out _)) return;
+        DialogHooked.Add(core, new object());
+        core.ScriptDialogOpening += (_, e) =>
+        {
+            if (e.Kind == CoreWebView2ScriptDialogKind.Confirm && e.Message.Contains("Номер заполняется", StringComparison.OrdinalIgnoreCase))
+                e.Accept();
+        };
+    }
+
     public async Task InitAsync()
     {
+        HookNumberPrompt(core);
         d = new OneCDriver(core, ct) { Waiting = m => log(m, "warn") };
         await d.InitAsync();
     }
