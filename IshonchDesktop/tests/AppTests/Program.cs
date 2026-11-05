@@ -432,12 +432,17 @@ Console.WriteLine("Dovernis rejasi");
     var CN = IshonchDesktop.Doverennost.DoverennostPlanner.ContractNumberFrom;
     Check(GN("00599 20.01.2025 даги №20/01-2 сонли шартномага асосан олинадиган  хар хил турдаги маиший техника тупламлари, ошхона анжомлари мобил телефонлар,эл.техникалар ва болалар уйинчоклари учун тулов")
         == "хар хил турдаги маиший техника тупламлари, ошхона анжомлари мобил телефонлар,эл.техникалар ва болалар уйинчоклари", "тovar nomi: «асосан … учун тулов» orasi");
-    Check(GN("00599сог дог № 67-MUZ от 13.01.2025 года за Мобильные телефоны и аксессуары") == "Мобильные телефоны и аксессуары", "tovar nomi: ruscha «за …»");
+    Check(GN("00599сог дог № 67-MUZ от 13.01.2025 года за Мобильные телефоны и аксессуары") == "за Мобильные телефоны и аксессуары", "tovar nomi: ruscha «за …» (haqiqiy hujjatlardagidek «за» bilan)");
     Check(GN("00647 01.03.2026 йил кунги №354-сонли шартномага асосан 2026 йил октябр ойи учун бино ижара тулови утказилди. #324117#") == "бино ижара", "tovar nomi: oy/yil va «утказилди» olib tashlanadi");
     Check(CN("№348 от 01.02.2025", "") == "348", "shartnoma raqami: Договор ustunidan");
     Check(CN("", "00599 20.01.2025 даги №20/01-2 сонли шартномага асосан x") == "20/01-2", "shartnoma raqami: №20/01-2 сонли");
     Check(CN("", "00665 01.02.2025 даги 348-сонли шартномага асосан x") == "348", "shartnoma raqami: 348-сонли");
     Check(CN("№Bank xizmatlari shartnomasi от 22.09.2020", "za xizmat") == "", "bank shartnomasi raqam hisoblanmaydi");
+    var ex3 = new List<IshonchDesktop.Doverennost.ExistingDoc> { new("0000-000027", D(19, 10), "A", new TimeOnly(16, 18, 29)), new("25/6", D(13, 10), "B", new TimeOnly(12, 0, 0)), new("25/7", D(13, 10), "C", new TimeOnly(12, 0, 1)) };
+    var pl3 = IshonchDesktop.Doverennost.DoverennostPlanner.Build(new[] { new IshonchDesktop.Doverennost.BankRow(2, D(13, 10), 5, "x", "Yangi", "") }, ex3);
+    Check(pl3[0].Time == new TimeOnly(12, 0, 2), "shu kunda 12:00:00 va 12:00:01 bor — yangisi 12:00:02");
+    var pl4 = IshonchDesktop.Doverennost.DoverennostPlanner.Build(new[] { new IshonchDesktop.Doverennost.BankRow(2, D(14, 10), 5, "x", "Yangi", "") }, ex3);
+    Check(pl4[0].Time == new TimeOnly(12, 0, 0), "bo'sh kunda vaqt 12:00:00");
     var parsed = IshonchDesktop.Doverennost.BankStatement.Parse(new List<object?[]>
     {
         new object?[] { "Дата", "Списание", "Назначение платежа", "Контрагент", "Вид операции" },

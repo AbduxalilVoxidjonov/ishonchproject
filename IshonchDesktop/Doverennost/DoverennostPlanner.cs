@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace IshonchDesktop.Doverennost;
 
 /// <summary>1C Доверенности ro'yxatidagi mavjud hujjat (raqam, sana, kontragent).</summary>
-public sealed record ExistingDoc(string Number, DateOnly Date, string Counterparty);
+public sealed record ExistingDoc(string Number, DateOnly Date, string Counterparty, TimeOnly? Time = null);
 
 public enum PlanStatus { New, Exists, NoNumber }
 
@@ -12,10 +12,14 @@ public sealed class PlanItem
 {
     public string Counterparty { get; init; } = "";
     public DateOnly Date { get; init; }
+    /// <summary>Hujjat vaqti: odatda 12:00:00; shu kunda boshqa hujjat bor bo'lsa soniya oshiriladi (12:00:01, …), haqiqiy bazadagidek.</summary>
+    public TimeOnly Time { get; set; } = new(12, 0, 0);
     public decimal Amount { get; init; }
     public string GoodsName { get; set; } = "";
     /// <summary>Shartnoma raqami (to'lov ma'lumotidan): 1C da Договор shu raqam bo'yicha qidiriladi; topilmasa — «Основной договор».</summary>
     public string Contract { get; set; } = "";
+    /// <summary>Excelning «Договор» katagi («№348 от 01.02.2025») — bir xil raqamli shartnomalarni sanasi bilan ajratish uchun.</summary>
+    public string ContractText { get; init; } = "";
     public string Number { get; set; } = "";
     public PlanStatus Status { get; set; } = PlanStatus.New;
     /// <summary>Allaqachon bo'lsa — mavjud hujjat raqami.</summary>
@@ -46,7 +50,8 @@ public static class DoverennostPlanner
         var s = Regex.Replace(purpose ?? "", @"#[^#]*#", " ");
         s = Regex.Replace(s, @"\s+", " ").Trim();
         var m = Regex.Match(s, @"асосан\s+(.+)$", RegexOptions.IgnoreCase);
-        if (!m.Success) m = Regex.Match(s, @"(?:^|\s)за\s+(.+)$", RegexOptions.IgnoreCase);
+        var russian = false;
+        if (!m.Success) { m = Regex.Match(s, @"(?:^|\s)(за\s+.+)$", RegexOptions.IgnoreCase); russian = m.Success; }
         var t = m.Success ? m.Groups[1].Value : s;
         if (!m.Success)
         {
@@ -61,6 +66,7 @@ public static class DoverennostPlanner
         t = Regex.Replace(t, @"\s+(утказилди|ўтказилди)\s*$", "", RegexOptions.IgnoreCase);
         t = Regex.Replace(t, @"\s+учун\s*$", "", RegexOptions.IgnoreCase);
         t = Regex.Replace(t, @"\s+", " ").Trim(' ', ',', '.', ';', '-');
+        // Ruscha to'lovda hujjatdagi nom «за …» bilan boshlanadi (haqiqiy bazada shunday)
         return t.Length > 0 ? t : (purpose ?? "").Trim();
     }
 
@@ -95,6 +101,7 @@ public static class DoverennostPlanner
                 Date = rows[0].Date,
                 Amount = rows.Sum(r => r.Amount),
                 GoodsName = GoodsNameFrom(rows[0].Purpose),
+                ContractText = rows.Select(r => r.Contract).FirstOrDefault(c => c.Length > 0) ?? "",
                 Contract = rows.Select(r => ContractNumberFrom(r.Contract, r.Purpose)).FirstOrDefault(c => c.Length > 0) ?? "",
                 Rows = rows,
             };
@@ -109,7 +116,12 @@ public static class DoverennostPlanner
             var number = NextNumber(docs, p.Date);
             if (number is null) { p.Status = PlanStatus.NoNumber; continue; }
             p.Number = number;
-            docs.Add(new ExistingDoc(number, p.Date, p.Counterparty));
+            // Shu kunda 12:00:SS vaqtli hujjatlar bor bo'lsa — birinchi bo'sh soniya
+            var used = docs.Where(d => d.Date == p.Date && d.Time is { Hour: 12, Minute: 0 }).Select(d => d.Time!.Value.Second).ToHashSet();
+            var sec = 0;
+            while (used.Contains(sec) && sec < 59) sec++;
+            p.Time = new TimeOnly(12, 0, sec);
+            docs.Add(new ExistingDoc(number, p.Date, p.Counterparty, p.Time));
         }
         return items;
     }

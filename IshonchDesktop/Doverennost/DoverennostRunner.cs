@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Web.WebView2.Core;
 using IshonchDesktop.Unmarked;
 
@@ -122,10 +123,15 @@ public sealed class DoverennostRunner
             foreach (var r in g.Rows)
             {
                 var number = g.Cell(r, "Номер")?.Text ?? "";
+                var when = UnmarkedOptions.ParseOneCDate(g.Cell(r, "Дата")?.Text);
                 var date = BankStatement.ParseDate(g.Cell(r, "Дата")?.Text);
                 var party = g.Cell(r, "Контрагент")?.Text ?? "";
                 if (number.Length == 0 || date is null) continue;
-                if (keys.Add(number + "|" + date + "|" + party)) { seen.Add(new ExistingDoc(number, date.Value, party)); added++; }
+                if (keys.Add(number + "|" + date + "|" + party))
+                {
+                    seen.Add(new ExistingDoc(number, date.Value, party, when is { } w ? TimeOnly.FromDateTime(w) : null));
+                    added++;
+                }
             }
             if (added == 0) break;
             if (!await d.ScrollRowsAsync("Список", g, Math.Max(1, g.Rows.Count - 1))) break;
@@ -191,14 +197,14 @@ public sealed class DoverennostRunner
         try
         {
             await SetTextAsync("_Номер_i0", p.Number, "Номер");
-            await SetDateAsync(new DateTime(p.Date.Year, p.Date.Month, p.Date.Day, 12, 0, 0));
+            await SetDateAsync(new DateTime(p.Date.Year, p.Date.Month, p.Date.Day, p.Time.Hour, p.Time.Minute, p.Time.Second));
             if (!await SetCounterpartyAsync(p.Counterparty))
             {
                 log($"«{p.Counterparty}» 1C da topilmadi — o'tkazib yuborildi", "warn");
                 await DiscardAsync();
                 return CreateOutcome.CounterpartyNotFound;
             }
-            await SetContractAsync(p.Contract);
+            await SetContractAsync(p.Contract, p.ContractText);
             await SetExpiryAsync(new DateOnly(p.Date.Year, 12, 31));
             await SetGoodsAsync(p.GoodsName, p.Amount);
             await SaveAsync(p.Number);
@@ -330,7 +336,7 @@ public sealed class DoverennostRunner
     /// <summary>
     /// Договор: shartnoma raqami bo'yicha qidiriladi; topilmasa 1C o'zi qo'ygan (odatda «Основной договор») qoladi.
     /// </summary>
-    async Task SetContractAsync(string number)
+    async Task SetContractAsync(string number, string contractText = "")
     {
         const string field = "_ДоговорКонтрагента_i0";
         var current = (await d.ValueAsync(field))?.Trim() ?? "";
@@ -348,9 +354,17 @@ public sealed class DoverennostRunner
             await d.DelayAsync(300);
             var e = await d.EvalAsync("window.__ish.listItems()");
             if (e.ValueKind != JsonValueKind.Array) continue;
+            // Bir xil raqamli shartnomalar bo'lsa — sanasi ham mos kelgani afzal («№1028 от 27.05.2025»)
+            var wantDate = Regex.Match(contractText, @"\d{2}\.\d{2}\.\d{4}").Value;
+            Pt? any = null;
             foreach (var li in e.EnumerateArray())
-                if (Norm(li.GetProperty("t").GetString()).Contains(want))
-                    item = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
+                if (li.GetProperty("t").GetString() is { } lt && Norm(lt).Contains(want))
+                {
+                    var at = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
+                    any ??= at;
+                    if (wantDate.Length == 0 || lt.Contains(wantDate)) { item = at; break; }
+                }
+            item ??= any;
         }
         if (item is { } it)
         {
