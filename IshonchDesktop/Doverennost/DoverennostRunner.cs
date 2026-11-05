@@ -33,7 +33,7 @@ public sealed class DoverennostRunner
     /// «Номер заполняется при записи автоматически. Продолжить редактирование?» — bu 1C ning emas, brauzerning o'z oynasi
     /// (JavaScript confirm), shuning uchun DOM orqali ko'rinmaydi: shu savolga «OK» deb javob beriladi (nomer qo'lda yoziladi).
     /// </summary>
-    static void HookNumberPrompt(CoreWebView2 core)
+    public static void HookNumberPrompt(CoreWebView2 core)
     {
         if (DialogHooked.TryGetValue(core, out _)) return;
         DialogHooked.Add(core, new object());
@@ -309,25 +309,38 @@ public sealed class DoverennostRunner
         await d.ClickSuffixAsync("_Контрагент_i0", "Контрагент maydoni", "input");
         await d.DelayAsync(150);
         await d.SelectAllAsync();
-        // Qo'shtirnoq va apostrof qidiruvga xalaqit bermasin: nomning eng uzun so'zlaridan boshlanadi
-        var query = string.Join(' ', name.Replace("\"", " ").Replace("`", "'").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(4));
-        await d.TypeAsync(query);
-        Pt? item = null;
-        var until = d.Now + 6000;
-        while (item is null && d.Now < until)
+        // 1C ro'yxati so'zlar boshi bo'yicha qidiradi, nom esa qo'shtirnoq bilan boshlanishi mumkin: qo'shtirnoqsiz so'zlar
+        // birma-bir yoziladi va har so'zdan keyin aniq nom ro'yxatda paydo bo'lganmi tekshiriladi.
+        var words = name.Replace("\"", " ").Replace("`", "'").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var n = Math.Min(2, words.Length); n <= words.Length; n++)
         {
-            await d.DelayAsync(300);
-            var e = await d.EvalAsync("window.__ish.listItems()");
-            if (e.ValueKind != JsonValueKind.Array) continue;
-            foreach (var li in e.EnumerateArray())
-                if (Norm(li.GetProperty("t").GetString()) == want)
-                    item = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
-        }
-        if (item is { } it)
-        {
-            await d.ClickAsync(it);
-            await d.DelayAsync(600);
-            if (Norm(await d.ValueAsync("_Контрагент_i0")) == want) return true;
+            await d.TypeAsync(n == Math.Min(2, words.Length) ? string.Join(' ', words.Take(n)) : " " + words[n - 1]);
+            Pt? item = null;
+            var onlyCreate = false;
+            var until = d.Now + 3500;
+            while (item is null && d.Now < until)
+            {
+                await d.DelayAsync(300);
+                var e = await d.EvalAsync("window.__ish.listItems()");
+                if (e.ValueKind != JsonValueKind.Array) continue;
+                var items = e.EnumerateArray().Select(li => (t: li.GetProperty("t").GetString() ?? "", p: new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble()))).ToList();
+                foreach (var (t, pt) in items) if (Norm(t) == want) item = pt;
+                // Oxirgi so'zgacha yozilganda nom bank ko'chirmasidagidan biroz farq qilsa: yagona mos nomzod olinadi
+                if (item is null && n == words.Length && d.Now > until - 1500)
+                {
+                    var real = items.Where(x => !x.t.StartsWith("Создать", StringComparison.OrdinalIgnoreCase) && !x.t.StartsWith("Показать", StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (real.Count == 1) { item = real[0].p; log($"Kontragent nomi aniq mos emas: «{real[0].t}» tanlanadi", "warn"); }
+                }
+                onlyCreate = items.Count > 0 && items.All(x => x.t.StartsWith("Создать", StringComparison.OrdinalIgnoreCase));
+                if (onlyCreate) break;
+            }
+            if (item is { } it)
+            {
+                await d.ClickAsync(it);
+                await d.DelayAsync(600);
+                if (Norm(await d.ValueAsync("_Контрагент_i0")) is { Length: > 0 } picked && (picked == want || n == words.Length)) return true;
+            }
+            if (onlyCreate) break; // bunday kontragent umuman yo'q
         }
         await d.KeyAsync("Escape");
         return false;

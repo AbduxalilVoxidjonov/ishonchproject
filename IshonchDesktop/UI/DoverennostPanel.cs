@@ -45,6 +45,8 @@ public sealed class DoverennostPanel : UserControl
     {
         this.tab = tab;
         store = new DoverennostStore(tab.ProfileKey);
+        // Raqam so'rovi (brauzer confirm) har doim «OK» bilan o'tkazib yuboriladi: qo'lda ishlaganda ham to'xtatib qo'ymasin
+        _ = tab.Ready.ContinueWith(_ => { if (tab.Core is { } c) tab.BeginInvoke(() => DoverennostRunner.HookNumberPrompt(c)); }, TaskScheduler.Default);
         Font = PanelStyle.Base;
         BackColor = PanelStyle.Back;
         Padding = new Padding(8);
@@ -118,6 +120,7 @@ public sealed class DoverennostPanel : UserControl
     void Log(string text, string kind = "info")
     {
         if (InvokeRequired) { BeginInvoke(() => Log(text, kind)); return; }
+        IshonchDesktop.Models.Log.Write("Dovernis: " + text);
         logBox.SelectionColor = kind switch { "warn" => Color.FromArgb(180, 83, 9), "error" => PanelStyle.Danger, "ok" => Color.FromArgb(21, 128, 61), _ => Color.FromArgb(51, 65, 85) };
         logBox.AppendText($"{DateTime.Now:HH:mm:ss}  {text}\n");
         logBox.ScrollToCaret();
@@ -194,6 +197,7 @@ public sealed class DoverennostPanel : UserControl
 
     async Task MakePlanAsync()
     {
+        if (busy) return;
         var pickedLines = rowsGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["pick"].Value is true).Select(r => (int)r.Tag!).ToHashSet();
         if (pickedLines.Count == 0) { MessageBox.Show(this, "Avval kerakli to'lovlarni belgilang.", AppInfo.DisplayName); return; }
         cts = new CancellationTokenSource();
@@ -244,6 +248,7 @@ public sealed class DoverennostPanel : UserControl
 
     async Task CreateAsync()
     {
+        if (busy) return;
         var todo = planGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["go"].Value is true).ToList();
         if (todo.Count == 0) { MessageBox.Show(this, "Yaratiladigan dovernis belgilanmagan.", AppInfo.DisplayName); return; }
         if (MessageBox.Show(this, $"{todo.Count} ta dovernis 1C da yaratiladi (faqat saqlanadi, provesti qilinmaydi). 1C ga tegmang. Davom etilsinmi?",
