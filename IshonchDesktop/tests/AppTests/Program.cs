@@ -394,6 +394,59 @@ Console.WriteLine("Markirovkasiz chek E-POS uchun");
         "cheklar faylga saqlanadi, takrorlanmaydi, sotilgani belgilanadi");
 }
 
+// ---- Dovernis rejasi ----
+Console.WriteLine("Dovernis rejasi");
+{
+    var D = (int d, int m) => new DateOnly(2026, m, d);
+    var ex = new List<IshonchDesktop.Doverennost.ExistingDoc>
+    {
+        new("454", D(18, 8), "A"), new("455", D(19, 8), "B"), new("456", D(20, 8), "C"),
+    };
+    var P = IshonchDesktop.Doverennost.DoverennostPlanner.NextNumber;
+    Check(P(ex, D(21, 8)) == "457", "yangi sana oxirgidan keyin: 457");
+    Check(P(ex, D(20, 8)) == "457", "oxirgi sananing o'zi: 457");
+    Check(P(ex, D(19, 8)) == "455/1", "oldingi sana: 455/1");
+    ex.Add(new("455/1", D(19, 8), "D"));
+    Check(P(ex, D(19, 8)) == "455/2", "yana shu sana: 455/2");
+    Check(P(ex, D(1, 8)) is null, "eng eski hujjatdan ham oldin: raqam yo'q");
+
+    IshonchDesktop.Doverennost.BankRow R(int line, int d, decimal a, string who, string purpose = "xizmat") => new(line, D(d, 8), a, purpose, who, "Оплата поставщику");
+    var rows = new[]
+    {
+        R(2, 19, 100, "\"Turist Biznes Trade\" Mchj"), R(3, 18, 50, "Turist Biznes Trade Mchj"), R(4, 19, 70, "Boshqa Mchj"),
+    };
+    var plan = IshonchDesktop.Doverennost.DoverennostPlanner.Build(rows, ex.Take(3).ToList());
+    Check(plan.Count == 2, "bir kontragent bitta dovernisga yig'iladi");
+    var t = plan.First(p => p.Counterparty.Contains("Turist"));
+    Check(t.Amount == 150 && t.Date == D(18, 8), "summa yig'indisi, sana — eng birinchisi");
+    Check(t.Number == "454/1", "oldingi sana raqami: 454/1 (" + t.Number + ")");
+    Check(plan.First(p => p.Counterparty == "Boshqa Mchj").Number == "455/1", "boshqa kontragent 455/1");
+    var dup = IshonchDesktop.Doverennost.DoverennostPlanner.Build(new[] { R(2, 19, 10, "b") }, ex.Take(3).ToList());
+    Check(dup[0].Status == IshonchDesktop.Doverennost.PlanStatus.Exists && dup[0].ExistingNumber == "455", "shu sana va kontragentda hujjat bor — yaratilmaydi");
+    Check(IshonchDesktop.Doverennost.DoverennostPlanner.GoodsNameFrom("00665 01.02.2025 даги 348-сонли шартномага асосан 2026 йил сентябр ойи учун қўриқлаш хизмат учун #023163#")
+        .Contains("қўриқлаш хизмат") && !IshonchDesktop.Doverennost.DoverennostPlanner.GoodsNameFrom("00665 01.02.2025 даги 348-сонли шартномага асосан x #1#").Contains("#"), "tovar nomi to'lov maqsadidan");
+    var parsed = IshonchDesktop.Doverennost.BankStatement.Parse(new List<object?[]>
+    {
+        new object?[] { "Дата", "Списание", "Назначение платежа", "Контрагент", "Вид операции" },
+        new object?[] { "02.10.2026", "1 874 696,00", "x", "Y", "Оплата поставщику" },
+        new object?[] { "02.10.2026", "", "kirim", "Z", "" },
+    });
+    Check(parsed.Count == 1 && parsed[0].Amount == 1874696m, "Excel: faqat chiqim, summa o'qiladi");
+}
+listener.Stop();
+try { Directory.Delete(tmp, true); } catch { }
+{
+    var real = @"C:\Users\a.voxidjonov\Downloads\Telegram Desktop\Список.xls";
+    if (File.Exists(real))
+    {
+        var all = IshonchDesktop.Doverennost.BankStatement.Load(real);
+        var noFee = all.Where(r => !r.LooksLikeBankFee).ToList();
+        Console.WriteLine($"  Haqiqiy fayl: {all.Count} chiqim, komissiyasiz {noFee.Count}, kontragentlar {noFee.Select(r => r.Counterparty).Distinct().Count()}");
+        Check(all.Count > 10 && noFee.Count < all.Count, "Список.xls o'qiladi, bank komissiyasi ajratiladi");
+        foreach (var p in IshonchDesktop.Doverennost.DoverennostPlanner.Build(noFee.Take(8), new List<IshonchDesktop.Doverennost.ExistingDoc> { new("418", new DateOnly(2024, 12, 19), "x") }))
+            Console.WriteLine($"    {p.Date:dd.MM} №{p.Number} {p.Amount:N0} {p.Counterparty} | {p.GoodsName}");
+    }
+}
 listener.Stop();
 try { Directory.Delete(tmp, true); } catch { }
 Console.WriteLine(failures == 0 ? "\nHAMMASI YAXSHI" : $"\n{failures} ta xato");
