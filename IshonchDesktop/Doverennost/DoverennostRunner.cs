@@ -301,46 +301,57 @@ public sealed class DoverennostRunner
 
     static string Norm(string? s) => DoverennostPlanner.NormParty(s ?? "");
 
-    /// <summary>Kontragentni yozib, ochilgan ro'yxatdan mosini tanlaydi. Topilmasa false (maydon o'zgarmagan holatda qoladi).</summary>
+    /// <summary>1C ro'yxat bandi matni oxirida kod bo'ladi: «"Trust Trade Asia" mas'uliyati … (00-000271)» — taqqoslashda olib tashlanadi.</summary>
+    static string StripCode(string t) => Regex.Replace(t ?? "", @"\s*\([\w\-]+\)\s*$", "");
+
+    /// <summary>
+    /// Kontragentni yozib, ochilgan ro'yxatdan mosini tanlaydi. 1C ro'yxati nomning BOSHIDAN qidiradi (qo'shtirnoq ham nomga kiradi),
+    /// shuning uchun nom asl ko'rinishida yoziladi; topilmasa qo'shtirnoqsiz va qo'shtirnoq bilan ham sinab ko'riladi.
+    /// Topilmasa false (maydon o'zgarmagan holatda qoladi).
+    /// </summary>
     async Task<bool> SetCounterpartyAsync(string name)
     {
         var want = Norm(name);
         if (Norm(await d.ValueAsync("_Контрагент_i0")) == want) return true;
-        await d.ClickSuffixAsync("_Контрагент_i0", "Контрагент maydoni", "input");
-        await d.DelayAsync(150);
-        await d.SelectAllAsync();
-        // 1C ro'yxati so'zlar boshi bo'yicha qidiradi, nom esa qo'shtirnoq bilan boshlanishi mumkin: qo'shtirnoqsiz so'zlar
-        // birma-bir yoziladi va har so'zdan keyin aniq nom ro'yxatda paydo bo'lganmi tekshiriladi.
-        var words = name.Replace("\"", " ").Replace("`", "'").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        for (var n = Math.Min(2, words.Length); n <= words.Length; n++)
+        var bare = name.Trim().TrimStart('"', '«', '“');
+        foreach (var variant in new[] { name.Trim(), "\"" + bare, bare }.Distinct())
         {
-            await d.TypeAsync(n == Math.Min(2, words.Length) ? string.Join(' ', words.Take(n)) : " " + words[n - 1]);
-            Pt? item = null;
-            var onlyCreate = false;
-            var until = d.Now + 3500;
-            while (item is null && d.Now < until)
+            await d.ClickSuffixAsync("_Контрагент_i0", "Контрагент maydoni", "input");
+            await d.DelayAsync(150);
+            await d.SelectAllAsync();
+            await d.KeyAsync("Delete");
+            var words = variant.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            for (var n = Math.Min(2, words.Length); n <= words.Length; n++)
             {
-                await d.DelayAsync(300);
-                var e = await d.EvalAsync("window.__ish.listItems()");
-                if (e.ValueKind != JsonValueKind.Array) continue;
-                var items = e.EnumerateArray().Select(li => (t: li.GetProperty("t").GetString() ?? "", p: new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble()))).ToList();
-                foreach (var (t, pt) in items) if (Norm(t) == want) item = pt;
-                // Oxirgi so'zgacha yozilganda nom bank ko'chirmasidagidan biroz farq qilsa: yagona mos nomzod olinadi
-                if (item is null && n == words.Length && d.Now > until - 1500)
+                await d.TypeAsync(n == Math.Min(2, words.Length) ? string.Join(' ', words.Take(n)) : " " + words[n - 1]);
+                Pt? item = null;
+                var onlyCreate = false;
+                var until = d.Now + 3500;
+                while (item is null && d.Now < until)
                 {
+                    await d.DelayAsync(300);
+                    var e = await d.EvalAsync("window.__ish.listItems()");
+                    if (e.ValueKind != JsonValueKind.Array) continue;
+                    var items = e.EnumerateArray().Select(li => (t: li.GetProperty("t").GetString() ?? "", p: new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble()))).ToList();
+                    foreach (var (t, pt) in items) if (Norm(StripCode(t)) == want) item = pt;
                     var real = items.Where(x => !x.t.StartsWith("Создать", StringComparison.OrdinalIgnoreCase) && !x.t.StartsWith("Показать", StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (real.Count == 1) { item = real[0].p; log($"Kontragent nomi aniq mos emas: «{real[0].t}» tanlanadi", "warn"); }
+                    // Oxirgi so'zgacha yozilganda nom ko'chirmadagidan biroz farq qilsa: yagona mos nomzod olinadi
+                    if (item is null && n == words.Length && d.Now > until - 1500 && real.Count == 1)
+                    {
+                        item = real[0].p;
+                        log($"Kontragent nomi aniq mos emas: «{real[0].t}» tanlanadi", "warn");
+                    }
+                    onlyCreate = items.Count > 0 && real.Count == 0;
+                    if (onlyCreate) break;
                 }
-                onlyCreate = items.Count > 0 && items.All(x => x.t.StartsWith("Создать", StringComparison.OrdinalIgnoreCase));
-                if (onlyCreate) break;
+                if (item is { } it)
+                {
+                    await d.ClickAsync(it);
+                    await d.DelayAsync(600);
+                    if (Norm(await d.ValueAsync("_Контрагент_i0")) is { Length: > 0 }) return true;
+                }
+                if (onlyCreate) break; // bu ko'rinishda hech narsa topilmadi — keyingi variant
             }
-            if (item is { } it)
-            {
-                await d.ClickAsync(it);
-                await d.DelayAsync(600);
-                if (Norm(await d.ValueAsync("_Контрагент_i0")) is { Length: > 0 } picked && (picked == want || n == words.Length)) return true;
-            }
-            if (onlyCreate) break; // bunday kontragent umuman yo'q
         }
         await d.KeyAsync("Escape");
         return false;
