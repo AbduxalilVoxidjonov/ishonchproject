@@ -16,11 +16,11 @@ public sealed class DoverennostPanel : UserControl
     readonly CheckBox hideFees = new() { Text = "Bank komissiyasini yashirish", Checked = true, AutoSize = true, Margin = new Padding(12, 8, 0, 0) };
     readonly Button all = PanelStyle.Secondary(new Button { Text = "Hammasini belgilash", Height = 34, Width = 160 });
     readonly Button none = PanelStyle.Secondary(new Button { Text = "Belgini olish", Height = 34, Width = 120 });
-    readonly Button makePlan = PanelStyle.Primary(new Button { Text = "📋  Reja tuzish (1C ni o'qiydi)", Height = 34, Width = 300, Enabled = false });
+    readonly Button makePlan = PanelStyle.Primary(new Button { Text = "📋  Reja tuzish (1C ni o'qiydi)", Height = 34, Width = 270, Enabled = false });
     readonly Button create = PanelStyle.Primary(new Button { Text = "▶  Dovernislarni yaratish", Height = 34, Width = 220, Enabled = false });
     readonly Button mark = PanelStyle.Secondary(new Button { Text = "☑  Yaratilganlarni 1C da belgilash", Height = 34, Width = 300 });
     readonly Button stop = PanelStyle.Secondary(new Button { Text = "■  To'xtatish", Height = 34, Width = 120, Enabled = false }, danger: true);
-    readonly CheckedListBox partyList = new() { Dock = DockStyle.Top, Height = 110, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
+    readonly CheckedListBox partyList = new() { Height = 110, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     readonly CheckBox onlyParties = new() { Text = "Faqat tanlangan kontragentlar", Checked = true, AutoSize = true, Margin = new Padding(12, 8, 0, 0) };
     readonly DataGridView rowsGrid = Grid();
     readonly DataGridView planGrid = Grid();
@@ -52,11 +52,11 @@ public sealed class DoverennostPanel : UserControl
         var header = new Panel { Dock = DockStyle.Top, Height = 34 };
         header.Controls.Add(new Label { Text = "Dovernis yaratish (Excel)", Dock = DockStyle.Fill, Font = PanelStyle.Title, ForeColor = Color.FromArgb(15, 23, 42), TextAlign = ContentAlignment.MiddleLeft });
         header.Controls.Add(close);
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 78, Padding = new Padding(0, 4, 0, 0) };
+        var top = new FlowLayoutPanel { Height = 74, Padding = new Padding(0, 4, 0, 0) };
         top.Controls.AddRange(new Control[] { pick, hideFees, onlyParties, fileLabel });
-        var bar1 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 84, Padding = new Padding(0, 4, 0, 0) };
+        var bar1 = new FlowLayoutPanel { Height = 46, Padding = new Padding(0, 4, 0, 0) };
         bar1.Controls.AddRange(new Control[] { all, none, makePlan });
-        var bar2 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 4, 0, 0) };
+        var bar2 = new FlowLayoutPanel { Height = 88, Padding = new Padding(0, 4, 0, 0) };
         bar2.Controls.AddRange(new Control[] { create, stop, mark });
         bar2.Height = 88;
 
@@ -70,21 +70,27 @@ public sealed class DoverennostPanel : UserControl
             planGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = n, HeaderText = h, Width = w, ReadOnly = ro });
         planGrid.Columns["sum"]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 260 };
-        var rowsHost = new Panel { Dock = DockStyle.Fill };
-        rowsHost.Controls.Add(rowsGrid);
-        rowsHost.Controls.Add(partyList);
-        rowsHost.Controls.Add(bar1);
-        var planHost = new Panel { Dock = DockStyle.Fill };
-        var lower = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 200 };
-        lower.Panel1.Controls.Add(planGrid);
-        lower.Panel1.Controls.Add(bar2);
-        lower.Panel2.Controls.Add(logBox);
-        planHost.Controls.Add(lower);
-        split.Panel1.Controls.Add(rowsHost);
-        split.Panel2.Controls.Add(planHost);
-        Controls.Add(split);
-        Controls.Add(top);
+        // Hamma narsa bitta aylantiriladigan (scroll) ustunda: panel past bo'lsa ham pastdagi tugma va jurnalga yetib boriladi
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, Height = 1010, Margin = Padding.Empty, Padding = Padding.Empty };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        void AddRow(Control c, int height)
+        {
+            c.Dock = DockStyle.Fill;
+            c.Margin = new Padding(0, 0, 0, 4);
+            table.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+            table.Controls.Add(c);
+        }
+        AddRow(top, 74);
+        AddRow(partyList, 120);
+        AddRow(rowsGrid, 260);
+        AddRow(bar1, 46);
+        AddRow(planGrid, 260);
+        AddRow(bar2, 88);
+        AddRow(logBox, 140);
+        table.Height = 74 + 120 + 260 + 46 + 260 + 88 + 140 + 7 * 4 + 4;
+        var scroller = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        scroller.Controls.Add(table);
+        Controls.Add(scroller);
         Controls.Add(header);
 
         pick.Click += (_, _) => PickFile();
