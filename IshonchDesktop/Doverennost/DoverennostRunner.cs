@@ -37,6 +37,10 @@ public sealed class DoverennostRunner
     {
         if (DialogHooked.TryGetValue(core, out _)) return;
         DialogHooked.Add(core, new object());
+        // Asosiy yo'l: sahifadagi confirm() shu savolga o'zi «OK» (true) qaytaradi — brauzer oynasi umuman chiqmaydi
+        const string script = "(()=>{if(window.__ishConfirm)return;window.__ishConfirm=1;const o=window.confirm;window.confirm=function(m){if(/Номер заполняется/i.test(String(m)))return true;return o.apply(this,arguments)}})()";
+        _ = core.AddScriptToExecuteOnDocumentCreatedAsync(script);
+        _ = core.ExecuteScriptAsync(script);
         core.ScriptDialogOpening += (_, e) =>
         {
             if (e.Kind == CoreWebView2ScriptDialogKind.Confirm && e.Message.Contains("Номер заполняется", StringComparison.OrdinalIgnoreCase))
@@ -464,14 +468,28 @@ public sealed class DoverennostRunner
         if (await d.ModalButtonAsync("Нет") is { } no) { await d.ClickAsync(no); await d.DelayAsync(300); }
     }
 
-    /// <summary>Saqlanmagan hujjatni yopadi.</summary>
+    /// <summary>
+    /// Saqlanmagan hujjatni yopadi: avval ochiq ro'yxat (autoto'ldirish) Escape bilan yopiladi, so'ng tab yopiladi va
+    /// «Данные были изменены. Сохранить?» ga «Нет» deyiladi. Yopilmasa qayta uriniladi.
+    /// </summary>
     async Task DiscardAsync()
     {
-        var tabs = await TabsAsync();
-        var active = tabs.FirstOrDefault(t => t.Selected && t.Text.StartsWith("Доверенность") && t.Close is not null);
-        if (active?.Close is not { } close) return;
-        await d.ClickAsync(close);
-        await d.DelayAsync(400);
-        if (await d.ModalButtonAsync("Нет") is { } no) { await d.ClickAsync(no); await d.DelayAsync(300); }
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var tabs = await TabsAsync();
+            var active = tabs.FirstOrDefault(t => t.Selected && t.Text.StartsWith("Доверенность") && !t.Text.StartsWith(ListTitle) && t.Close is not null);
+            if (active?.Close is not { } close) return;
+            await d.KeyAsync("Escape");
+            await d.DelayAsync(250);
+            await d.KeyAsync("Escape");
+            await d.DelayAsync(250);
+            await d.ClickAsync(close);
+            var until = d.Now + 3000;
+            while (d.Now < until)
+            {
+                await d.DelayAsync(250);
+                if (await d.ModalButtonAsync("Нет") is { } no) { await d.ClickAsync(no); await d.DelayAsync(400); break; }
+            }
+        }
     }
 }
