@@ -178,7 +178,11 @@ public sealed class DoverennostRunner
         {
             if (await d.ModalTextAsync() is { } q)
             {
-                if (await d.ModalButtonAsync("Да") is { } yes) { await d.ClickAsync(yes); await d.DelayAsync(300); return; }
+                // «Номер заполняется при записи автоматически. Продолжить редактирование?» — «ОК»; boshqa so'rovlarda «Да»
+                var yes = q.Contains("Номер заполняется", StringComparison.OrdinalIgnoreCase)
+                    ? await d.ModalButtonAsync("ОК") ?? await d.ModalButtonAsync("OK")
+                    : await d.ModalButtonAsync("Да");
+                if (yes is { } yesPt) { await d.ClickAsync(yesPt); await d.DelayAsync(300); return; }
                 throw new OneCException("1C kutilmagan oyna ko'rsatdi: " + q);
             }
             await d.DelayAsync(150);
