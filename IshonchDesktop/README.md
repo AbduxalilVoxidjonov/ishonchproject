@@ -148,3 +148,11 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 
 ## 0.8.5 — 4790 to'ldiruvchisi masshtab (zoom) ga moslanadi
 - 4790 bosishlari brauzer masshtabi 100% bo'lmaganda ham aniq nuqtaga tushadi (masshtab o'lchanadi).
+
+## 0.9.0 — Dovernis yaratish (Excel) va 4790 masshtab
+- Yangi yon panel «Dovernis yaratish (Excel)»: bank ko'chirmasi (Список.xls) o'qiladi, kontragentlar ro'yxatidan kerakligi tanlanadi, bank komissiyasi yashirilishi mumkin.
+- Reja: bir kontragentning to'lovlari bitta dovernisga (birinchi sana, summa yig'indisi). Raqam 1C dagidek (0000-000034), eski sanaga 25/1, 25/2; shu kunda hujjat bo'lsa vaqt 12:00:01. Shu sana va kontragentda hujjat bor bo'lsa — qayta yaratilmaydi.
+- Tovar nomi to'lov maqsadidan («…асосан … учун» orasi yoki ruscha «за …»), shartnoma (Договор) raqami bo'yicha tanlanadi, topilmasa 1C qo'ygani qoladi; Срок действия — shu yilning 31.12.
+- 1C da oxirgi hujjatdan nusxa (F9) olinadi, «Записать» bilan saqlanadi (provesti qilinmaydi). Kontragent topilmasa yangi yaratilmaydi, o'tkazib yuboriladi.
+- Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
+- 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
