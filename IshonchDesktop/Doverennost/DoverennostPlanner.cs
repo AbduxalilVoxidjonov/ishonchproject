@@ -31,7 +31,9 @@ public static class DoverennostPlanner
     /// <summary>Raqamning asosiy qismi: «455/2» → 455. Raqam bo'lmasa null.</summary>
     public static int? BaseNumber(string number)
     {
-        var m = Regex.Match(number ?? "", @"^\s*(\d+)");
+        // «0000-000033» (1C avtomatik raqami) → 33; «25/1» → 25; «31» → 31
+        var m = Regex.Match(number ?? "", @"^\s*\d{4}-0*(\d+)");
+        if (!m.Success) m = Regex.Match(number ?? "", @"^\s*(\d+)");
         return m.Success ? int.Parse(m.Groups[1].Value) : null;
     }
 
@@ -118,7 +120,14 @@ public static class DoverennostPlanner
         var numbered = docs.Select(d => (d, n: BaseNumber(d.Number))).Where(x => x.n is not null).ToList();
         if (numbered.Count == 0) return null;
         var last = numbered.Max(x => x.d.Date);
-        if (date >= last) return (numbered.Max(x => x.n!.Value) + 1).ToString();
+        if (date >= last)
+        {
+            // Oxirgi raqam qaysi ko'rinishda bo'lsa shunday davom etadi: «0000-000033» → «0000-000034», «31» → «32»
+            var top = numbered.OrderByDescending(x => x.n).First();
+            var next = top.n!.Value + 1;
+            var style = Regex.Match(top.d.Number, @"^\s*(\d{4})-(\d+)");
+            return style.Success ? style.Groups[1].Value + "-" + next.ToString().PadLeft(style.Groups[2].Length, '0') : next.ToString();
+        }
         // Oldingi sana: shu sanadan oldin yoki shu sanadagi eng yaqin hujjat raqamiga /k qo'shiladi
         var prev = numbered.Where(x => x.d.Date <= date).OrderByDescending(x => x.d.Date).ThenByDescending(x => x.n).FirstOrDefault();
         if (prev.d is null) return null;

@@ -199,6 +199,7 @@ public sealed class DoverennostRunner
                 return CreateOutcome.CounterpartyNotFound;
             }
             await SetContractAsync(p.Contract);
+            await SetExpiryAsync(new DateOnly(p.Date.Year, 12, 31));
             await SetGoodsAsync(p.GoodsName, p.Amount);
             await SaveAsync(p.Number);
             await CloseFormAsync();
@@ -270,6 +271,26 @@ public sealed class DoverennostRunner
             if (Same(await d.ValueAsync("_Дата_i0"))) return;
         }
         throw new OneCException($"Sanani «{when:dd.MM.yyyy HH:mm:ss}» qilib bo'lmadi (1C: «{await d.ValueAsync("_Дата_i0")}»)");
+    }
+
+    /// <summary>Срок действия: sana o'zgargach 1C uni o'zi (+10 kun) o'zgartiradi, shuning uchun sanadan KEYIN yoziladi (haqiqiy bazada — shu yilning 31.12 i).</summary>
+    async Task SetExpiryAsync(DateOnly when)
+    {
+        const string field = "_ДатаДействия_i0";
+        var want = when.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+        var digits = when.ToString("ddMMyyyy", CultureInfo.InvariantCulture);
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            if ((await d.ValueAsync(field))?.Trim() == want) return;
+            await d.ClickSuffixAsync(field, "Срок действия maydoni", "input");
+            await d.DelayAsync(200);
+            await d.SelectAllAsync();
+            for (var i = 0; i < digits.Length; i += 2) { await d.TypeAsync(digits.Substring(i, 2)); await d.DelayAsync(80); }
+            await d.DelayAsync(300);
+            await d.KeyAsync("Tab");
+            await d.DelayAsync(500);
+        }
+        log($"Срок действия «{want}» yozilmadi (1C: «{await d.ValueAsync(field)}»)", "warn");
     }
 
     static string Norm(string? s) => DoverennostPlanner.NormParty(s ?? "");

@@ -94,6 +94,8 @@ public sealed class DoverennostPanel : UserControl
         Controls.Add(header);
 
         pick.Click += (_, _) => PickFile();
+        // Sinov uchun: ISHONCH_DOV_FILE berilsa shu fayl panel ochilganda o'zi yuklanadi
+        Load += (_, _) => { if (Environment.GetEnvironmentVariable("ISHONCH_DOV_FILE") is { Length: > 0 } f && File.Exists(f)) LoadFile(f); };
         hideFees.CheckedChanged += (_, _) => { FillParties(); FillRows(); };
         onlyParties.CheckedChanged += (_, _) => FillRows();
         partyList.ItemCheck += (_, _) => BeginInvoke(FillRows);
@@ -125,17 +127,22 @@ public sealed class DoverennostPanel : UserControl
     {
         using var dlg = new OpenFileDialog { Filter = "Excel (*.xls;*.xlsx)|*.xls;*.xlsx", Title = "Bank ko'chirmasi (Список.xls)" };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        LoadFile(dlg.FileName);
+    }
+
+    void LoadFile(string fileName)
+    {
         try
         {
-            loaded = BankStatement.Load(dlg.FileName);
-            fileLabel.Text = Path.GetFileName(dlg.FileName) + $" — {loaded.Count} ta chiqim";
+            loaded = BankStatement.Load(fileName);
+            fileLabel.Text = Path.GetFileName(fileName) + $" — {loaded.Count} ta chiqim";
             partyList.Items.Clear();
             FillParties();
             FillRows();
             plan.Clear();
             planGrid.Rows.Clear();
             create.Enabled = false;
-            Log($"{Path.GetFileName(dlg.FileName)}: {loaded.Count} ta chiqim qatori o'qildi. Dovernis kerak bo'lganlarini belgilang.");
+            Log($"{Path.GetFileName(fileName)}: {loaded.Count} ta chiqim qatori o'qildi. Dovernis kerak bo'lganlarini belgilang.");
         }
         catch (Exception e)
         {

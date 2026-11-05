@@ -408,6 +408,9 @@ Console.WriteLine("Dovernis rejasi");
     Check(P(ex, D(19, 8)) == "455/1", "oldingi sana: 455/1");
     ex.Add(new("455/1", D(19, 8), "D"));
     Check(P(ex, D(19, 8)) == "455/2", "yana shu sana: 455/2");
+    var ex2 = new List<IshonchDesktop.Doverennost.ExistingDoc> { new("0000-000032", D(28, 10), "A"), new("0000-000033", D(29, 10), "B"), new("25/1", D(5, 10), "C") };
+    Check(P(ex2, D(30, 10)) == "0000-000034", "1C avtomatik raqami ko'rinishida davom etadi (0000-000034)");
+    Check(P(ex2, D(6, 10)) == "25/2", "oldingi sana: 25/1 dan keyin 25/2");
     Check(P(ex, D(1, 8)) is null, "eng eski hujjatdan ham oldin: raqam yo'q");
 
     IshonchDesktop.Doverennost.BankRow R(int line, int d, decimal a, string who, string purpose = "xizmat") => new(line, D(d, 8), a, purpose, who, "Оплата поставщику");
