@@ -40,7 +40,8 @@ public static class CdpInput
         {
             case "click":
                 await Click(core, a.GetProperty("x").GetDouble(), a.GetProperty("y").GetDouble(),
-                    a.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number ? Math.Max(1, c.GetInt32()) : 1);
+                    a.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number ? Math.Max(1, c.GetInt32()) : 1,
+                    a.TryGetProperty("modifiers", out var cm) && cm.ValueKind == JsonValueKind.Number ? cm.GetInt32() : 0);
                 break;
             case "move":
                 await Send(core, "Input.dispatchMouseEvent", new()
@@ -165,15 +166,16 @@ public static class CdpInput
         }
     }
 
-    static async Task Click(CoreWebView2 core, double x, double y, int count)
+    /// <param name="modifiers">CDP modifikatorlari: Alt=1, Ctrl=2, Meta=4, Shift=8 (masalan Ctrl+bosish — jadvalda ko'p qator tanlash).</param>
+    static async Task Click(CoreWebView2 core, double x, double y, int count, int modifiers = 0)
     {
-        await Send(core, "Input.dispatchMouseEvent", new() { ["type"] = "mouseMoved", ["x"] = x, ["y"] = y });
+        await Send(core, "Input.dispatchMouseEvent", new() { ["type"] = "mouseMoved", ["x"] = x, ["y"] = y, ["modifiers"] = modifiers });
         for (var i = 1; i <= count; i++)
         {
             await Send(core, "Input.dispatchMouseEvent", new()
-                { ["type"] = "mousePressed", ["x"] = x, ["y"] = y, ["button"] = "left", ["clickCount"] = i });
+                { ["type"] = "mousePressed", ["x"] = x, ["y"] = y, ["button"] = "left", ["clickCount"] = i, ["modifiers"] = modifiers });
             await Send(core, "Input.dispatchMouseEvent", new()
-                { ["type"] = "mouseReleased", ["x"] = x, ["y"] = y, ["button"] = "left", ["clickCount"] = i });
+                { ["type"] = "mouseReleased", ["x"] = x, ["y"] = y, ["button"] = "left", ["clickCount"] = i, ["modifiers"] = modifiers });
         }
     }
 }

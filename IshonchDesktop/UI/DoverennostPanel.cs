@@ -18,6 +18,7 @@ public sealed class DoverennostPanel : UserControl
     readonly Button none = PanelStyle.Secondary(new Button { Text = "Belgini olish", Height = 34, Width = 120 });
     readonly Button makePlan = PanelStyle.Primary(new Button { Text = "📋  Reja tuzish (1C ni o'qiydi)", Height = 34, Width = 300, Enabled = false });
     readonly Button create = PanelStyle.Primary(new Button { Text = "▶  Dovernislarni yaratish", Height = 34, Width = 220, Enabled = false });
+    readonly Button mark = PanelStyle.Secondary(new Button { Text = "☑  Yaratilganlarni 1C da belgilash", Height = 34, Width = 300 });
     readonly Button stop = PanelStyle.Secondary(new Button { Text = "■  To'xtatish", Height = 34, Width = 120, Enabled = false }, danger: true);
     readonly CheckedListBox partyList = new() { Dock = DockStyle.Top, Height = 110, CheckOnClick = true, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
     readonly CheckBox onlyParties = new() { Text = "Faqat tanlangan kontragentlar", Checked = true, AutoSize = true, Margin = new Padding(12, 8, 0, 0) };
@@ -27,6 +28,7 @@ public sealed class DoverennostPanel : UserControl
     readonly Button close = PanelStyle.Secondary(new Button { Text = "✕", Width = 32, Dock = DockStyle.Right });
     readonly Label fileLabel = new() { AutoSize = true, ForeColor = PanelStyle.Muted, Margin = new Padding(12, 10, 0, 0) };
 
+    readonly DoverennostStore store;
     List<BankRow> loaded = new();
     List<PlanItem> plan = new();
     CancellationTokenSource? cts;
@@ -42,6 +44,7 @@ public sealed class DoverennostPanel : UserControl
     public DoverennostPanel(WebTab tab)
     {
         this.tab = tab;
+        store = new DoverennostStore(tab.ProfileKey);
         Font = PanelStyle.Base;
         BackColor = PanelStyle.Back;
         Padding = new Padding(8);
@@ -54,7 +57,8 @@ public sealed class DoverennostPanel : UserControl
         var bar1 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 84, Padding = new Padding(0, 4, 0, 0) };
         bar1.Controls.AddRange(new Control[] { all, none, makePlan });
         var bar2 = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 4, 0, 0) };
-        bar2.Controls.AddRange(new Control[] { create, stop });
+        bar2.Controls.AddRange(new Control[] { create, stop, mark });
+        bar2.Height = 88;
 
         rowsGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "pick", HeaderText = "✓", Width = 36 });
         foreach (var (n, h, w, ro) in new[] { ("date", "Sana", 80, true), ("party", "Kontragent", 200, true), ("sum", "Summa", 100, true), ("purpose", "To'lov maqsadi", 500, true) })
@@ -92,6 +96,8 @@ public sealed class DoverennostPanel : UserControl
         makePlan.Click += async (_, _) => await MakePlanAsync();
         create.Click += async (_, _) => await CreateAsync();
         stop.Click += (_, _) => cts?.Cancel();
+        mark.Click += async (_, _) => await MarkAsync();
+        UpdateMark();
         rowsGrid.CurrentCellDirtyStateChanged += (_, _) => { if (rowsGrid.IsCurrentCellDirty) rowsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
         close.Click += (_, _) =>
         {
@@ -200,6 +206,29 @@ public sealed class DoverennostPanel : UserControl
         finally { SetBusy(false); }
     }
 
+    void UpdateMark() => mark.Text = store.Items.Count > 0
+        ? $"☑  Yaratilganlarni 1C da belgilash ({store.Items.Count})" : "☑  Yaratilganlarni 1C da belgilash";
+
+    /// <summary>Dastur yaratgan (eslab qolingan) dovernislarni 1C ro'yxatida belgilaydi; «Yo'q» — ro'yxatni tozalaydi.</summary>
+    async Task MarkAsync()
+    {
+        if (store.Items.Count == 0) { MessageBox.Show(this, "Hali dastur yaratgan dovernis yo'q.", AppInfo.DisplayName); return; }
+        var ask = MessageBox.Show(this, $"Dastur yaratgan {store.Items.Count} ta dovernis 1C ro'yxatida belgilansinmi?\n\n«Yo'q» — eslab qolingan ro'yxatni tozalaydi.",
+            AppInfo.DisplayName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        if (ask == DialogResult.No) { store.Clear(); UpdateMark(); Log("Eslab qolingan ro'yxat tozalandi"); return; }
+        if (ask != DialogResult.Yes) return;
+        cts = new CancellationTokenSource();
+        SetBusy(true);
+        try
+        {
+            var runner = await StartRunnerAsync(cts.Token);
+            await runner.SelectAsync(store.Items.Select(e => (e.Number, e.Date)).ToList());
+        }
+        catch (OperationCanceledException) { Log("To'xtatildi", "warn"); }
+        catch (Exception e) { Log("Belgilab bo'lmadi: " + e.Message, "error"); }
+        finally { SetBusy(false); }
+    }
+
     async Task CreateAsync()
     {
         var todo = planGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["go"].Value is true).ToList();
@@ -208,6 +237,7 @@ public sealed class DoverennostPanel : UserControl
                 AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         cts = new CancellationTokenSource();
         SetBusy(true);
+        var createdNow = new List<PlanItem>();
         try
         {
             var runner = await StartRunnerAsync(cts.Token);
@@ -223,6 +253,7 @@ public sealed class DoverennostPanel : UserControl
                 try
                 {
                     var outcome = await runner.CreateAsync(p);
+                    if (outcome == CreateOutcome.Created) { store.Add(p); createdNow.Add(p); UpdateMark(); }
                     row.Cells["state"].Value = outcome == CreateOutcome.Created ? "✔ yaratildi" : "kontragent topilmadi";
                     row.Cells["go"].Value = false;
                 }
@@ -235,6 +266,7 @@ public sealed class DoverennostPanel : UserControl
                 }
             }
             Log("Tugadi", "ok");
+            if (createdNow.Count > 0) await runner.SelectAsync(createdNow.Select(p => (p.Number, p.Date)).ToList());
         }
         catch (OperationCanceledException) { Log("To'xtatildi", "warn"); }
         catch (Exception e) { Log("Xato: " + e.Message, "error"); }

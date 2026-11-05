@@ -180,12 +180,12 @@ public sealed class OneCDriver
         await CdpInput.RunAsync(core, doc.RootElement);
     }
 
-    public async Task ClickAsync(Pt p, int count = 1)
+    public async Task ClickAsync(Pt p, int count = 1, int modifiers = 0)
     {
         await EnsureScaleAsync();
         var x = (int)Math.Round(p.X / scale);
         var y = (int)Math.Round(p.Y / scale);
-        await RunInput($"{{\"type\":\"click\",\"x\":{x},\"y\":{y},\"count\":{count}}}");
+        await RunInput($"{{\"type\":\"click\",\"x\":{x},\"y\":{y},\"count\":{count},\"modifiers\":{modifiers}}}");
         await Task.Delay(60, ct);
     }
 

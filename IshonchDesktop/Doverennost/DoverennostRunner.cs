@@ -116,6 +116,45 @@ public sealed class DoverennostRunner
         return seen;
     }
 
+    /// <summary>
+    /// Berilgan dovernislarni (raqam + sana) 1C ro'yxatida belgilaydi: birinchisi oddiy bosish, qolganlari Ctrl+bosish.
+    /// Ro'yxat tepadan pastga o'qiladi (belgilash surishda saqlanadi). Belgilanganlar soni qaytariladi.
+    /// </summary>
+    public async Task<int> SelectAsync(IReadOnlyCollection<(string Number, DateOnly Date)> wanted)
+    {
+        if (wanted.Count == 0) return 0;
+        await OpenListAsync();
+        var left = wanted.ToHashSet();
+        var marked = 0;
+        var g = await d.GridAsync("Список") ?? throw new OneCException("Доверенности jadvali topilmadi");
+        await d.ClickAsync(g.Rows[0].Cells.Values.First().At);
+        await d.KeyAsync("Home", 2);
+        await d.DelayAsync(400);
+        var seenPages = new HashSet<string>();
+        for (var page = 0; page < 400 && left.Count > 0; page++)
+        {
+            g = await d.GridAsync("Список") ?? throw new OneCException("Доверенности jadvali topilmadi");
+            var sig = string.Join("|", g.Rows.Select(r => g.Cell(r, "Номер")?.Text));
+            if (!seenPages.Add(sig)) break;
+            foreach (var r in g.Rows)
+            {
+                var number = g.Cell(r, "Номер")?.Text ?? "";
+                var date = BankStatement.ParseDate(g.Cell(r, "Дата")?.Text);
+                if (date is null || !left.Contains((number, date.Value))) continue;
+                var at = g.Cell(r, "Номер")!.Value.At;
+                await d.ClickAsync(at, 1, marked == 0 ? 0 : 2); // Ctrl
+                await d.DelayAsync(150);
+                left.Remove((number, date.Value));
+                marked++;
+            }
+            if (left.Count == 0) break;
+            if (!await d.ScrollRowsAsync("Список", g, Math.Max(1, g.Rows.Count - 1))) break;
+        }
+        if (left.Count > 0) log("Ro'yxatda topilmadi: " + string.Join(", ", left.Select(x => $"№{x.Number} ({x.Date:dd.MM.yyyy})")), "warn");
+        log($"1C ro'yxatida {marked} ta dovernis belgilandi — ЭДО tugmasi orqali yuborishingiz mumkin", "ok");
+        return marked;
+    }
+
     // ---- yaratish --------------------------------------------------------------------------------
 
     /// <summary>Bitta dovernis: oxirgi hujjatdan F9 nusxa, maydonlar, «Записать». Kontragent topilmasa saqlamasdan yopadi.</summary>
