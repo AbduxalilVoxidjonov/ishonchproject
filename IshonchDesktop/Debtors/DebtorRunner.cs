@@ -273,6 +273,39 @@ public sealed class DebtorRunner
         return parties;
     }
 
+    static bool IsXls(string? t) => t is not null && t.Contains("(*.xls)", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>«Тип» maydonini «Лист Excel (*.xls)» ga o'tkazadi (ba'zi bazalarda standart tur — .mxl).</summary>
+    async Task ChooseXlsTypeAsync()
+    {
+        if (IsXls(await d.ValueAsync("_FileType_i0"))) return;
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            if (await d.HasAsync("_FileType_DLB")) await d.ClickSuffixAsync("_FileType_DLB", "Fayl turi ro'yxati");
+            else await d.ClickSuffixAsync("_FileType_i0", "Fayl turi", "input");
+            Pt? item = null;
+            var until = d.Now + 5000;
+            while (item is null && d.Now < until)
+            {
+                await d.DelayAsync(300);
+                var e = await d.EvalAsync("window.__ish.listItems()");
+                if (e.ValueKind != JsonValueKind.Array) continue;
+                foreach (var li in e.EnumerateArray())
+                    if (IsXls(li.GetProperty("t").GetString()) && !li.GetProperty("t").GetString()!.Contains("xlsx", StringComparison.OrdinalIgnoreCase))
+                        item = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
+            }
+            if (item is { } it)
+            {
+                await d.ClickAsync(it);
+                await d.DelayAsync(500);
+                if (IsXls(await d.ValueAsync("_FileType_i0"))) return;
+            }
+            await d.KeyAsync("Escape");
+            await d.DelayAsync(300);
+        }
+        throw new OneCException($"Fayl turini «Лист Excel (*.xls)» qilib bo'lmadi (hozir: «{await d.ValueAsync("_FileType_i0")}»)");
+    }
+
     /// <summary>
     /// Shakllantirilgan hisobotni 1C ning o'z «Сохранить» tugmasi bilan .xls ga saqlaydi: fayl <paramref name="path"/> ga tushadi
     /// (brauzer yuklash oynasisiz). Tugaguncha kutadi.
@@ -299,8 +332,7 @@ public sealed class DebtorRunner
         {
             await d.ClickSuffixAsync("_cmd_SaveButton", "Сохранить (hisobotni faylga)");
             await d.WaitTrueAsync(async () => await d.HasAsync("_FileType_i0") && await d.HasAsync("_FileName_i0"), 30000, "«Сохранить» oynasi");
-            var type = await d.ValueAsync("_FileType_i0") ?? "";
-            if (!type.Contains(".xls", StringComparison.OrdinalIgnoreCase)) log($"Fayl turi «{type}» (kutilgan: Excel .xls)", "warn");
+            await ChooseXlsTypeAsync();
             await d.DelayAsync(300);
             await d.ClickSuffixAsync("_OK", "OK");
             var done = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(5), ct));
