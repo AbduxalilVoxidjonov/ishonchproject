@@ -239,8 +239,8 @@ public sealed class DebtorRunner
 
     // ---- asosiy -----------------------------------------------------------------------------------
 
-    /// <summary>Davr bo'yicha hisobotni sozlab shakllantiradi va kontragentlar qoldig'ini qaytaradi.</summary>
-    public async Task<List<PartyBalance>> RunAsync(DateOnly from, DateOnly to)
+    /// <summary>Hisobotni ochadi, sozlaydi (4 hisob, davr) va shakllantirib bo'lguncha kutadi.</summary>
+    public async Task PrepareAsync(DateOnly from, DateOnly to)
     {
         await OpenReportAsync();
         await ShowSettingsAsync();
@@ -260,10 +260,54 @@ public sealed class DebtorRunner
             if (s is { Rows.Count: > 0 } && sig == prev) stable++; else { stable = 0; prev = sig; }
             return stable >= 3;
         }, 240000, "hisobot shakllanishi", 700);
+    }
+
+    /// <summary>Davr bo'yicha hisobotni sozlab shakllantiradi va kontragentlar qoldig'ini qaytaradi.</summary>
+    public async Task<List<PartyBalance>> RunAsync(DateOnly from, DateOnly to)
+    {
+        await PrepareAsync(from, to);
         var rows = await ReadAllRowsAsync();
         log($"Hisobotdan {rows.Count} qator o'qildi", "info");
         var parties = OsvParser.Parse(rows);
         log($"Kontragentlar: {parties.Count} ta", "ok");
         return parties;
+    }
+
+    /// <summary>
+    /// Shakllantirilgan hisobotni 1C ning o'z «Сохранить» tugmasi bilan .xls ga saqlaydi: fayl <paramref name="path"/> ga tushadi
+    /// (brauzer yuklash oynasisiz). Tugaguncha kutadi.
+    /// </summary>
+    public async Task ExportXlsAsync(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (File.Exists(path)) File.Delete(path);
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnDownload(object? sender, CoreWebView2DownloadStartingEventArgs e)
+        {
+            core.DownloadStarting -= OnDownload;
+            e.ResultFilePath = path;
+            e.Handled = true; // standart «Saqlash» oynasi chiqmasin
+            var op = e.DownloadOperation;
+            op.StateChanged += (_, _) =>
+            {
+                if (op.State == CoreWebView2DownloadState.Completed) tcs.TrySetResult(path);
+                else if (op.State == CoreWebView2DownloadState.Interrupted) tcs.TrySetException(new OneCException("Yuklash to'xtab qoldi: " + op.InterruptReason));
+            };
+        }
+        core.DownloadStarting += OnDownload;
+        try
+        {
+            await d.ClickSuffixAsync("_cmd_SaveButton", "Сохранить (hisobotni faylga)");
+            await d.WaitTrueAsync(async () => await d.HasAsync("_FileType_i0") && await d.HasAsync("_FileName_i0"), 30000, "«Сохранить» oynasi");
+            var type = await d.ValueAsync("_FileType_i0") ?? "";
+            if (!type.Contains(".xls", StringComparison.OrdinalIgnoreCase)) log($"Fayl turi «{type}» (kutilgan: Excel .xls)", "warn");
+            await d.DelayAsync(300);
+            await d.ClickSuffixAsync("_OK", "OK");
+            var done = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(5), ct));
+            if (done != tcs.Task) throw new OneCException("Fayl 5 daqiqada saqlanmadi");
+            await tcs.Task;
+            log("Saqlandi: " + path, "ok");
+        }
+        finally { core.DownloadStarting -= OnDownload; }
     }
 }

@@ -51,6 +51,7 @@ public sealed class MainForm : Form
         home.OpenUnmarked += b => OpenUnmarked(b);
         home.OpenDoverennost += b => OpenDoverennost(b);
         home.OpenDebtor += b => OpenDebtor(b);
+        home.OpenBatchDebtor += OpenBatchDebtor;
         home.Open4790 += async b => await Open4790Async(b);
         home.OpenUnsellable += OpenUnsellable;
         home.OpenElektr += () => OpenElektrTab();
@@ -171,6 +172,12 @@ public sealed class MainForm : Form
         await soliq.Ready;
         return soliq;
     };
+
+    void OpenBatchDebtor()
+    {
+        new BatchDebtorForm(store.Bases, b => OpenBase(b, select: false),
+            web => { if (tabs.TabPages.Cast<TabPage>().FirstOrDefault(p => p.Controls.Contains(web)) is { } page) tabs.SelectedTab = page; }).Show(this);
+    }
 
     void OpenDebtor(BaseEntry b)
     {
