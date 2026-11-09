@@ -70,7 +70,7 @@ public sealed class DebtorRunner
             var link = await d.WaitAsync(async () =>
             {
                 if (await d.PosLeafAsync(ReportTitle) is { } p) return p;
-                if (d.Now - lastClick > 4000 && await d.ModalTextAsync() is null)
+                if (d.Now - lastClick > 9000 && await d.ModalTextAsync() is null)
                 {
                     lastClick = d.Now;
                     if (await d.PosSectionAsync("Отчеты") is { } sec) await d.ClickAsync(sec);
