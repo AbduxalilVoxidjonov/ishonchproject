@@ -200,40 +200,41 @@ public sealed class DebtorRunner
 
     static string Sig(Snapshot? s) => s is null ? "" : s.Rows.Count + ":" + s.Rows.FirstOrDefault()?.Y + "-" + s.Rows.LastOrDefault()?.Y + ":" + s.Rows.FirstOrDefault()?.Name;
 
-    /// <summary>Hisobot qatorlari moxelda bo'laklab chiziladi: tepaga qaytib, g'ildirak bilan pastga surib, y bo'yicha yig'iladi.</summary>
+    /// <summary>
+    /// 1C hisobotni faqat ko'rinib turgan qismigina chizadi. Shuning uchun oyna balandligi vaqtincha juda katta qilinadi
+    /// (DevTools emulyatsiyasi) — hamma qator bir yo'la chiziladi; qatorlar soni o'zgarmay qolguncha balandlik oshiriladi.
+    /// </summary>
     async Task<List<OsvRow>> ReadAllRowsAsync()
     {
-        var all = new Dictionary<int, OsvRow>();
-        var snap = await SnapshotAsync() ?? throw new OneCException("hisobot natijasi topilmadi");
-        // Tepaga
-        for (var i = 0; i < 80; i++) await d.WheelAsync(new Pt(snap.Cx, snap.Cy), -360);
-        await d.DelayAsync(1500);
-        var idle = 0;
-        string last = "";
-        for (var step = 0; step < 3000 && idle < 5; step++)
+        var width = (int)(await d.EvalAsync("innerWidth")).GetDouble();
+        var rows = new List<OsvRow>();
+        var prev = -1;
+        try
         {
-            // Qatorlar barqaror bo'lguncha kutamiz (1C bo'lakni sekin chizadi)
-            Snapshot? s = null;
-            var stable = 0;
-            var until = d.Now + 15000;
-            while (stable < 2 && d.Now < until)
+            foreach (var height in new[] { 12000, 24000, 48000 })
             {
-                var cur = await SnapshotAsync();
-                if (cur is { Rows.Count: > 0 } && Sig(cur) == Sig(s)) stable++; else { stable = 0; s = cur; }
-                await d.DelayAsync(350);
+                await core.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride",
+                    JsonSerializer.Serialize(new { width, height, deviceScaleFactor = 1, mobile = false }));
+                var count = -1;
+                var stable = 0;
+                var until = d.Now + 90000;
+                while (stable < 2 && d.Now < until)
+                {
+                    await d.DelayAsync(1500);
+                    var s = await SnapshotAsync();
+                    if (s is { Rows.Count: > 0 } && s.Rows.Count == count) stable++;
+                    else { stable = 0; count = s?.Rows.Count ?? -1; if (s is { Rows.Count: > 0 }) rows = s.Rows; }
+                }
+                log($"Hisobot o'qilmoqda: {rows.Count} qator", "info");
+                if (rows.Count == prev) break;
+                prev = rows.Count;
             }
-            var added = 0;
-            if (s is not null) foreach (var r in s.Rows) if (all.TryAdd(r.Y, r)) added++;
-            // Oxiriga yetganini bilamiz: yangi qator yo'q va aylantirish o'rni (top/balandlik) ham o'zgarmayapti
-            var pos = s is null ? "" : s.Top + "#" + Sig(s);
-            idle = added == 0 && pos == last ? idle + 1 : 0;
-            last = pos;
-            if (step % 10 == 0 && all.Count > 0) log($"Hisobot o'qilmoqda: {all.Count} qator", "info");
-            snap = s ?? snap;
-            await d.WheelAsync(new Pt(snap.Cx, snap.Cy), 960);
-            await d.DelayAsync(300);
         }
-        return all.Values.OrderBy(r => r.Y).ToList();
+        finally
+        {
+            try { await core.CallDevToolsProtocolMethodAsync("Emulation.clearDeviceMetricsOverride", "{}"); } catch { /* sahifa yopilgan */ }
+        }
+        return rows.OrderBy(r => r.Y).ToList();
     }
 
     // ---- asosiy -----------------------------------------------------------------------------------
