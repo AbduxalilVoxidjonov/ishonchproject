@@ -20,6 +20,7 @@ public sealed class HomeControl : UserControl
     readonly Button openMarking = Big("🏷   Markirovkali chek tayyorlash");
     readonly Button openUnmarked = Big("📦   Markirovkasiz sotish");
     readonly Button openDoverennost = Big("📜   Dovernis yaratish (Excel)");
+    readonly Button openDebtor = Big("📊   Debitor / kreditor");
     readonly Button open4790 = Big("🧾   4790 to'ldiruvchi");
     readonly Button openUnsellable = Big("🚫   Sotib bo'lmaydigan markirovkalar");
     readonly Button openElektr = Big("⚡   Elektr (HET kabinetlari)");
@@ -30,6 +31,7 @@ public sealed class HomeControl : UserControl
     public event Action<BaseEntry>? OpenMarking;
     public event Action<BaseEntry>? OpenUnmarked;
     public event Action<BaseEntry>? Open4790;
+    public event Action<BaseEntry>? OpenDebtor;
     public event Action<BaseEntry>? OpenDoverennost;
     public event Action? OpenUnsellable;
     public event Action? OpenElektr;
@@ -159,6 +161,7 @@ public sealed class HomeControl : UserControl
         right.Controls.Add(openMarking);
         right.Controls.Add(openUnmarked);
         right.Controls.Add(openDoverennost);
+        right.Controls.Add(openDebtor);
         right.Controls.Add(open4790);
         right.Controls.Add(openUnsellable);
         right.Controls.Add(openElektr);
@@ -215,6 +218,7 @@ public sealed class HomeControl : UserControl
         openMarking.Click += (_, _) => { if (Selected is { } b) OpenMarking?.Invoke(b); };
         openUnmarked.Click += (_, _) => { if (Selected is { } b) OpenUnmarked?.Invoke(b); };
         openDoverennost.Click += (_, _) => { if (Selected is { } b) OpenDoverennost?.Invoke(b); };
+        openDebtor.Click += (_, _) => { if (Selected is { } b) OpenDebtor?.Invoke(b); };
         open4790.Click += (_, _) => { if (Selected is { } b) Open4790?.Invoke(b); };
         openUnsellable.Click += (_, _) => OpenUnsellable?.Invoke();
         openElektr.Click += (_, _) => OpenElektr?.Invoke();
@@ -281,7 +285,7 @@ public sealed class HomeControl : UserControl
         title.Height = S(m.TitleH);
         right.Width = S(m.RightW);
         info.Size = S2(m.Info);
-        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, open4790, openUnsellable, openElektr, openHelp })
+        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, open4790, openUnsellable, openElektr, openHelp })
         {
             b.Font = new Font(b.Font.FontFamily, m.ButtonFont * f, FontStyle.Bold);
             b.Size = S2(m.Big);
@@ -445,7 +449,7 @@ public sealed class HomeControl : UserControl
     void UpdateInfo()
     {
         var b = Selected;
-        openOneC.Enabled = openMarking.Enabled = openUnmarked.Enabled = openDoverennost.Enabled = open4790.Enabled = b is not null;
+        openOneC.Enabled = openMarking.Enabled = openUnmarked.Enabled = openDoverennost.Enabled = openDebtor.Enabled = open4790.Enabled = b is not null;
         if (b is null) { info.Text = "Ro'yxatdan bazani tanlang (yoki ikki marta bosing).\nRaqam yonidagi ☆ ni bosing — baza tepaga qadaladi."; return; }
         info.Text = $"{b.Firm}\nINN: {b.Inn}   Buxgalter: {b.Accountant}\n{b.Url}";
         SelectionChanged?.Invoke(b);

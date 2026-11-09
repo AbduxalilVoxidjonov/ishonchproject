@@ -50,6 +50,7 @@ public sealed class MainForm : Form
         home.OpenMarking += async b => await OpenMarkingAsync(b);
         home.OpenUnmarked += b => OpenUnmarked(b);
         home.OpenDoverennost += b => OpenDoverennost(b);
+        home.OpenDebtor += b => OpenDebtor(b);
         home.Open4790 += async b => await Open4790Async(b);
         home.OpenUnsellable += OpenUnsellable;
         home.OpenElektr += () => OpenElektrTab();
@@ -170,6 +171,13 @@ public sealed class MainForm : Form
         await soliq.Ready;
         return soliq;
     };
+
+    void OpenDebtor(BaseEntry b)
+    {
+        var tab = OpenBase(b);
+        if (tab.HasSidePanel("debtor")) { tab.ShowSidePanel(640, "debtor"); return; }
+        tab.AttachSidePanel(new DebtorPanel(tab), 640, "debtor");
+    }
 
     void OpenDoverennost(BaseEntry b)
     {

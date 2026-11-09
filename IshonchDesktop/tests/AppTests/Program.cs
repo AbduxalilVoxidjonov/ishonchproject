@@ -394,6 +394,55 @@ Console.WriteLine("Markirovkasiz chek E-POS uchun");
         "cheklar faylga saqlanadi, takrorlanmaydi, sotilgani belgilanadi");
 }
 
+// ---- Debitor / kreditor (OSV) ----
+Console.WriteLine("Debitor / kreditor");
+{
+    IshonchDesktop.Debtors.OsvRow Row(int y, int pad, string name, params (int x, string t)[] cells)
+    {
+        var d = new Dictionary<int, string> { [0] = name };
+        foreach (var (x, t) in cells) d[x] = t;
+        return new(y, pad, d);
+    }
+    var rows = new List<IshonchDesktop.Debtors.OsvRow>
+    {
+        Row(29, 2, "4000, Расчеты с покупателями", (5, "60 549 787 376,28")),
+        Row(30, 10, "4010, Расчеты с покупателями и заказчиками", (5, "61 178 837 910,36")),
+        Row(31, 16, "\"Adoi\" Mchj", (1, "4 841 620,00"), (5, "10 892 060,00")),
+        Row(32, 23, "№62 от 01.03.2026", (5, "10 892 060,00")),
+        Row(33, 16, "\"Alexander Brands\" Mchj", (5, "12 237 160,00")),
+        Row(34, 23, "№14/FRG от 01.05.2026", (5, "12 237 160,00")),
+        Row(40, 10, "4310, Расчеты по авансам выданным", (5, "5 000,00")),
+        Row(41, 16, "\"Adoi\" Mchj", (5, "1 000,00")),
+        Row(50, 2, "6000, Расчеты с поставщиками", (6, "1 000 000,00")),
+        Row(51, 10, "6010, Расчеты с поставщиками и подрядчиками", (6, "900 000,00")),
+        Row(52, 16, "\"Adoi\" Mchj", (6, "300 000,00")),
+        Row(53, 23, "Основной договор", (6, "300 000,00")),
+        Row(54, 16, "\"Nice Water\" OK", (6, "600 000,00")),
+        Row(60, 10, "6310, Расчеты по авансам полученным", (6, "7 000,00")),
+        Row(61, 16, "\"Alexander Brands\" Mchj", (6, "7 000,00")),
+        Row(70, 10, "2910, Товары на складах", (5, "1,00")),
+        Row(71, 16, "Ombor 1", (5, "1,00")),
+    };
+    var parties = IshonchDesktop.Debtors.OsvParser.Parse(rows);
+    Check(parties.Count == 3, "kontragentlar ajratiladi, shartnoma va boshqa hisoblar tashlanadi (" + parties.Count + ")");
+    var adoi = parties.First(p => p.Party.Contains("Adoi"));
+    Check(adoi.Debit == 10892060m + 1000m && adoi.Credit == 300000m, "bir kontragentning hisoblari qo'shiladi (Dt 10 893 060, Kt 300 000)");
+    Check(adoi.Net == 10893060m - 300000m && adoi.Kind == "Debitor", "Debet − Kredit > 0 — debitor");
+    var nice = parties.First(p => p.Party.Contains("Nice"));
+    Check(nice.Kind == "Kreditor" && nice.Credit == 600000m, "faqat kredit qoldiq — kreditor");
+    var alex = parties.First(p => p.Party.Contains("Alexander"));
+    Check(alex.Debit == 12237160m && alex.Credit == 7000m, "avans (6310) ham hisobga olinadi");
+    Check(IshonchDesktop.Debtors.OsvParser.Num("77 333 563 089,76") == 77333563089.76m, "sonni o'qish (bo'shliq va vergul)");
+    System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+    var xl = Path.Combine(tmp, "t.xlsx");
+    IshonchDesktop.Debtors.XlsxWriter.Save(xl, "Test", new List<object?[]> { new object?[] { "Kontragent", "Summa" }, new object?[] { "A & B \"X\"", 1234.5m } });
+    using (var fsx = File.OpenRead(xl))
+    using (var rdr = ExcelDataReader.ExcelReaderFactory.CreateReader(fsx))
+    {
+        rdr.Read(); rdr.Read();
+        Check(rdr.GetString(0) == "A & B \"X\"" && Convert.ToDecimal(rdr.GetValue(1)) == 1234.5m, "Excel (.xlsx) yozish va qayta o'qish");
+    }
+}
 // ---- Dovernis rejasi ----
 Console.WriteLine("Dovernis rejasi");
 {
