@@ -156,3 +156,9 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - 1C da oxirgi hujjatdan nusxa (F9) olinadi, «Записать» bilan saqlanadi (provesti qilinmaydi). Kontragent topilmasa yangi yaratilmaydi, o'tkazib yuboriladi.
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
+
+## 0.9.1 — Debitor / kreditor
+- Yangi yon panel «Debitor / kreditor»: davr tanlanadi, dastur 1C da «Оборотно-сальдовая ведомость» ni har safar o'zi sozlaydi (sozlamalar saqlanmaydi): guruhlash 4010, 4310, 6010, 6310; «Развернутое сальдо» — shu hisoblar subschyotsiz, faqat «Контрагенты» bo'yicha; «Дополнительные поля» — «В отдельных колонках».
+- Natija panelda jadval (kontragent, Dt, Kt, qoldiq, debitor/kreditor) va «Excelga saqlash» — 1C ning o'z «Сохранить» oynasi orqali «baza Firma.xls» nomi bilan tanlangan papkaga.
+- «Hamma bazalar»: bir nechta bazani belgilab, login ro'yxatdan tanlanadi va parol bir marta yoziladi; kirilgan har bir bazada hisobot tuziladi va baza nomli .xls ga saqlanadi (kira olmaganlari o'tkazib yuboriladi). Parol saqlanmaydi.
+- E-POS: to'lov faqat karta (naqd tanlovi olib tashlandi).
