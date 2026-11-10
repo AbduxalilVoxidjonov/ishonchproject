@@ -162,9 +162,6 @@ public sealed class BatchDebtorForm : Form
         if (rows.TryGetValue(b.Id, out var i)) grid.Rows[i].Cells["state"].Value = state;
     }
 
-    static string FileName(BaseEntry b) =>
-        string.Concat($"{b.Db} {b.Firm}".Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim() + ".xls";
-
     async Task RunAsync()
     {
         if (busy) return;

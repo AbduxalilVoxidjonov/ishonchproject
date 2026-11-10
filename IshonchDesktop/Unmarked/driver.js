@@ -89,11 +89,11 @@
       return { head, rows, cx: Math.round(gr.left + gr.width / 2), cy: Math.round((top + bottom) / 2), rowH: rows.length > 1 ? Math.abs(rows[1].y - rows[0].y) : 31,
         left: Math.round(Math.max(0, gr.left)), right: Math.round(Math.min(innerWidth, gr.right) - 18) };
     },
-    // Jadval katagidagi belgi (checkbox): holati va markazi. row — ma'lumot qatori tartibi (0 dan), col — colindex
-    gridCheck: (id, row, col) => {
+    // Jadval katagidagi belgi (checkbox): holati va markazi. key — qatorni topish uchun 1-ustun matni, col — colindex
+    gridCheck: (id, key, col) => {
       const g = bySuffix("_" + id);
       if (!g) return null;
-      const l = [...g.querySelectorAll('.gridLine')][row + 1];
+      const l = [...g.querySelectorAll('.gridLine')].slice(1).find((x) => { const c = x.querySelector('[colindex="1"]'); return c && norm(c.textContent).split(' ')[0] === key; });
       const cb = l && l.querySelector('[colindex="' + col + '"] .checkbox');
       if (!cb || !vis(cb)) return null;
       return { on: /(^|\s)select(\s|$)/.test(cb.className), ...center(cb) };

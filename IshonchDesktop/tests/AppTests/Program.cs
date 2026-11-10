@@ -445,6 +445,13 @@ Console.WriteLine("Debitor / kreditor");
     var sp = IshonchDesktop.Debtors.OsvParser.Parse(sep);
     Check(sp.Count == 2 && sp.First(p => p.Party.Contains("Adoi")).Debit == 10892060m && sp.First(p => p.Party.Contains("Alexander")).Credit == 7000m,
         "alohida ustunlar rejimi: kod/nom ajratilgan, raqamlar siljigan hisobot o'qiladi");
+    var digits = IshonchDesktop.Debtors.OsvParser.Parse(new List<IshonchDesktop.Debtors.OsvRow>
+    {
+        Row(30, 10, "4010", (1, "Расчеты с покупателями и заказчиками"), (6, "300,00")),
+        Row(31, 16, "2024", (6, "100,00")),
+        Row(32, 16, "\"Adoi\" Mchj", (6, "200,00")),
+    });
+    Check(digits.Count == 2 && digits.Sum(p => p.Debit) == 300m, "nomi 4 raqamli kontragent hisob qatori deb olinmaydi");
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
     var xl = Path.Combine(tmp, "t.xlsx");
     IshonchDesktop.Debtors.XlsxWriter.Save(xl, "Test", new List<object?[]> { new object?[] { "Kontragent", "Summa" }, new object?[] { "A & B \"X\"", 1234.5m } });

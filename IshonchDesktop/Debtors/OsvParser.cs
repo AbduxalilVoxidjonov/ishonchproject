@@ -30,6 +30,8 @@ public static class OsvParser
     // «4010, Расчеты…» (bitta ustunda) yoki «4010» (kod va nom alohida ustunlarda — «Размещение: В отдельных колонках»)
     static readonly Regex AccountRow = new(@"^(\d{4}(?:\.\d+)?)(,\s|$)", RegexOptions.Compiled);
 
+    static readonly Regex NumberText = new(@"^[\d\s ,.\-]+$", RegexOptions.Compiled);
+
     public static decimal Num(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return 0;
@@ -51,6 +53,10 @@ public static class OsvParser
         foreach (var r in rows.GroupBy(x => x.Y).Select(g => g.First()).OrderBy(x => x.Y))
         {
             var m = AccountRow.Match(r.Name);
+            // Alohida ustunlar rejimida hisob qatorining 1-ustunida hisob nomi (matn) turadi; nomi 4 raqamli kontragent/shartnoma emas
+            if (m.Success && m.Groups[2].Value.Length == 0
+                && !(r.Cells.TryGetValue(1, out var accName) && accName.Trim().Length > 0 && !NumberText.IsMatch(accName)))
+                m = Match.Empty;
             if (m.Success)
             {
                 acc = Accounts.Contains(m.Groups[1].Value) ? m.Groups[1].Value : null;

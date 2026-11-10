@@ -153,11 +153,11 @@ public sealed class DebtorRunner
         await d.DelayAsync(1200);
     }
 
-    async Task ClickCheckAsync(string grid, int row, int col, bool want, string what)
+    async Task ClickCheckAsync(string grid, string key, int col, bool want, string what)
     {
         for (var attempt = 1; attempt <= 3; attempt++)
         {
-            var e = await d.EvalAsync($"window.__ish.gridCheck({JsonSerializer.Serialize(grid)},{row},{col})");
+            var e = await d.EvalAsync($"window.__ish.gridCheck({JsonSerializer.Serialize(grid)},{JsonSerializer.Serialize(key)},{col})");
             if (e.ValueKind != JsonValueKind.Object) throw new OneCException($"«{what}» belgisi topilmadi");
             if (e.GetProperty("on").GetBoolean() == want) return;
             await d.ClickAsync(new Pt(e.GetProperty("x").GetDouble(), e.GetProperty("y").GetDouble()));
@@ -231,12 +231,15 @@ public sealed class DebtorRunner
             }
             var gv = (await d.GridAsync("РазвернутоеСальдо"))!;
             var subCol = gv.ColIndex("По субсчетам") ?? "2";
-            await ClickCheckAsync("РазвернутоеСальдо", idx, int.Parse(subCol), false, "По субсчетам");
+            await ClickCheckAsync("РазвернутоеСальдо", acc, int.Parse(subCol), false, "По субсчетам");
             await SetCounterpartyOnlyAsync(idx);
             // tahrir rejimidan chiqish: jadvalning bo'sh joyiga (qatorlardan pastga) bosamiz
             gv = (await d.GridAsync("РазвернутоеСальдо"))!;
             var last = gv.Rows[^1];
-            await d.ClickAsync(new Pt(gv.Center.X, last.Y + gv.RowHeight * 2 + 20));
+            // jadvalning ko'rinadigan pastki cheti: markaz ustki chetdan (birinchi qator tepasi) qancha uzoq bo'lsa, shuncha pastda
+            var bottom = 2 * gv.Center.Y - (gv.Rows[0].Y - gv.RowHeight / 2);
+            var y = Math.Min(last.Y + gv.RowHeight * 2 + 20, bottom - 6);
+            if (y > last.Y + gv.RowHeight / 2) await d.ClickAsync(new Pt(gv.Center.X, y)); // bo'sh joy bo'lmasa, «Добавить» o'zi tahrirni yopadi
             await d.DelayAsync(1000);
             gv = (await d.GridAsync("РазвернутоеСальдо"))!;
             var text = gv.Cell(gv.Rows[idx], "По субконто")?.Text.Trim();
@@ -442,12 +445,14 @@ public sealed class DebtorRunner
     public async Task ExportXlsAsync(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        if (File.Exists(path)) File.Delete(path);
+        // Avval vaqtinchalik faylga yuklanadi: saqlash muvaffaqiyatsiz bo'lsa, oldingi fayl o'chib ketmasin
+        var part = path + ".part";
+        if (File.Exists(part)) File.Delete(part);
         var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnDownload(object? sender, CoreWebView2DownloadStartingEventArgs e)
         {
             core.DownloadStarting -= OnDownload;
-            e.ResultFilePath = path;
+            e.ResultFilePath = part;
             e.Handled = true; // standart «Saqlash» oynasi chiqmasin
             var op = e.DownloadOperation;
             op.StateChanged += (_, _) =>
@@ -467,6 +472,7 @@ public sealed class DebtorRunner
             var done = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(5), ct));
             if (done != tcs.Task) throw new OneCException("Fayl 5 daqiqada saqlanmadi");
             await tcs.Task;
+            File.Move(part, path, overwrite: true);
             log("Saqlandi: " + path, "ok");
         }
         finally { core.DownloadStarting -= OnDownload; }

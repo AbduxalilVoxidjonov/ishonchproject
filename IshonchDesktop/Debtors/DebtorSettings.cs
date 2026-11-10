@@ -14,10 +14,22 @@ public static class DebtorSettings
     {
         get
         {
-            try { if (File.Exists(FolderFile) && File.ReadAllText(FolderFile).Trim() is { Length: > 0 } f) return f; } catch { /* standart papka */ }
+            try { if (File.Exists(FolderFile) && File.ReadAllText(FolderFile).Trim() is { Length: > 0 } f && !IsDatedDefault(f)) return f; } catch { /* standart papka */ }
             return DefaultFolder();
         }
-        set { try { File.WriteAllText(FolderFile, value.Trim()); } catch { /* eslab qolinmasa ham ishlayveradi */ } }
+        set
+        {
+            // Sanali standart papka eslab qolinmaydi: aks holda keyingi kunlar ham eski sanali papkaga yozilardi
+            try { if (IsDatedDefault(value.Trim())) File.Delete(FolderFile); else File.WriteAllText(FolderFile, value.Trim()); }
+            catch { /* eslab qolinmasa ham ishlayveradi */ }
+        }
+    }
+
+    static bool IsDatedDefault(string folder)
+    {
+        var parent = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Ishonch");
+        return string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)), parent, StringComparison.OrdinalIgnoreCase)
+            && System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)), @"^debitor-kreditor \d{4}-\d{2}-\d{2}$");
     }
 
     /// <summary>«baza3 THE MILLENNIUM RETAIL (BALIKCHI RETAIL).xls»</summary>
