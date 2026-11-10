@@ -48,7 +48,7 @@ public sealed class BatchDebtorForm : Form
         var today = DateTime.Today;
         from.Value = new DateTime(today.Year, 1, 1);
         to.Value = today;
-        folder.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Ishonch", "debitor-kreditor " + today.ToString("yyyy-MM-dd"));
+        folder.Text = DebtorSettings.Folder;
 
         // Chap: bazalar ro'yxati
         var left = new Panel { Dock = DockStyle.Left, Width = 380, Padding = new Padding(8) };
@@ -214,7 +214,7 @@ public sealed class BatchDebtorForm : Form
             Log($"Kirildi: {tabs.Count} / {chosen.Count}. Kirilmaganlari o'tkazib yuboriladi.", tabs.Count == chosen.Count ? "ok" : "warn");
 
             // 2-bosqich: har bazada hisobot va saqlash
-            Directory.CreateDirectory(folder.Text);
+            Directory.CreateDirectory(folder.Text); DebtorSettings.Folder = folder.Text;
             var ok = 0;
             foreach (var b in chosen.Where(b => tabs.ContainsKey(b.Id)))
             {
@@ -228,7 +228,7 @@ public sealed class BatchDebtorForm : Form
                     var runner = new DebtorRunner(tab.Core!, (m, k) => Log($"{b.Db}: {m}", k), cts.Token);
                     await runner.InitAsync();
                     await runner.PrepareAsync(f, t);
-                    var path = Path.Combine(folder.Text, FileName(b));
+                    var path = Path.Combine(folder.Text, DebtorSettings.FileName(b));
                     SetState(rows, b, "saqlanmoqda…");
                     await runner.ExportXlsAsync(path);
                     SetState(rows, b, "✔ " + Path.GetFileName(path));

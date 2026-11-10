@@ -33,9 +33,15 @@ public sealed class DebtorPanel : UserControl
     bool busy;
     static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
 
-    public DebtorPanel(WebTab tab)
+    readonly BaseEntry baseEntry;
+    readonly TextBox folder = new() { Width = 400 };
+    readonly Button browse = PanelStyle.Secondary(new Button { Text = "…", Width = 36, Height = 26 });
+
+    public DebtorPanel(WebTab tab, BaseEntry baseEntry)
     {
         this.tab = tab;
+        this.baseEntry = baseEntry;
+        folder.Text = DebtorSettings.Folder;
         Font = PanelStyle.Base;
         BackColor = PanelStyle.Back;
         Padding = new Padding(8);
@@ -59,6 +65,10 @@ public sealed class DebtorPanel : UserControl
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(0, 4, 0, 0) };
         buttons.Controls.AddRange(new Control[] { run, stop, save });
 
+        var where = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(0, 4, 0, 0) };
+        where.Controls.Add(new Label { Text = "Papka:", AutoSize = true, Margin = new Padding(0, 6, 4, 0) });
+        where.Controls.AddRange(new Control[] { folder, browse });
+
         var filters = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(0, 4, 0, 0) };
         filters.Controls.AddRange(new Control[] { kind, search });
 
@@ -69,10 +79,10 @@ public sealed class DebtorPanel : UserControl
         grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "kind", HeaderText = "Holat", Width = 90 });
         foreach (var n in new[] { "debit", "credit", "net" }) grid.Columns[n]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
 
-        var table = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, Height = 44 + 44 + 40 + 360 + 40 + 150 + 24, Margin = Padding.Empty, Padding = Padding.Empty };
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, Height = 44 + 44 + 40 + 40 + 360 + 40 + 150 + 28, Margin = Padding.Empty, Padding = Padding.Empty };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         void Add(Control c, int h) { c.Dock = DockStyle.Fill; c.Margin = new Padding(0, 0, 0, 4); table.RowStyles.Add(new RowStyle(SizeType.Absolute, h)); table.Controls.Add(c); }
-        Add(period, 44); Add(buttons, 44); Add(filters, 40); Add(grid, 360); Add(total, 40); Add(logBox, 150);
+        Add(period, 44); Add(buttons, 44); Add(where, 40); Add(filters, 40); Add(grid, 360); Add(total, 40); Add(logBox, 150);
         var scroller = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         scroller.Controls.Add(table);
         Controls.Add(scroller);
@@ -80,7 +90,13 @@ public sealed class DebtorPanel : UserControl
 
         run.Click += async (_, _) => await RunAsync();
         stop.Click += (_, _) => cts?.Cancel();
-        save.Click += (_, _) => SaveExcel();
+        save.Click += async (_, _) => await SaveExcelAsync();
+        browse.Click += (_, _) =>
+        {
+            using var dlg = new FolderBrowserDialog { SelectedPath = folder.Text, Description = "Excel fayllar qayerga saqlansin?" };
+            if (dlg.ShowDialog(this) == DialogResult.OK) { folder.Text = dlg.SelectedPath; DebtorSettings.Folder = dlg.SelectedPath; }
+        };
+        folder.Leave += (_, _) => DebtorSettings.Folder = folder.Text;
         kind.SelectedIndexChanged += (_, _) => Fill();
         search.TextChanged += (_, _) => Fill();
         close.Click += (_, _) =>
@@ -149,18 +165,29 @@ public sealed class DebtorPanel : UserControl
         save.Enabled = !busy && all.Count > 0;
     }
 
-    void SaveExcel()
+    /// <summary>
+    /// 1C dagi tayyor hisobotni uning o'z «Сохранить» tugmasi bilan Excel (.xls) ga saqlaydi: fayl nomi — baza va firma nomi,
+    /// papka yuqoridagi «Papka» maydonidan olinadi.
+    /// </summary>
+    async Task SaveExcelAsync()
     {
-        using var dlg = new SaveFileDialog { Filter = "Excel (*.xlsx)|*.xlsx", FileName = $"debitor-kreditor {from.Value:dd.MM.yyyy}-{to.Value:dd.MM.yyyy}.xlsx" };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        if (busy) return;
+        var dir = folder.Text.Trim();
+        if (dir.Length == 0) { MessageBox.Show(this, "Avval papkani tanlang.", AppInfo.DisplayName); return; }
+        DebtorSettings.Folder = dir;
+        var path = Path.Combine(dir, DebtorSettings.FileName(baseEntry));
+        cts = new CancellationTokenSource();
+        SetBusy(true);
         try
         {
-            var rows = new List<object?[]> { new object?[] { "Kontragent", "Debitor (Dt)", "Kreditor (Kt)", "Qoldiq (Dt − Kt)", "Holat", "Hisoblar" } };
-            foreach (var p in Filtered().OrderByDescending(p => Math.Abs(p.Net)))
-                rows.Add(new object?[] { p.Party, p.Debit, p.Credit, p.Net, p.Kind, string.Join(", ", p.Accounts.Select(a => a.Account)) });
-            XlsxWriter.Save(dlg.FileName, "Debitor-kreditor", rows);
-            Log("Excelga saqlandi: " + dlg.FileName, "ok");
+            await tab.Ready;
+            var core = tab.Core ?? throw new InvalidOperationException("1C tabi tayyor emas");
+            var runner = new DebtorRunner(core, Log, cts.Token);
+            await runner.InitAsync();
+            await runner.ExportXlsAsync(path);
         }
+        catch (OperationCanceledException) { Log("To'xtatildi", "warn"); }
         catch (Exception e) { Log("Saqlab bo'lmadi: " + e.Message, "error"); }
+        finally { SetBusy(false); }
     }
 }

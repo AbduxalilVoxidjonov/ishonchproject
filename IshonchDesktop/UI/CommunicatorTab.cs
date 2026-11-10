@@ -36,7 +36,6 @@ public sealed class CommunicatorTab : UserControl
     readonly Button loadBtn = new() { Text = "1C chekidan yuklash", AutoSize = true };
     readonly Button ikpuBtn = new() { Text = "IKPU va qadoqni to'ldirish", AutoSize = true };
     readonly Button checkBtn = new() { Text = "Kodlarni tekshirish", AutoSize = true };
-    readonly ComboBox payType = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
     readonly CheckBox confirmReal = new() { Text = "Bu HAQIQIY fiskal chek yaratishini tushunaman", AutoSize = true, ForeColor = Color.Firebrick };
     readonly Button sellBtn = new() { Text = "Sotish (fiskal chek)", AutoSize = true };
     readonly Label summary = new() { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(0, 6, 0, 0), Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
@@ -67,8 +66,6 @@ public sealed class CommunicatorTab : UserControl
 
         portBox.Items.AddRange(new object[] { "3448", "3449", "3450" });
         portBox.SelectedIndex = 0;
-        payType.Items.AddRange(new object[] { "Naqd", "Karta" });
-        payType.SelectedIndex = 0;
 
         // Narx ustunlari 1C hujjatidagi kabi: Narx va Summa — QQS'siz, keyin % QQS, QQS summasi va Jami (QQS bilan = «Всего»)
         foreach (var (title, weight, ro) in new[] { ("1C tovari", 20, true), ("Dona", 5, true), ("Kod", 4, true),
@@ -99,7 +96,7 @@ public sealed class CommunicatorTab : UserControl
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
         actions.Controls.AddRange(new Control[] { loadBtn, ikpuBtn, checkBtn });
         var pay = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
-        pay.Controls.AddRange(new Control[] { new Label { Text = "To'lov:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, payType, confirmReal, sellBtn });
+        pay.Controls.AddRange(new Control[] { confirmReal, sellBtn });
 
         Controls.Add(grid);
         Controls.Add(summary);
@@ -439,12 +436,12 @@ public sealed class CommunicatorTab : UserControl
             return;
         }
         var total = SaleBuilder.Total(items);
-        var cash = payType.SelectedIndex == 0 ? total : 0;
-        var card = payType.SelectedIndex == 1 ? total : 0;
+        var cash = 0L; // faqat karta
+        var card = total;
 
         var text = "Bu HAQIQIY fiskal chek yaratadi va OFD ga yuboriladi.\n\n"
             + $"Tovarlar: {lines.Count} xil, {lines.Sum(l => l.Source.Quantity)} dona ({items.Count} qator)\n"
-            + $"Jami: {total / 100m:N2} so'm\nTo'lov: {payType.SelectedItem}\n\nDavom etamizmi?";
+            + $"Jami: {total / 100m:N2} so'm\nTo'lov: Karta\n\nDavom etamizmi?";
         if (MessageBox.Show(this, text, "Chekni sotish", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
 

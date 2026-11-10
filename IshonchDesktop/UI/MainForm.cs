@@ -183,7 +183,7 @@ public sealed class MainForm : Form
     {
         var tab = OpenBase(b);
         if (tab.HasSidePanel("debtor")) { tab.ShowSidePanel(640, "debtor"); return; }
-        tab.AttachSidePanel(new DebtorPanel(tab), 640, "debtor");
+        tab.AttachSidePanel(new DebtorPanel(tab, b), 640, "debtor");
     }
 
     void OpenDoverennost(BaseEntry b)
