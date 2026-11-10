@@ -27,7 +27,8 @@ public static class OsvParser
     /// <summary>Qaysi hisoblar bo'yicha kontragent qoldig'i olinadi (haqiqiy hisobotdagi guruhlash bilan bir xil).</summary>
     public static readonly string[] Accounts = { "4010", "4310", "6010", "6310" };
 
-    static readonly Regex AccountRow = new(@"^(\d{4}(?:\.\d+)?),\s", RegexOptions.Compiled);
+    // «4010, Расчеты…» (bitta ustunda) yoki «4010» (kod va nom alohida ustunlarda — «Размещение: В отдельных колонках»)
+    static readonly Regex AccountRow = new(@"^(\d{4}(?:\.\d+)?)(,\s|$)", RegexOptions.Compiled);
 
     public static decimal Num(string? text)
     {
@@ -46,6 +47,7 @@ public static class OsvParser
         string? acc = null;
         int accPad = 0;
         int? partyPad = null;
+        var shift = 0; // alohida ustunlar rejimida hisob nomi 1-ustunga o'tadi va raqamlar bir ustun o'ngga siljiydi
         foreach (var r in rows.GroupBy(x => x.Y).Select(g => g.First()).OrderBy(x => x.Y))
         {
             var m = AccountRow.Match(r.Name);
@@ -54,6 +56,7 @@ public static class OsvParser
                 acc = Accounts.Contains(m.Groups[1].Value) ? m.Groups[1].Value : null;
                 accPad = r.Pad;
                 partyPad = null;
+                shift = m.Groups[2].Value.Length == 0 ? 1 : 0;
                 continue;
             }
             if (acc is null) continue;
@@ -62,7 +65,7 @@ public static class OsvParser
             if (r.Pad != partyPad) continue; // shartnoma qatori
             var party = r.Name.Trim();
             if (party.Length == 0) continue;
-            var bal = new AccountBalance(acc, Num(r.Cells.GetValueOrDefault(5)), Num(r.Cells.GetValueOrDefault(6)));
+            var bal = new AccountBalance(acc, Num(r.Cells.GetValueOrDefault(5 + shift)), Num(r.Cells.GetValueOrDefault(6 + shift)));
             if (!result.TryGetValue(party, out var p)) result[party] = p = new PartyBalance(party, new());
             p.Accounts.Add(bal);
         }

@@ -89,6 +89,24 @@
       return { head, rows, cx: Math.round(gr.left + gr.width / 2), cy: Math.round((top + bottom) / 2), rowH: rows.length > 1 ? Math.abs(rows[1].y - rows[0].y) : 31,
         left: Math.round(Math.max(0, gr.left)), right: Math.round(Math.min(innerWidth, gr.right) - 18) };
     },
+    // Jadval katagidagi belgi (checkbox): holati va markazi. row — ma'lumot qatori tartibi (0 dan), col — colindex
+    gridCheck: (id, row, col) => {
+      const g = bySuffix("_" + id);
+      if (!g) return null;
+      const l = [...g.querySelectorAll('.gridLine')][row + 1];
+      const cb = l && l.querySelector('[colindex="' + col + '"] .checkbox');
+      if (!cb || !vis(cb)) return null;
+      return { on: /(^|\s)select(\s|$)/.test(cb.className), ...center(cb) };
+    },
+    // Belgili ro'yxat (masalan «Выберите виды субконто»): eng yuqoridagi formadagi jadval qatorlari
+    checkList: (id) => {
+      const g = bySuffix("_" + id);
+      if (!g) return null;
+      return [...g.querySelectorAll('.gridLine')].map((l) => {
+        const cb = l.querySelector('.checkbox'), t = l.querySelector('.gridBoxText');
+        return cb && t && vis(cb) ? { t: norm(t.textContent), on: /(^|\s)select(\s|$)/.test(cb.className), ...center(cb) } : null;
+      }).filter(Boolean);
+    },
     // Ro'yxat (ValueList) va ochiladigan ro'yxat (combo) satrlari
     listItems: () => [...document.querySelectorAll('li')].filter((e) => vis(e) && e.querySelector('.eddText')).map((e) => ({ t: norm(e.textContent), selected: e.classList.contains('select'), ...center(e) })),
     valueListRows: (id) => [...document.querySelectorAll('#' + id + ' .gridBoxText')].filter(vis).map((e) => ({ t: norm(e.textContent), selected: !!e.closest('.select'), ...center(e) })),

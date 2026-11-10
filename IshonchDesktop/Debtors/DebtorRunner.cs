@@ -100,9 +100,9 @@ public sealed class DebtorRunner
         return g.Rows.Select(r => (g.Cell(r, "Счет")?.Text ?? "").Split(' ')[0].Trim()).ToList();
     }
 
-    async Task PickAccountAsync(string acc)
+    async Task PickAccountAsync(string acc, string input = "_ГруппировкаСчет_i0")
     {
-        await d.WaitTrueAsync(async () => await d.HasAsync("_ГруппировкаСчет_i0"), 10000, "hisob maydoni");
+        await d.WaitTrueAsync(async () => await d.HasAsync(input), 10000, "hisob maydoni");
         await d.DelayAsync(600);
         await d.SelectAllAsync();
         await TypeSlowAsync(acc);
@@ -111,7 +111,7 @@ public sealed class DebtorRunner
             var e = await d.EvalAsync("window.__ish.listItems()");
             if (e.ValueKind != JsonValueKind.Array) return (Pt?)null;
             foreach (var li in e.EnumerateArray())
-                if (li.GetProperty("t").GetString() is { } t && t.StartsWith(acc + " ", StringComparison.Ordinal))
+                if (li.GetProperty("t").GetString() is { } t && (t == acc || t.StartsWith(acc + " ", StringComparison.Ordinal)))
                     return new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
             return null;
         }, 12000, $"«{acc}» hisobi ro'yxatda");
@@ -143,6 +143,132 @@ public sealed class DebtorRunner
             if (!(await GroupingAccountsAsync()).Contains(acc)) throw new OneCException($"«{acc}» hisobi guruhlashga qo'shilmadi (bu bazada bunday hisob bo'lmasligi mumkin)");
             log($"Guruhlash: {acc} qo'shildi", "info");
         }
+    }
+
+    // ---- «Развернутое сальдо» va «Дополнительные поля» yorliqlari --------------------------------
+
+    async Task SelectTabAsync(string suffix, string what)
+    {
+        await d.ClickSuffixAsync(suffix, what);
+        await d.DelayAsync(1200);
+    }
+
+    async Task ClickCheckAsync(string grid, int row, int col, bool want, string what)
+    {
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var e = await d.EvalAsync($"window.__ish.gridCheck({JsonSerializer.Serialize(grid)},{row},{col})");
+            if (e.ValueKind != JsonValueKind.Object) throw new OneCException($"«{what}» belgisi topilmadi");
+            if (e.GetProperty("on").GetBoolean() == want) return;
+            await d.ClickAsync(new Pt(e.GetProperty("x").GetDouble(), e.GetProperty("y").GetDouble()));
+            await d.DelayAsync(1200);
+        }
+        throw new OneCException($"«{what}» belgisini o'zgartirib bo'lmadi");
+    }
+
+    /// <summary>Qatorning «По субконто» ustunini faqat «Контрагенты» qiladi («Договоры» belgisini olib tashlaydi).</summary>
+    async Task SetCounterpartyOnlyAsync(int row)
+    {
+        var g = (await d.GridAsync("РазвернутоеСальдо"))!;
+        var cell = g.Cell(g.Rows[row], "По субконто") ?? throw new OneCException("«По субконто» ustuni topilmadi");
+        if (cell.Text.Trim() == "Контрагенты") return;
+        // Katak tahrir rejimiga o'tishi uchun qo'sh bosish; keyin «...» tugmasi paydo bo'ladi
+        for (var attempt = 1; attempt <= 3 && !await d.HasAsync("_РазвернутоеСальдоПредставление_CB"); attempt++)
+        {
+            await d.ClickAsync(cell.At, 2);
+            await d.DelayAsync(1500);
+        }
+        await d.ClickSuffixAsync("_РазвернутоеСальдоПредставление_CB", "Субконто tanlash («...»)");
+        await d.WaitTrueAsync(async () => await d.HasAsync("_КомандаОК") && (await d.EvalAsync("window.__ish.checkList('Список')")).ValueKind == JsonValueKind.Array, 15000, "«Выберите виды субконто» oynasi");
+        await d.DelayAsync(600);
+        async Task SetKind(string name, bool want)
+        {
+            var e = await d.EvalAsync("window.__ish.checkList('Список')");
+            foreach (var r in e.EnumerateArray())
+                if (r.GetProperty("t").GetString() == name)
+                {
+                    if (r.GetProperty("on").GetBoolean() != want) { await d.ClickAsync(new Pt(r.GetProperty("x").GetDouble(), r.GetProperty("y").GetDouble())); await d.DelayAsync(900); }
+                    return;
+                }
+            throw new OneCException($"Субконто «{name}» ro'yxatda yo'q");
+        }
+        await SetKind("Контрагенты", true);
+        await SetKind("Договоры", false);
+        await d.ClickSuffixAsync("_КомандаОК", "OK");
+        await d.WaitTrueAsync(async () => !await d.HasAsync("_КомандаОК"), 15000, "subkonto oynasi yopilishi");
+        await d.DelayAsync(800);
+    }
+
+    /// <summary>«Развернутое сальдо»: har bir hisob uchun qator — subschyotlarsiz, faqat «Контрагенты» bo'yicha.</summary>
+    async Task EnsureExpandedBalanceAsync()
+    {
+        await SelectTabAsync("_ГруппаРазвернутоеСальдо", "«Развернутое сальдо» yorlig'i");
+        async Task<List<string>> Accs()
+        {
+            var g = await d.GridAsync("РазвернутоеСальдо");
+            return g is null ? new() : g.Rows.Select(r => (g.Cell(r, "Счет")?.Text ?? "").Split(' ')[0].Trim()).ToList();
+        }
+        foreach (var acc in OsvParser.Accounts)
+        {
+            var accounts = await Accs();
+            var idx = accounts.IndexOf(acc);
+            if (idx < 0)
+            {
+                var before = accounts.Count;
+                // Birinchi bosish tahrirdagi katakni yopishi mumkin — qator ko'payguncha qayta bosamiz
+                for (var attempt = 1; attempt <= 4 && (await Accs()).Count <= before; attempt++)
+                {
+                    await d.ClickSuffixAsync("_РазвернутоеСальдоДобавить", "Добавить");
+                    await d.DelayAsync(2500);
+                }
+                if ((await Accs()).Count <= before) throw new OneCException("«Добавить» yangi qator qo'shmadi");
+                await d.WaitTrueAsync(async () => (await d.HasAsync("_РазвернутоеСальдоСчет_i0")), 15000, "hisob maydoni");
+                await d.DelayAsync(800);
+                await PickAccountAsync(acc, "_РазвернутоеСальдоСчет_i0");
+                accounts = await Accs();
+                idx = accounts.IndexOf(acc);
+                if (idx < 0) throw new OneCException($"«{acc}» hisobi «Развернутое сальдо» ga qo'shilmadi");
+            }
+            var gv = (await d.GridAsync("РазвернутоеСальдо"))!;
+            var subCol = gv.ColIndex("По субсчетам") ?? "2";
+            await ClickCheckAsync("РазвернутоеСальдо", idx, int.Parse(subCol), false, "По субсчетам");
+            await SetCounterpartyOnlyAsync(idx);
+            // tahrir rejimidan chiqish: jadvalning bo'sh joyiga (qatorlardan pastga) bosamiz
+            gv = (await d.GridAsync("РазвернутоеСальдо"))!;
+            var last = gv.Rows[^1];
+            await d.ClickAsync(new Pt(gv.Center.X, last.Y + gv.RowHeight * 2 + 20));
+            await d.DelayAsync(1000);
+            gv = (await d.GridAsync("РазвернутоеСальдо"))!;
+            var text = gv.Cell(gv.Rows[idx], "По субконто")?.Text.Trim();
+            if (text != "Контрагенты") throw new OneCException($"«{acc}» uchun субконто «{text}» bo'lib qoldi (kerak: Контрагенты)");
+            log($"Развернутое сальдо: {acc} — Контрагенты", "info");
+        }
+    }
+
+    /// <summary>«Дополнительные поля» → «Размещение»: «В отдельных колонках».</summary>
+    async Task EnsureSeparateColumnsAsync()
+    {
+        await SelectTabAsync("_ГруппаДополнительныеДанные", "«Дополнительные поля» yorlig'i");
+        const string input = "_РазмещениеДополнительныхПолей_i0";
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            if ((await d.ValueAsync(input) ?? "").Contains("отдельных", StringComparison.OrdinalIgnoreCase)) { log("Размещение: В отдельных колонках", "info"); return; }
+            await d.ClickSuffixAsync("_РазмещениеДополнительныхПолей_DLB", "Размещение ro'yxati");
+            Pt? item = null;
+            var until = d.Now + 5000;
+            while (item is null && d.Now < until)
+            {
+                await d.DelayAsync(300);
+                var e = await d.EvalAsync("window.__ish.listItems()");
+                if (e.ValueKind != JsonValueKind.Array) continue;
+                foreach (var li in e.EnumerateArray())
+                    if ((li.GetProperty("t").GetString() ?? "").Contains("отдельных", StringComparison.OrdinalIgnoreCase))
+                        item = new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
+            }
+            if (item is { } it) { await d.ClickAsync(it); await d.DelayAsync(900); }
+            else { await d.KeyAsync("Escape"); await d.DelayAsync(300); }
+        }
+        throw new OneCException("«Размещение» ni «В отдельных колонках» qilib bo'lmadi");
     }
 
     async Task SetDateAsync(string suffix, DateOnly date)
@@ -244,7 +370,10 @@ public sealed class DebtorRunner
     {
         await OpenReportAsync();
         await ShowSettingsAsync();
+        await SelectTabAsync("_ГруппаГруппировка", "«Группировка» yorlig'i");
         await EnsureGroupingAsync();
+        await EnsureExpandedBalanceAsync();
+        await EnsureSeparateColumnsAsync();
         await SetDateAsync("_НачалоПериода_i0", from);
         await SetDateAsync("_КонецПериода_i0", to);
         log($"Hisobot shakllantirilmoqda ({from:dd.MM.yyyy} – {to:dd.MM.yyyy})", "info");

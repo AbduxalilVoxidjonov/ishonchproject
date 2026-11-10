@@ -433,6 +433,18 @@ Console.WriteLine("Debitor / kreditor");
     var alex = parties.First(p => p.Party.Contains("Alexander"));
     Check(alex.Debit == 12237160m && alex.Credit == 7000m, "avans (6310) ham hisobga olinadi");
     Check(IshonchDesktop.Debtors.OsvParser.Num("77 333 563 089,76") == 77333563089.76m, "sonni o'qish (bo'shliq va vergul)");
+    // «В отдельных колонках»: kod alohida ustunda, raqamlar bir ustun o'ngda (Dt 6, Kt 7)
+    var sep = new List<IshonchDesktop.Debtors.OsvRow>
+    {
+        Row(30, 10, "4010", (1, "Расчеты с покупателями и заказчиками"), (6, "63 405 307 016,26")),
+        Row(31, 16, "\"Adoi\" Mchj", (4, "19 971 120,00"), (5, "9 079 060,00"), (6, "10 892 060,00")),
+        Row(32, 23, "№62 от 01.03.2026", (6, "10 892 060,00")),
+        Row(60, 10, "6310", (1, "Расчеты по авансам полученным"), (7, "7 000,00")),
+        Row(61, 16, "\"Alexander Brands\" Mchj", (7, "7 000,00")),
+    };
+    var sp = IshonchDesktop.Debtors.OsvParser.Parse(sep);
+    Check(sp.Count == 2 && sp.First(p => p.Party.Contains("Adoi")).Debit == 10892060m && sp.First(p => p.Party.Contains("Alexander")).Credit == 7000m,
+        "alohida ustunlar rejimi: kod/nom ajratilgan, raqamlar siljigan hisobot o'qiladi");
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
     var xl = Path.Combine(tmp, "t.xlsx");
     IshonchDesktop.Debtors.XlsxWriter.Save(xl, "Test", new List<object?[]> { new object?[] { "Kontragent", "Summa" }, new object?[] { "A & B \"X\"", 1234.5m } });
