@@ -157,6 +157,11 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.10.1
+
+- Solishtiruv tabi bir nechta o'rnatmadan **eng yangisini** tanlaydi (Programs, Ishonch yonida, Desktop\Solishtiruv); eski Solishtiruv `--embed` ni bilmasa oddiy veb rejimda yoqiladi.
+- Bosh sahifadagi bo'limlar paneli past oynada pastga aylantiriladi.
+
 ## 0.10.0 — Solishtiruv bo'limi
 
 Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv.exe` ni `--embed` rejimida orqa fonda yoqadi va sahifasini shu tab ichida ko'rsatadi. Kirish va rollar (buxgalter / admin / bosh rahbar) Solishtiruv serveri tomonidan hal qilinadi. Tab yopilganda yoki dastur chiqqanda Solishtiruv jarayoni to'xtatiladi. Dastur topilmasa tab o'rnatish haqida xabar beradi (qidiruv: `SOLISHTIRUV_EXE`, `%LOCALAPPDATA%\Programs\Solishtiruv`, Ishonch.exe yonida, Desktop). Solishtiruv `--embed` bilan yig'ilgan versiyasi kerak.

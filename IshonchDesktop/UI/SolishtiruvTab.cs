@@ -36,19 +36,28 @@ public sealed class SolishtiruvTab : UserControl
         Load += async (_, _) => await InitAsync();
     }
 
-    /// <summary>Solishtiruv.exe ni qidiradi: SOLISHTIRUV_EXE, o'rnatilgan papka, Ishonch yonida, Desktop.</summary>
+    /// <summary>Solishtiruv.exe ni qidiradi: topilganlardan eng yangi versiyasini oladi (eski o'rnatma yangisini to'sib qo'ymasin).</summary>
     static string? FindExe()
     {
         var env = Environment.GetEnvironmentVariable("SOLISHTIRUV_EXE");
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var cands = new[]
         {
             env,
             Path.Combine(local, "Programs", "Solishtiruv", "Solishtiruv.exe"),
             Path.Combine(AppContext.BaseDirectory, "Solishtiruv.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Solishtiruv.exe"),
+            Path.Combine(desk, "Solishtiruv", "Solishtiruv.exe"),
+            Path.Combine(desk, "Solishtiruv.exe"),
         };
-        return cands.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p));
+        if (!string.IsNullOrWhiteSpace(env) && File.Exists(env)) return env; // qo'lda berilgan - o'sha
+        return cands.Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .OrderByDescending(Ver).FirstOrDefault();
+    }
+
+    static Version Ver(string? p)
+    {
+        try { return Version.Parse(FileVersionInfo.GetVersionInfo(p!).FileVersion ?? "0.0"); } catch { return new Version(0, 0); }
     }
 
     static int FreePort(int prefer)
@@ -97,12 +106,22 @@ public sealed class SolishtiruvTab : UserControl
         {
             port = FreePort(PreferredPort);
             origin = $"http://127.0.0.1:{port}/";
-            proc = Process.Start(new ProcessStartInfo(exe, $"--embed --port {port}")
+            Process? Start(string args) => Process.Start(new ProcessStartInfo(exe, args)
             {
                 UseShellExecute = false, CreateNoWindow = true,
                 WorkingDirectory = Path.GetDirectoryName(exe)!,
             });
-            if (!await WaitUpAsync(port, proc))
+            proc = Start($"--embed --port {port}");
+            var up = await WaitUpAsync(port, proc);
+            if (!up && proc is { HasExited: true })
+            {
+                // Eski Solishtiruv (--embed ni bilmaydi): oddiy veb rejim
+                Log.Write("SolishtiruvTab: --embed ishlamadi, --web bilan urinilmoqda");
+                proc.Dispose();
+                proc = Start($"--web --no-open --port {port}");
+                up = await WaitUpAsync(port, proc);
+            }
+            if (!up)
             {
                 status.Text = "Solishtiruv ishga tushmadi. Yordam uchun: " + AppInfo.SupportPhone;
                 Log.Write("SolishtiruvTab: server ko'tarilmadi " + exe);

@@ -159,6 +159,7 @@ public sealed class HomeControl : UserControl
         right.Width = 330;
         right.FlowDirection = FlowDirection.TopDown;
         right.WrapContents = false;
+        right.AutoScroll = true; // tugmalar ko'p bo'lsa va oyna past bo'lsa, pastiga aylantirish chizig'i chiqadi
         right.Controls.Add(info);
         right.Controls.Add(openOneC);
         right.Controls.Add(openSoliq);
@@ -291,7 +292,7 @@ public sealed class HomeControl : UserControl
         Font = new Font(Font.FontFamily, m.Font * f);
         title.Font = new Font(title.Font.FontFamily, m.TitleFont * f, FontStyle.Bold);
         title.Height = S(m.TitleH);
-        right.Width = S(m.RightW);
+        right.Width = S(m.RightW) + SystemInformation.VerticalScrollBarWidth; // aylantirish chizig'i tugmalarni siqmasin
         info.Size = S2(m.Info);
         foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, openBatchDebtor, open4790, openUnsellable, openElektr, openSolishtiruv, openHelp })
         {
