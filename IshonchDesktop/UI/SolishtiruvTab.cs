@@ -91,6 +91,26 @@ public sealed class SolishtiruvTab : UserControl
         }
     }
 
+    static string PidFile => Path.Combine(ManagedDir, "embed.pid");
+
+    /// <summary>Oldingi Ishonch qulab tushgan bo'lsa, qolib ketgan Solishtiruv jarayoni o'chiriladi (bir ma'lumotlar papkasida ikkita nusxa ishlamasin).</summary>
+    static void KillStale()
+    {
+        try
+        {
+            if (!File.Exists(PidFile) || !int.TryParse(File.ReadAllText(PidFile).Trim(), out var pid)) return;
+            using var old = Process.GetProcessById(pid);
+            if (old.ProcessName.StartsWith("Solishtiruv", StringComparison.OrdinalIgnoreCase)) old.Kill(entireProcessTree: true);
+        }
+        catch { }
+        try { File.Delete(PidFile); } catch { }
+    }
+
+    void SavePid()
+    {
+        try { Directory.CreateDirectory(ManagedDir); if (proc is not null) File.WriteAllText(PidFile, proc.Id.ToString()); } catch { }
+    }
+
     static Version Ver(string? p)
     {
         try { return Version.Parse(FileVersionInfo.GetVersionInfo(p!).FileVersion ?? "0.0"); } catch { return new Version(0, 0); }
@@ -147,7 +167,9 @@ public sealed class SolishtiruvTab : UserControl
                 UseShellExecute = false, CreateNoWindow = true,
                 WorkingDirectory = Path.GetDirectoryName(exe)!,
             });
+            KillStale();
             proc = Start($"--embed --port {port}");
+            SavePid();
             var up = await WaitUpAsync(port, proc);
             if (!up && proc is { HasExited: true })
             {
@@ -155,6 +177,7 @@ public sealed class SolishtiruvTab : UserControl
                 Log.Write("SolishtiruvTab: --embed ishlamadi, --web bilan urinilmoqda");
                 proc.Dispose();
                 proc = Start($"--web --no-open --port {port}");
+                SavePid();
                 up = await WaitUpAsync(port, proc);
             }
             if (!up)
@@ -202,6 +225,7 @@ public sealed class SolishtiruvTab : UserControl
         {
             try { view.Dispose(); } catch { }
             try { if (proc is { HasExited: false }) proc.Kill(entireProcessTree: true); } catch { }
+            try { File.Delete(PidFile); } catch { }
             proc?.Dispose();
         }
         base.Dispose(disposing);

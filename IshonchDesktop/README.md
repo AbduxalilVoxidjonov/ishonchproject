@@ -157,6 +157,10 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.10.3
+
+- Ishonch kutilmaganda yopilsa, Solishtiruv jarayoni yetim qolmaydi: keyingi ochilishda eskisi o'chiriladi (bir ma'lumotlar papkasida ikkita nusxa ishlamasin).
+
 ## 0.10.2
 
 - **Solishtiruv alohida o'rnatilmaydi.** Bo'lim birinchi ochilganda dastur Solishtiruv serveridan yuklanib `%APPDATA%\Ishonch\solishtiruv` ga qo'yiladi (bir marta, ~35 MB); keyingi versiyalarni Solishtiruv o'zi tab ichida «Yangilash» bilan yangilaydi. Buxgalterga alohida Solishtiruv.exe kerak emas.
