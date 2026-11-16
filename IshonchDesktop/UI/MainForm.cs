@@ -55,6 +55,7 @@ public sealed class MainForm : Form
         home.Open4790 += async b => await Open4790Async(b);
         home.OpenUnsellable += OpenUnsellable;
         home.OpenElektr += () => OpenElektrTab();
+        home.OpenSolishtiruv += () => OpenSolishtiruvTab();
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
         updater = new UpdateCoordinator(this, settings, home);
@@ -130,6 +131,7 @@ public sealed class MainForm : Form
             {
                 if (FindTab(key) is not null) continue;
                 if (key == ElektrKey) OpenElektrTab(select: false);
+                else if (key == SolishtiruvTab.Key) OpenSolishtiruvTab(select: false);
                 else if (key == UnsellableKey) OpenUnsellableTab(select: false);
                 else if (key == "soliq") OpenSoliqTab(null, select: false);
                 else if (key.StartsWith("soliq-") && store.Bases.FirstOrDefault(b => "soliq-" + b.Inn == key) is { } sb) OpenSoliqTab(sb, select: false);
@@ -198,6 +200,21 @@ public sealed class MainForm : Form
         var tab = OpenBase(b);
         if (tab.HasSidePanel("unmarked")) { tab.ShowSidePanel(450, "unmarked"); return; }
         tab.AttachSidePanel(new UnmarkedPanel(tab, settings, b.ProfileKey, b.Db + " — " + b.Firm, b, SoliqTabFor(b)), 450, "unmarked");
+    }
+
+    // ---- Solishtiruv ---------------------------------------------------------------------------
+
+    void OpenSolishtiruvTab(bool select = true)
+    {
+        if (FindTab(SolishtiruvTab.Key) is { } existing)
+        {
+            if (select) tabs.SelectedTab = existing;
+            return;
+        }
+        var page = new TabPage("Solishtiruv") { Tag = SolishtiruvTab.Key, Padding = new Padding(0) };
+        page.Controls.Add(new SolishtiruvTab());
+        tabs.TabPages.Add(page);
+        if (select) tabs.SelectedTab = page;
     }
 
     // ---- Elektr -------------------------------------------------------------------------------
