@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "1C 4790 to'ldiruvchi",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "ОСВ 4790 dagi qizil qoldiqlarni o'qib, «Операция (введенная вручную)»ga har bir xodim uchun yangi qator qo'shadi. Saqlash va проведение foydalanuvchida qoladi.",
   "permissions": [
     "debugger",

@@ -13,6 +13,7 @@ public sealed class BaseEntry
     public string Db { get; set; } = "";
 
     /// <summary>1C web-mijoz manzili, masalan http://tas-1cbuxapp-01/baza99/</summary>
+    /// <remarks>Interfeys tili (rus) brauzer tili orqali boshqariladi — WebTab.GetEnvironmentAsync (Language = ru-RU).</remarks>
     public string Url => $"http://{Server}/{Db}/";
 
     /// <summary>Har bir baza o'z brauzer profiliga ega (login/cookie aralashmaydi).</summary>

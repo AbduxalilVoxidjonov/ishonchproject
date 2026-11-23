@@ -277,10 +277,12 @@ public sealed class DebtorRunner
     async Task SetDateAsync(string suffix, DateOnly date)
     {
         var want = date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
-        var digits = date.ToString("ddMMyyyy", CultureInfo.InvariantCulture);
+        var day = date.ToDateTime(TimeOnly.MinValue);
         for (var attempt = 1; attempt <= 4; attempt++)
         {
-            if ((await d.ValueAsync(suffix))?.Trim() == want) return;
+            var current = await d.ValueAsync(suffix);
+            if (OneCDate.Parse(current)?.Date == day) return;
+            var digits = OneCDate.Digits(day, false, OneCDate.IsUs(current)); // ru: kun.oy.yil, en_US: oy/kun/yil
             await d.ClickSuffixAsync(suffix, "Sana maydoni", "input");
             await d.DelayAsync(250);
             await d.SelectAllAsync();
@@ -289,7 +291,7 @@ public sealed class DebtorRunner
             await d.KeyAsync("Tab");
             await d.DelayAsync(1200);
         }
-        if ((await d.ValueAsync(suffix))?.Trim() != want) throw new OneCException($"Sana «{want}» yozilmadi (1C: «{await d.ValueAsync(suffix)}»)");
+        if (OneCDate.Parse(await d.ValueAsync(suffix))?.Date != day) throw new OneCException($"Sana «{want}» yozilmadi (1C: «{await d.ValueAsync(suffix)}»)");
     }
 
     // ---- natijani o'qish -------------------------------------------------------------------------
@@ -362,6 +364,8 @@ public sealed class DebtorRunner
         finally
         {
             try { await core.CallDevToolsProtocolMethodAsync("Emulation.clearDeviceMetricsOverride", "{}"); } catch { /* sahifa yopilgan */ }
+            // Yuqoridagi clear 1C oyna moslashuvini (OneCRoom) ham o'chiradi — qayta qo'yiladi
+            await OneCRoom.RestoreAsync(core);
         }
         return rows.OrderBy(r => r.Y).ToList();
     }

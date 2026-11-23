@@ -49,6 +49,8 @@ public sealed class OneCDriver
         await CdpInput.PrepareAsync(core); // orqa fondagi tabda ham klaviatura 1C ga yetib borsin
         await core.ExecuteScriptAsync(Helper);
         await core.ExecuteScriptAsync("window.__ish.watchMove()");
+        // Oyna kichik / masshtab katta bo'lsa 1C ga yetarli joy beriladi (sahifa kattaroq chizilib oynaga sig'diriladi)
+        await OneCRoom.EnsureAsync(core);
         await EnsureScaleAsync();
     }
 
@@ -87,6 +89,7 @@ public sealed class OneCDriver
     {
         ct.ThrowIfCancellationRequested();
         await Gate.WaitAsync(ct);
+        OneCRoom.Touch(core); // avtomatika ishlayapti — 1C joyi hali qaytarilmaydi
         var raw = await core.ExecuteScriptAsync(expr);
         if (string.IsNullOrWhiteSpace(raw) || raw == "undefined") return default;
         using var doc = JsonDocument.Parse(raw);

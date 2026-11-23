@@ -83,12 +83,13 @@ public sealed class DidoxContracts
     }
 
     /// <summary>Firma nomini taqqoslash uchun: katta harf, lotin, qo'shtirnoq va MCHJ/ООО kabi qo'shimchalarsiz.</summary>
-    public static string NormName(string s)
+    /// <param name="keepParens">true — qavs ichidagi izoh ham nomning bir qismi (aniq taqqoslash).</param>
+    public static string NormName(string s, bool keepParens = false)
     {
         s = Translit(s.ToUpperInvariant());
         // Bazalar ro'yxatidagi qavs ichidagi izoh («EVOLUTION NETWORKS (DONT WASTE TIME)») olib tashlanadi;
         // tutuq belgisi so'zni bo'lmaydi («FARG'ONA» = «FARGONA»)
-        s = Regex.Replace(s, @"\([^)]*\)", " ");
+        if (!keepParens) s = Regex.Replace(s, @"\([^)]*\)", " ");
         s = Regex.Replace(s, @"['`‘’ʻʼ]", "");
         s = Regex.Replace(s, @"[""«»“”.,()\-]", " ");
         s = Regex.Replace(s, @"\b(MCHJ|OOO|LLC|XK|QK|AJ)\b", " ");
@@ -116,7 +117,11 @@ public sealed class DidoxContracts
         var all = Firms();
         foreach (var b in bases)
             if (b.Inn.Trim().Length > 0) all.Add(new Firm(b.Inn.Trim(), b.Firm, "", ""));
-        var hits = all.Where(f => NormName(f.Name) == key).ToList();
+        // Avval aniq nom (qavsdagi izoh bilan); topilmasa — izohsiz. Shunda «X (ANDIJON)» va «X (NAMANGAN)» aralashmaydi,
+        // agar CRM nomi ulardan biriga aniq mos kelsa
+        var strict = NormName(crmName, true);
+        var hits = all.Where(f => NormName(f.Name, true) == strict).ToList();
+        if (hits.Count == 0) hits = all.Where(f => NormName(f.Name) == key).ToList();
         // Bir xil STIR bir nechta manbadan kelishi mumkin: Solishtiruv yozuvi (token bori) birinchi
         return hits.GroupBy(f => f.Tin).Select(g => g.OrderByDescending(f => f.Slug.Length > 0).First()).ToList();
     }
@@ -199,6 +204,9 @@ public sealed class DidoxContracts
         File.Move(tmp, path, overwrite: true);
     }
 
+    /// <summary>Shu ishga tushishda Didox qabul qilgan parol (faqat xotirada) — firma xatosini parol xatosidan ajratish uchun.</summary>
+    static string? VerifiedPassword;
+
     public static string OwnPassword() => ReadProtected(PasswordFile) ?? "";
     public static void SaveOwnPassword(string pwd) => WriteProtected(PasswordFile, pwd);
     public static void ForgetOwnPassword() { try { File.Delete(PasswordFile); } catch { } }
@@ -232,12 +240,13 @@ public sealed class DidoxContracts
         var pwd = OwnPassword();
         var fromUser = false;
         if (pwd.Length == 0) pwd = dirs.Select(SolishtiruvPassword).FirstOrDefault(p => p.Length > 0) ?? "";
+        var asked0 = false;
         for (var attempt = 0; attempt < 3; attempt++)
         {
             if (pwd.Length == 0)
             {
                 var asked = PasswordPrompt is null ? null
-                    : await PasswordPrompt(attempt == 0 ? "" : "Parol noto'g'ri bo'ldi — qayta kiriting.");
+                    : await PasswordPrompt(asked0 ? $"{firm.Name}: Didox parolni qabul qilmadi — qayta kiriting." : "");
                 if (string.IsNullOrEmpty(asked)) throw new InvalidOperationException("Didox paroli kiritilmadi.");
                 pwd = asked;
                 fromUser = true;
@@ -247,15 +256,20 @@ public sealed class DidoxContracts
             if (token is not null)
             {
                 if (fromUser) SaveOwnPassword(pwd); // to'g'ri chiqqan parol saqlanadi (keyingi safar so'ralmaydi)
+                VerifiedPassword = pwd;
                 SaveOwnToken(firm.Tin, token);
                 return Session[firm.Tin] = token;
             }
             if (code == 423) throw new InvalidOperationException("Didox parol bilan kirishni vaqtincha bloklagan (423). Keyinroq urinib ko'ring.");
+            if (code == 404) throw new InvalidOperationException($"{firm.Name} ({firm.Tin}) Didox'da topilmadi (HTTP 404) — firma STIRini tekshiring.");
             if (code is >= 400 and < 500 and not 429)
             {
-                // Parol noto'g'ri: saqlangani o'chiriladi va qayta so'raladi
-                if (!fromUser) ForgetOwnPassword();
+                // Shu parol shu ishga tushishda boshqa firmada ishlagan: muammo parolda emas, firmada — parol so'ralmaydi
+                if (VerifiedPassword == pwd)
+                    throw new InvalidOperationException($"{firm.Name} ({firm.Tin}) Didox'iga kirib bo'lmadi (HTTP {code}); parol boshqa firmalarda ishlayapti — firma STIRini yoki Didox'dagi hisobini tekshiring.");
+                // Parol noto'g'ri bo'lishi mumkin: qayta so'raladi. Saqlangan parol O'CHIRILMAYDI — yangisi to'g'ri chiqsa ustidan yoziladi
                 pwd = "";
+                asked0 = true;
                 continue;
             }
             throw new InvalidOperationException($"Didox'ga kirib bo'lmadi (HTTP {code}).");

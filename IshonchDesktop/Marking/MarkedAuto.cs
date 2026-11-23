@@ -562,7 +562,10 @@ public sealed class MarkedAuto : IDisposable
             await reader.InitAsync();
             var open = await reader.ReadOpenDocumentAsync();
             if (open is null) { Status("1C da Реализация hujjati ochiq emas: sotiladigan hujjatni oching (tovarlar jadvali ko'rinib tursin).", "warn"); return; }
-            Status($"1C hujjati № {open.Number}: {open.Receipt.Lines.Count} ta tovar, {open.Receipt.Lines.Sum(l => l.Codes.Count)} ta kod — E-POS oynasi ochildi.");
+            if (open.Warning.Length > 0)
+                MessageBox.Show(oneC.FindForm(), open.Warning + " E-POS oynasida tovarlar va kodlar sonini tekshiring.", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Status($"1C hujjati № {open.Number}: {open.Receipt.Lines.Count} ta tovar, {open.Receipt.Lines.Sum(l => l.Codes.Count)} ta kod — E-POS oynasi ochildi." +
+                   (open.Warning.Length > 0 ? " DIQQAT: " + open.Warning : ""), open.Warning.Length > 0 ? "warn" : "info");
             using var dialog = new SaleDialog(baseEntry, getSoliqTab, open.Receipt);
             dialog.ShowDialog(oneC.FindForm());
             if (dialog.Result is { } sold) Status($"№ {open.Number} E-POS orqali sotildi: chek № {sold.ReceiptSeq}, fiskal belgi {sold.FiscalSign}.", "ok");

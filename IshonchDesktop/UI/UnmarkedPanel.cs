@@ -229,6 +229,8 @@ public sealed class UnmarkedPanel : UserControl
             Log($"1C hujjati № {open.Number} ({open.Date}): {open.Receipt.Lines.Count} ta tovar" +
                 (open.MarkedRows > 0 ? $" ({open.MarkedRows} tasi markirovkali, kodlari hujjatdan o'qildi)" : "") +
                 $", jami {open.Receipt.Lines.Sum(l => l.LineTotal ?? 0):N2} — E-POS oynasi ochilmoqda", "info");
+            if (open.Warning.Length > 0)
+                MessageBox.Show(FindForm(), open.Warning + " E-POS oynasida tovarlar sonini tekshiring.", AppInfo.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             Sell(open.Receipt);
         }
         catch (Exception e) { Log("Hujjatni o'qib bo'lmadi: " + e.Message, "err"); }

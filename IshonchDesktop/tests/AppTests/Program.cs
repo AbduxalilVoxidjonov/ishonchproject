@@ -520,6 +520,31 @@ Console.WriteLine("Dovernis rejasi");
     });
     Check(parsed.Count == 1 && parsed[0].Amount == 1874696m, "Excel: faqat chiqim, summa o'qiladi");
 }
+// ---- 1C sana maydoni: ru va en_US shakllari ----
+Console.WriteLine("1C sana maydoni (ru va en_US)");
+{
+    var dt = new DateTime(2026, 11, 23, 23, 59, 59);
+    Check(IshonchDesktop.Unmarked.OneCDate.Digits(dt, true, false) == "23112026235959", "ru: kun.oy.yil soat:daqiqa:soniya raqamlari");
+    Check(IshonchDesktop.Unmarked.OneCDate.Digits(dt, true, true) == "11232026115959" && IshonchDesktop.Unmarked.OneCDate.AmPm(dt, true, true) == "P",
+        "en_US: oy/kun/yil 12 soatlik + PM (avval 2623-yil bo'lib yozilardi)");
+    Check(IshonchDesktop.Unmarked.OneCDate.IsUs("11/20/2623 12:00:00 AM") && !IshonchDesktop.Unmarked.OneCDate.IsUs("20.11.2026 0:00:00"), "maydon shakli aniqlanadi");
+    Check(IshonchDesktop.Unmarked.UnmarkedOptions.ParseOneCDate("11/23/2026 11:59:59 PM") == dt && IshonchDesktop.Unmarked.UnmarkedOptions.ParseOneCDate("23.11.2026 23:59:59") == dt,
+        "sana ikkala shaklda o'qiladi");
+    Check(IshonchDesktop.Unmarked.OneCDate.Parse("12/31/2026") == new DateTime(2026, 12, 31) && IshonchDesktop.Unmarked.OneCDate.Parse("31.12.2026") == new DateTime(2026, 12, 31),
+        "vaqtsiz sana ikkala shaklda");
+}
+// ---- 1C oynasini moslash (joy yetmasa sahifa kattaroq chizilib oynaga sig'diriladi) ----
+Console.WriteLine("1C oynasini moslash");
+{
+    Check(IshonchDesktop.Unmarked.OneCRoom.Plan(1530, 700) is null, "joy yetarli (1530×700) — o'zgartirilmaydi");
+    var p1 = IshonchDesktop.Unmarked.OneCRoom.Plan(1100, 700)!.Value;   // yonda panel ochiq
+    Check(p1.Width >= 1360 && p1.Height >= 680 && Math.Abs(p1.Width * p1.Scale - 1100) < 2 && Math.Abs(p1.Height * p1.Scale - 700) < 2,
+        "tor oyna (1100×700): kamida 1360 kenglikda chizilib, oynaga to'liq sig'adi");
+    var p2 = IshonchDesktop.Unmarked.OneCRoom.Plan(1600, 500)!.Value;   // past oyna
+    Check(p2.Height >= 680 && p2.Width >= 1360 && Math.Abs(p2.Height * p2.Scale - 500) < 2, "past oyna (1600×500): balandlik ham yetarli");
+    var p3 = IshonchDesktop.Unmarked.OneCRoom.Plan(760, 420)!.Value;    // masshtab 200% kabi
+    Check(p3.Width >= 1360 && p3.Height >= 680 && p3.Scale < 0.6, "katta masshtab (760×420): kichraytiriladi");
+}
 // ---- CRM shartnoma: summa va maqsad (Didox JSON'idan) ----
 Console.WriteLine("CRM shartnoma summasi va maqsadi");
 {
@@ -659,6 +684,21 @@ Console.WriteLine("CRM shartnoma PDF shabloni (OCR)");
     Check(NN("EVOLUTION NETWORKS") == NN("EVOLUTION NETWORKS (DONT WASTE TIME)") && NN("FARG'ONA ISHONCH SAVDO MCHJ") == NN("FARGONA ISHONCH SAVDO")
         && NN("\"EXCELLENT SERVICE TRADE\" МЧЖ") == NN("EXCELLENT SERVICE TRADE") && NN("EXCELLENT SERVICE TRADE") != NN("EXCELLENT SERVICE AND TRADE"),
         "firma nomi: bazalar ro'yxati bilan taqqoslash");
+    // Nomi faqat qavsdagi izoh bilan farq qiladigan ikki firma: CRM nomi biriga aniq mos kelsa — faqat o'sha
+    var twin = new List<IshonchDesktop.Models.BaseEntry>
+    {
+        new() { Firm = "X TRADE (ANDIJON)", Inn = "300000001", Server = "s", Db = "a" },
+        new() { Firm = "X TRADE (NAMANGAN)", Inn = "300000002", Server = "s", Db = "b" },
+    };
+    var oldNo = Environment.GetEnvironmentVariable("ISHONCH_NO_SOLISHTIRUV");
+    Environment.SetEnvironmentVariable("ISHONCH_NO_SOLISHTIRUV", "1");
+    try
+    {
+        Check(IshonchDesktop.Crm.DidoxContracts.FindFirm("X TRADE (NAMANGAN) MCHJ", twin).Select(f => f.Tin).SequenceEqual(new[] { "300000002" }),
+            "firma: qavsdagi izoh bilan aniq mos kelsa faqat o'sha STIR");
+        Check(IshonchDesktop.Crm.DidoxContracts.FindFirm("X TRADE MCHJ", twin).Count == 2, "firma: izohsiz nomga ikkala STIR nomzod (ogohlantirish bilan)");
+    }
+    finally { Environment.SetEnvironmentVariable("ISHONCH_NO_SOLISHTIRUV", oldNo); }
 
     // Kesh: shartnoma va PDF qayta so'ralmaydi, ro'yxat 1 kun saqlanadi
     var oldDir = IshonchDesktop.Crm.CrmCache.Dir;

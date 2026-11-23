@@ -157,6 +157,16 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.3
+
+- **1C rus tilida ochiladi** (brauzer tili ru-RU): avval Windows tili inglizcha bo'lsa 1C en_US rejimida ochilib, sana «oy/kun/yil AM/PM» shaklida bo'lardi va inventarizatsiya sanasi buzilib yozilardi (2623-yil). Sana yozish/o'qish ikkala shaklni ham tushunadi (inventarizatsiya, dovernis, debitor). Yangilanishdan keyin 1C har bazada bir marta qayta kirishni so'raydi.
+- **1C oynasiga moslashish**: oyna kichik, masshtab katta yoki yonda panel ochiq bo'lsa, 1C sahifasi kamida 1360×680 chizilib oynaga sig'diriladi (tugma va ustunlar yashirinmaydi); oyna o'lchami o'zgarsa qayta moslanadi.
+- **Ochiq 1C hujjatini E-POS orqali sotish**: hamma tovar qatorlari va hamma markirovka kodlari o'qiladi (jadvallar aylantiriladi; avval faqat ko'ringan ~8 tasi). To'liq o'qilmagan bo'lsa ogohlantirish.
+- E-POS oynasi: «reentrant call to SetCurrentCellAddressCore» xatosi tuzatildi. Kutilmagan xatolar «Continue/Quit» oynasi o'rniga jurnalga yoziladi.
+- **Bitta nusxa**: Ishonch tray'da turganda qayta ishga tushirilsa, ikkinchi nusxa ochilmaydi — ishlab turgani ko'rsatiladi.
+- Didox: kirish xatosida saqlangan parol o'chirilmaydi; firma Didox'da topilmasa aniq xabar. Kesh faqat imzolangan shartnomalar uchun. Firma nomi avval qavsdagi izoh bilan aniq taqqoslanadi.
+- 4790 to'ldiruvchi v1.9.2: log va diagnostikani nusxalash ishlaydi, diagnostika Ishonch jurnaliga ham yoziladi.
+
 ## 0.11.2
 
 - Solishtiruv o'rnatilmagan kompyuterlarda ham shartnoma Didox'dan olinadi: Didox paroli (barcha firmalar uchun bir xil) bir marta so'raladi va shu kompyuterda Windows hisobi bilan shifrlab (DPAPI) saqlanadi; firma sessiyalari ham saqlanadi (har safar qayta kirilmaydi). Parol noto'g'ri bo'lsa qayta so'raladi; tray menyusida «Didox parolini o'zgartirish».

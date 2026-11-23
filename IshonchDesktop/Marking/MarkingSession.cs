@@ -54,6 +54,13 @@ public sealed class MarkingSession : IDisposable
         // 1C sahifasi: skriptlar har bir yangi hujjatga qo'shiladi, ochiq turgan sahifaga darhol yuboriladi
         page = new PageChannel(core, pageOrigin) { Rpc = HandlePageRpc, Event = OnPageEvent };
         await CdpInput.PrepareAsync(core);
+        // Panel ochiq turganda 1C sahifasiga yetarli joy: oyna kichik / masshtab katta bo'lsa sahifa kattaroq chizilib
+        // oynaga sig'diriladi (1C tugma va ustunlarni yashirmasin). Bosishlar orasida emas — oldindan, har 2 soniyada tekshiriladi
+        Unmarked.OneCRoom.Hold(core, true);
+        roomTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        roomTimer.Tick += async (_, _) => await Unmarked.OneCRoom.EnsureAsync(core);
+        roomTimer.Start();
+        await Unmarked.OneCRoom.EnsureAsync(core);
         var script = MkResources.OneCPageScript();
         await core.AddScriptToExecuteOnDocumentCreatedAsync(script);
         if (!string.IsNullOrEmpty(core.Source) && core.Source.StartsWith(pageOrigin, StringComparison.OrdinalIgnoreCase))
@@ -108,6 +115,7 @@ public sealed class MarkingSession : IDisposable
                 await Task.Delay(Math.Clamp(Int(msg, "ms"), 0, 60000));
                 return new { ok = true };
             case "cdp":
+                Unmarked.OneCRoom.Touch(oneC.Core!);
                 await CdpInput.RunAsync(oneC.Core!, msg.GetProperty("action"));
                 return new { ok = true };
             case "restartContent":
@@ -287,8 +295,12 @@ public sealed class MarkingSession : IDisposable
         e.Response = env.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK", "Content-Type: " + type);
     }
 
+    System.Windows.Forms.Timer? roomTimer;
+
     public void Dispose()
     {
+        roomTimer?.Dispose();
+        if (oneC.Core is { } c) { Unmarked.OneCRoom.Hold(c, false); _ = Unmarked.OneCRoom.ReleaseAsync(c); }
         auto?.Dispose();
         store.Dispose();
     }

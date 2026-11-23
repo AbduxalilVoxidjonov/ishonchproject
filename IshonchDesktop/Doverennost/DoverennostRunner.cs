@@ -260,11 +260,14 @@ public sealed class DoverennostRunner
 
     async Task SetDateAsync(DateTime when)
     {
-        var digits = when.ToString("ddMMyyyyHHmmss", CultureInfo.InvariantCulture);
         bool Same(string? v) => UnmarkedOptions.ParseOneCDate(v) == when;
         for (var attempt = 1; attempt <= 4; attempt++)
         {
-            if (Same(await d.ValueAsync("_Дата_i0"))) return;
+            var current = await d.ValueAsync("_Дата_i0");
+            if (Same(current)) return;
+            // Raqamlar tartibi maydon shakliga qarab (ru: kun.oy.yil; en_US: oy/kun/yil + AM/PM)
+            var us = OneCDate.IsUs(current);
+            var digits = OneCDate.Digits(when, true, us);
             await d.ClickSuffixAsync("_Дата_i0", "Sana maydoni", "input");
             await d.DelayAsync(200);
             await d.SelectAllAsync();
@@ -273,6 +276,7 @@ public sealed class DoverennostRunner
                 await d.TypeAsync(digits.Substring(i, Math.Min(2, digits.Length - i)));
                 await d.DelayAsync(80);
             }
+            if (OneCDate.AmPm(when, true, us) is { } ap) { await d.TypeAsync(ap); await d.DelayAsync(150); }
             await d.DelayAsync(300);
             await d.KeyAsync("Tab");
             await d.DelayAsync(600);
@@ -288,10 +292,12 @@ public sealed class DoverennostRunner
     {
         const string field = "_ДатаДействия_i0";
         var want = when.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
-        var digits = when.ToString("ddMMyyyy", CultureInfo.InvariantCulture);
+        var day = when.ToDateTime(TimeOnly.MinValue);
         for (var attempt = 1; attempt <= 3; attempt++)
         {
-            if ((await d.ValueAsync(field))?.Trim() == want) return;
+            var current = await d.ValueAsync(field);
+            if (OneCDate.Parse(current)?.Date == day) return;
+            var digits = OneCDate.Digits(day, false, OneCDate.IsUs(current)); // ru: kun.oy.yil, en_US: oy/kun/yil
             await d.ClickSuffixAsync(field, "Срок действия maydoni", "input");
             await d.DelayAsync(200);
             await d.SelectAllAsync();

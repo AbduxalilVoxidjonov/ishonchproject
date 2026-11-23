@@ -35,6 +35,12 @@ public sealed class U4790Session
             Log.Write("4790 to'ldiruvchi: " + baseEntry.Db);
             core.WebMessageReceived += OnMessage;
             await CdpInput.PrepareAsync(core);
+            // 4790 paneli ishlaganda 1C ga yetarli joy: bosishlar ORASIDA emas, oldindan (har 2 soniyada) moslanadi
+            Unmarked.OneCRoom.Hold(core, true);
+            var roomTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+            roomTimer.Tick += async (_, _) => { if (oneC.IsDisposed) roomTimer.Dispose(); else await Unmarked.OneCRoom.EnsureAsync(core); };
+            roomTimer.Start();
+            await Unmarked.OneCRoom.EnsureAsync(core);
             var script = PageScript();
             await core.AddScriptToExecuteOnDocumentCreatedAsync(script);
             if (!string.IsNullOrEmpty(core.Source) && core.Source.StartsWith(pageOrigin, StringComparison.OrdinalIgnoreCase))
@@ -171,6 +177,14 @@ html.ishonch-u4790-dock #u4790-panel .u4790-log { height: 35vh; min-height: 140p
                 break;
             case "insert":
                 await CdpInput.InsertAsync(core, Str(msg, "text"));
+                break;
+            case "clipboard":
+                // Sahifadagi navigator.clipboard WebView2 da ruxsatsiz ishlamaydi («Logni nusxalab bo'lmadi») — dastur o'zi nusxalaydi
+                if (Str(msg, "text") is { Length: > 0 } text) Clipboard.SetText(text);
+                break;
+            case "log":
+                // Diagnostika Ishonch jurnaliga ham yoziladi (xatolar yig'uvchiga boradi, nusxalash shart emas)
+                Log.Write("4790 diagnostika (" + baseEntry.Db + "):\n" + Str(msg, "text"));
                 break;
             default:
                 throw new InvalidOperationException("Noma'lum buyruq: " + cmd);

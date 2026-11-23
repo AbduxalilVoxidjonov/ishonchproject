@@ -72,7 +72,7 @@ public static class ContractFiller
     static readonly AsyncLocal<string?> CurrentKey = new();
 
     /// <summary>Hamkorda bir nechta shartnoma bo'lsa: ro'yxat sahifaga yuboriladi, tanlangach shu yerdan olinadi (docId -> firma, token, hujjat).</summary>
-    sealed record Pending(DidoxContracts.Firm Firm, string? Token, JsonObject Item, int Total, bool Force = false);
+    sealed record Pending(DidoxContracts.Firm Firm, string? Token, JsonObject Item, int Total, bool Force = false, bool AmbiguousFirm = false);
     static readonly Dictionary<string, Pending> Choices = new();
 
     static void Post(CoreWebView2 core, object msg)
@@ -123,10 +123,11 @@ public static class ContractFiller
                         if (list.Count > 0) CrmCache.PutList(firm.Tin, req.Inn, list);
                     }
                     if (list.Count == 0) { last = new InvalidOperationException(NotFoundText(firm, req.Inn)); continue; }
-                    if (list.Count == 1) { await FillAsync(core, didox, firm, token, list[0], 1, req); return; }
+                    if (firms.Count > 1) Log.Write($"CRM shartnoma: «{req.Firm}» nomiga {firms.Count} ta STIR mos keldi ({string.Join(", ", firms.Select(f => f.Tin))}) — hozir {firm.Tin}");
+                    if (list.Count == 1) { await FillAsync(core, didox, firm, token, list[0], 1, req, firms.Count > 1); return; }
                     // Bir nechta shartnoma: sahifada ro'yxat chiqadi, foydalanuvchi birini tanlaydi
                     Choices.Clear();
-                    foreach (var x in list) Choices[x["doc_id"]?.ToString() ?? ""] = new Pending(firm, token, x, list.Count, req.Force);
+                    foreach (var x in list) Choices[x["doc_id"]?.ToString() ?? ""] = new Pending(firm, token, x, list.Count, req.Force, firms.Count > 1);
                     Post(core, new
                     {
                         kind = "crmList",
@@ -161,14 +162,15 @@ public static class ContractFiller
             text += " Bu hamkorning shartnomasi boshqa firmalarda bor: " + string.Join(", ", other.Select(o => $"{o.Firm} (№{o.Number}, {o.Date})")) + ".";
         return text;
     }
-    static async Task FillAsync(CoreWebView2 core, DidoxContracts didox, DidoxContracts.Firm firm, string? token, JsonObject item, int total, Req req)
+    static async Task FillAsync(CoreWebView2 core, DidoxContracts didox, DidoxContracts.Firm firm, string? token, JsonObject item, int total, Req req,
+        bool ambiguousFirm = false)
     {
         var docId = item["doc_id"]?.ToString() ?? "";
         DidoxContract c;
         byte[]? pdf;
         string pdfNote;
         // Kesh: shu shartnoma avval to'liq o'qilgan bo'lsa (Didox + OCR + Gemini) — qayta so'rov yuborilmaydi
-        if (!req.Force && CrmCache.GetDoc(docId) is { } cached)
+        if (!req.Force && CachedSigned(docId) is { } cached)
         {
             (c, pdfNote, pdf) = cached;
             pdfNote = string.Join("; ", new[] { pdfNote, "saqlangan ma'lumotdan (qayta so'rov yuborilmadi; yangilash uchun tugmani bosing)" }.Where(s => s.Length > 0));
@@ -176,7 +178,9 @@ public static class ContractFiller
         else (c, pdfNote, pdf) = await ProcessAsync(core, didox, firm, token, item, req);
         var note = string.Join("; ", new[] { total > 1 ? $"jami {total} ta shartnomadan tanlangan" : "", c.Note, pdfNote }.Where(s => s.Length > 0));
         if (c.FirmAccount.Length > 0 && c.FirmAccount != req.Account)
-            note = (note.Length > 0 ? note + "; " : "") + $"diqqat: shartnomadagi firma hisob raqami {c.FirmAccount}";
+            note = (note.Length > 0 ? note + "; " : "") + $"diqqat: shartnomadagi firma hisob raqami {c.FirmAccount} — tekshiring";
+        if (ambiguousFirm)
+            note = (note.Length > 0 ? note + "; " : "") + $"firma nomiga bir nechta STIR mos keldi, {firm.Tin} ({firm.Name}) Didox'idan olindi — tekshiring";
         Log.Write($"CRM shartnoma: {firm.Tin} / {req.Inn} -> {c.Number} {c.Date} ({c.Status})");
         Post(core, new
         {
@@ -203,7 +207,8 @@ public static class ContractFiller
         token ??= await didox.TokenAsync(firm, t => Status(core, t));
         c = await didox.DetailsAsync(token, item, req.Inn);
         Status(core, $"№{c.Number} topildi, PDF yuklanmoqda…");
-        pdf = (req.Force ? null : CrmCache.GetPdf(c.DocId)) ?? await didox.PdfAsync(token, c.DocId);
+        // Imzolanmagan shartnoma hali o'zgarishi mumkin — PDF har safar yangidan olinadi
+        pdf = (req.Force || !IsSigned(c) ? null : CrmCache.GetPdf(c.DocId)) ?? await didox.PdfAsync(token, c.DocId);
         pdfNote = "";
         string? ocrText = null;
         var needPdf = c.SumIsDefault || c.ExpireDate.Length == 0 || c.PartnerAccount.Length == 0 || c.PartnerMfo.Length == 0
@@ -244,7 +249,7 @@ public static class ContractFiller
         try
         {
             Status(core, "Shartnoma PDF i o'qilmoqda (OCR)…");
-            var text = PdfOcr.TextOf(await LayoutAsync(c.DocId, pdf));
+            var text = PdfOcr.TextOf(await LayoutAsync(c.DocId, pdf, IsSigned(c)));
             var f = ContractPdfTemplate.Parse(text, firmAccount, c.FirmMfo);
             var got = new List<string>();
             if (c.SumIsDefault && f.Sum is > 0)
@@ -281,7 +286,7 @@ public static class ContractFiller
                 return;
             }
             Status(core, "Tanlangan shartnoma Didox'dan o'qilmoqda…");
-            await FillAsync(core, new DidoxContracts(), p.Firm, p.Token, p.Item, p.Total, req with { Force = req.Force || p.Force });
+            await FillAsync(core, new DidoxContracts(), p.Firm, p.Token, p.Item, p.Total, req with { Force = req.Force || p.Force }, p.AmbiguousFirm);
         }
         catch (Exception e)
         {
@@ -290,10 +295,17 @@ public static class ContractFiller
         }
     }
 
+    static bool IsSigned(DidoxContract c) => c.Status.StartsWith("Imzolangan", StringComparison.Ordinal);
+
+    /// <summary>Kesh faqat imzolangan shartnoma uchun ishlatiladi: imzolanmagani (holati, matni, PDF i) hali o'zgarishi mumkin.</summary>
+    static (DidoxContract c, string note, byte[]? pdf)? CachedSigned(string docId) =>
+        CrmCache.GetDoc(docId) is { } hit && IsSigned(hit.c) ? hit : null;
+
     /// <summary>Sahifa rasmlari va OCR natijasi: avval keshdan, bo'lmasa PDF OCR qilinib keshga yoziladi.</summary>
-    static async Task<List<OcrPage>> LayoutAsync(string docId, byte[] pdf)
+    static async Task<List<OcrPage>> LayoutAsync(string docId, byte[] pdf, bool signed)
     {
-        if (CrmCache.GetLayout(docId) is { } cached) return cached;
+        // Imzolanmagan shartnomaning PDF i o'zgarishi mumkin — OCR keshi faqat imzolangani uchun
+        if (signed && CrmCache.GetLayout(docId) is { } cached) return cached;
         var pages = await PdfOcr.ReadLayoutAsync(pdf);
         CrmCache.PutLayout(docId, pages);
         return pages;
@@ -335,7 +347,7 @@ public static class ContractFiller
             DidoxContract c;
             string pdfNote;
             byte[]? pdf;
-            if (CrmCache.GetDoc(docId) is { } cached) (c, pdfNote, pdf) = cached;
+            if (CachedSigned(docId) is { } cached) (c, pdfNote, pdf) = cached;
             else (c, pdfNote, pdf) = await ProcessAsync(core, new DidoxContracts(), p.Firm, p.Token, p.Item, req with { Force = false });
             if (pdf is null)
             {
@@ -343,7 +355,7 @@ public static class ContractFiller
                 return;
             }
             Status(core, "Shartnoma sahifalari tayyorlanmoqda (OCR)…");
-            var pages = await LayoutAsync(docId, pdf);
+            var pages = await LayoutAsync(docId, pdf, IsSigned(c));
             var found = Targets(c).Select(t => (t, ContractHighlights.Find(pages, t))).ToList();
             var d = DidoxContracts.Describe(p.Item);
             var title = $"Shartnoma №{d.number} · {d.date} · {d.status} · {d.type}";

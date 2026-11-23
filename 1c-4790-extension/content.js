@@ -1,5 +1,5 @@
 // =====================================================================
-//  1C 4790 to'ldiruvchi — sahifa ichidagi skript (v1.9.1)
+//  1C 4790 to'ldiruvchi — sahifa ichidagi skript (v1.9.2)
 //  1) «ОСВ по счету 4790» dan qizil (minus) qoldiqli xodimlarni o'qiydi.
 //     Hisobot 1C web-klientida «moxel» iframe'larida div kataklar bilan
 //     chiziladi — ustunlar ekrandagi o'rni bo'yicha aniqlanadi.
@@ -68,6 +68,11 @@
   const key = (k, modifiers = 0) => bg({ cmd: "key", key: k, modifiers });
   const typeText = (text, delay = 0) => bg({ cmd: "type", text, delay });
   const insertText = (text) => bg({ cmd: "insert", text });
+  // Nusxalash: avval dastur orqali (Ishonch ichida sahifaning clipboard ruxsati yo'q), bo'lmasa brauzerning o'zi (kengaytma)
+  const copyText = async (text) => {
+    try { await bg({ cmd: "clipboard", text }); return true; } catch (e) { /* eski dastur yoki kengaytma */ }
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
+  };
   // Escape FAQAT jadval katagi tahrirda bo'lsa bosiladi. Tahrirdan tashqarida Escape 1C'da HUJJAT OYNASINI YOPADI.
   const inGridEditor = () => { const a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.id && a.id.includes(GRID_SUFFIX)); };
   const safeEscape = async () => { if (inGridEditor()) { await key("Escape"); await sleep(300); } };
@@ -679,7 +684,7 @@
   function diagnostics() {
     const out = [];
     const grid = findGrid();
-    out.push("Versiya: 1.9.1");
+    out.push("Versiya: 1.9.2");
     out.push("Операция jadvali: " + (grid ? grid.id : "topilmadi (yorliq ochiq emas)"));
     if (grid) {
       const r = selectedRow(grid);
@@ -690,19 +695,29 @@
     const cells = collectMoxelCells();
     out.push("Moxel kataklar (ko'rinib turgan): " + cells.length);
     const m = cells.length ? parseMoxelCells(cells) : null;
-    out.push("ОСВ ustunlari: " + (m ? m.nCols : "topilmadi") + ", xodim/bo'lim qatorlari: " + (m ? m.items.length : 0) + ", guruh rangi: " + (m && m.groupColor));
+    if (!cells.length) {
+      // 1C faqat OCHIQ turgan yorliqni chizadi: «Операция» yorlig'ida turganda ОСВ kataklari ko'rinmaydi — bu xato emas
+      const tabs = [...document.querySelectorAll("#openedCell_cont .openedItem")].map((e) => (e.classList.contains("select") ? "▶ " : "") + e.textContent.replace(/\s+/g, " ").trim());
+      out.push("ОСВ hozir ko'rinmayapti (ochiq yorliq ОСВ emas) — ОСВ ni tekshirish uchun uning yorlig'ida turib «Diagnostika» ni bosing.");
+      out.push("Ochiq yorliqlar: " + (tabs.join(" | ") || "aniqlanmadi"));
+    } else {
+      out.push("ОСВ ustunlari: " + (m ? m.nCols : "topilmadi") + ", xodim/bo'lim qatorlari: " + (m ? m.items.length : 0) + ", guruh rangi: " + (m && m.groupColor));
+    }
+    out.push("O'qilgan ro'yxat (xotirada): " + state.items.length + " ta qator, Кт namunasi: " + (state.kt ? "bor" : "yo'q"));
+    out.push("Sahifa: " + innerWidth + "×" + innerHeight + ", til: " + navigator.language);
     if (m) m.items.slice(0, 6).forEach((it) => out.push("  " + it.name + " | " + it.vec.join(" ; ") + " | " + it.color));
     out.push("Faol element: " + (document.activeElement && (document.activeElement.id || document.activeElement.tagName)));
     const text = out.join("\n");
     log("DIAGNOSTIKA:\n" + text);
-    navigator.clipboard && navigator.clipboard.writeText(text).then(() => log("(Diagnostika nusxalandi — Claude'ga joylashingiz mumkin.)"), () => {});
+    bg({ cmd: "log", text: text + "\n--- LOG ---\n" + state.log.slice(-60).join("\n") }).catch(() => {});   // Ishonch jurnaliga (eski dasturda yo'q)
+    copyText(text).then((ok) => { if (ok) log("(Diagnostika nusxalandi — Claude'ga joylashingiz mumkin.)"); });
   }
 
   function buildPanel() {
     panel = document.createElement("div");
     panel.id = "u4790-panel";
     panel.innerHTML = `
-      <div class="u4790-head"><b>4790 to'ldiruvchi <small>v1.9.1</small></b><span class="u4790-x" title="Yopish">×</span></div>
+      <div class="u4790-head"><b>4790 to'ldiruvchi <small>v1.9.2</small></b><span class="u4790-x" title="Yopish">×</span></div>
       <div class="u4790-body">
         <div class="u4790-step">1. «ОСВ по счету ${ACCOUNT}» yorlig'ini oching</div>
         <button data-a="read">ОСВ'dan o'qish</button>
@@ -739,11 +754,11 @@
         if (a === "stop") { stopFlag = true; log("To'xtatish so'raldi — joriy qatordan keyin to'xtaydi."); }
         if (a === "reset") { state.items = []; save(); render(); log("Ro'yxat tozalandi."); }
         if (a === "diag") diagnostics();
-        if (a === "copylog") { try { await navigator.clipboard.writeText(state.log.join("\n")); log("(Log nusxalandi.)"); } catch (e) { log("Logni nusxalab bo'lmadi."); } }
+        if (a === "copylog") log((await copyText(state.log.join("\n"))) ? "(Log nusxalandi.)" : "Logni nusxalab bo'lmadi.");
       } catch (err) { log("XATO: " + err.message); }
     });
     render();
-    log("Panel tayyor (v1.9.1). Hujjat hech qachon avtomatik saqlanmaydi.");
+    log("Panel tayyor (v1.9.2). Hujjat hech qachon avtomatik saqlanmaydi.");
   }
 
   // 1C login'dan keyin (va ba'zan oyna almashganda) <body> ni qayta chizadi — panel DOM'dan yo'qoladi.

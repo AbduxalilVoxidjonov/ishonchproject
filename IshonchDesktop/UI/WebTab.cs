@@ -108,6 +108,12 @@ public sealed class WebTab : UserControl
                 options = new CoreWebView2EnvironmentOptions($"--remote-debugging-port={port}");
                 Log.Write($"Debug port: {key} → {port}");
             }
+            // 1C bazalari rus tilida (sana «dd.MM.yyyy HH:mm:ss», sonlar «1 602 514,85») — Windows tili inglizcha bo'lsa ham
+            if (key.StartsWith("1c-", StringComparison.OrdinalIgnoreCase))
+            {
+                options ??= new CoreWebView2EnvironmentOptions();
+                options.Language = "ru-RU";
+            }
             Environments[key] = task = CoreWebView2Environment.CreateAsync(null, folder, options);
         }
         return task;
@@ -150,7 +156,17 @@ public sealed class WebTab : UserControl
         {
             UpdateZoomLabel();
             ZoomStore.Set(ProfileKey, view.ZoomFactor);
+            _ = Unmarked.OneCRoom.OnResizedAsync(core);
         };
+        // 1C avtomatikasi uchun sahifaning haqiqiy joyi (CSS piksel): boshqaruvchi o'lchami / (DPI × masshtab).
+        // Oyna yoki panel o'lchami o'zgarsa 1C sahifasi qayta moslanadi (kerak bo'lsa kichraytirib sig'diriladi)
+        Unmarked.OneCRoom.Register(core, () =>
+        {
+            if (IsDisposed || view.ClientSize.Width <= 0 || view.ClientSize.Height <= 0) return null;
+            var k = view.DeviceDpi / 96.0 * view.ZoomFactor;
+            return (view.ClientSize.Width / k, view.ClientSize.Height / k);
+        });
+        view.Resize += (_, _) => _ = Unmarked.OneCRoom.OnResizedAsync(core);
         core.NewWindowRequested += (_, e) => { e.Handled = true; OpenRequested?.Invoke(this, e.Uri); };
         core.SourceChanged += (_, _) => address.Text = core.Source;
         core.DocumentTitleChanged += (_, _) =>

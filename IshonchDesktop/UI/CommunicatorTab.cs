@@ -258,9 +258,30 @@ public sealed class CommunicatorTab : UserControl
         RefreshGrid();
     }
 
+    /// <summary>
+    /// Jadvalni qayta chizadi. Jadvalning o'z hodisasi (CellEndEdit, ochiq ro'yxat va h.k.) ichida qatorlarni o'chirib bo'lmaydi —
+    /// «reentrant call to SetCurrentCellAddressCore» xatosi chiqadi. Shuning uchun tahrir tugatiladi, kerak bo'lsa keyingi
+    /// xabarlar sikliga qoldiriladi.
+    /// </summary>
+    int refreshRetries;
+
     void RefreshGrid()
     {
-        grid.Rows.Clear();
+        if (IsDisposed) return;
+        try
+        {
+            if (grid.IsCurrentCellInEditMode) grid.EndEdit();
+            grid.CurrentCell = null;
+            grid.Rows.Clear();
+        }
+        catch (InvalidOperationException e)
+        {
+            // Jadval hali o'z hodisasini tugatmagan: biroz keyin qayta chiziladi (ko'pi bilan 5 marta)
+            if (IsHandleCreated && ++refreshRetries <= 5) BeginInvoke(RefreshGrid);
+            else { refreshRetries = 0; IshonchDesktop.Models.Log.Error("E-POS jadvalini yangilash", e); }
+            return;
+        }
+        refreshRetries = 0;
         foreach (var l in lines)
         {
             var problem = l.Problem();
@@ -305,7 +326,8 @@ public sealed class CommunicatorTab : UserControl
         var text = Convert.ToString(grid.Rows[row].Cells[col].Value)?.Trim() ?? "";
         if (col == ColIkpu) line.ClassCode = text; else line.PackageCode = text;
         map.Save(line);
-        RefreshGrid();
+        // CellEndEdit ichida qatorlarni o'chirib bo'lmaydi — hodisa tugagach qayta chiziladi
+        BeginInvoke(RefreshGrid);
     }
 
     // ---- IKPU (soliq tarixidan) va qadoq kodlari (Communicator bazasidan) ---------------------
