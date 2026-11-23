@@ -46,6 +46,10 @@ public sealed class CrmWatcher : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add("Ishonch'ni ochish", null, (_, _) => Focus());
         menu.Items.Add("Hozir tekshirish", null, async (_, _) => await CheckAsync());
+        menu.Items.Add("Didox parolini o'zgartirish", null, async (_, _) =>
+        {
+            if (await DidoxPasswordForm.AskAsync(tab.FindForm(), "") is { } p) DidoxContracts.SaveOwnPassword(p);
+        });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Chiqish", null, (_, _) => Exit());
         tray.ContextMenuStrip = menu;

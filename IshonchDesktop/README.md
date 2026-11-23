@@ -157,6 +157,11 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.2
+
+- Solishtiruv o'rnatilmagan kompyuterlarda ham shartnoma Didox'dan olinadi: Didox paroli (barcha firmalar uchun bir xil) bir marta so'raladi va shu kompyuterda Windows hisobi bilan shifrlab (DPAPI) saqlanadi; firma sessiyalari ham saqlanadi (har safar qayta kirilmaydi). Parol noto'g'ri bo'lsa qayta so'raladi; tray menyusida «Didox parolini o'zgartirish».
+- Firma STIRi Ishonch bazalar ro'yxatidan ham topiladi: qavs ichidagi izoh va tutuq belgisi farqi hisobga olinmaydi.
+
 ## 0.11.1
 
 - Reliz Gemini kaliti bilan yig'iladi (GitHub secret `GEMINI_API_KEY`): shartnoma maqsadi shartnoma tilida aniqlanadi va 👁 oynasida manbasi sariq bilan belgilanadi.

@@ -640,6 +640,26 @@ Console.WriteLine("CRM shartnoma PDF shabloni (OCR)");
     nowMap.Remove("b");
     Check(!IshonchDesktop.Crm.CrmWatcher.Still(chB, nowMap), "kuzatuv: Бухгалтерия'dan chiqsa xabar o'zi ketadi");
 
+    // Didox paroli va sessiyasi: DPAPI bilan saqlanadi, faylda ochiq matn yo'q
+    var oldPf = IshonchDesktop.Crm.DidoxContracts.PasswordFile;
+    IshonchDesktop.Crm.DidoxContracts.PasswordFile = Path.Combine(Path.GetTempPath(), "ish-didox-" + Guid.NewGuid().ToString("N") + ".dat");
+    try
+    {
+        Check(IshonchDesktop.Crm.DidoxContracts.OwnPassword() == "", "Didox paroli: saqlanmagan — bo'sh");
+        IshonchDesktop.Crm.DidoxContracts.SaveOwnPassword("Sinov#parol-123");
+        var pwRaw = File.ReadAllBytes(IshonchDesktop.Crm.DidoxContracts.PasswordFile);
+        Check(IshonchDesktop.Crm.DidoxContracts.OwnPassword() == "Sinov#parol-123" && !System.Text.Encoding.UTF8.GetString(pwRaw).Contains("Sinov#parol"),
+            "Didox paroli: shifrlab saqlanadi va o'qiladi (faylda ochiq matn yo'q)");
+        IshonchDesktop.Crm.DidoxContracts.ForgetOwnPassword();
+        Check(IshonchDesktop.Crm.DidoxContracts.OwnPassword() == "", "Didox paroli: noto'g'ri bo'lsa o'chiriladi");
+    }
+    finally { try { File.Delete(IshonchDesktop.Crm.DidoxContracts.PasswordFile); } catch { } IshonchDesktop.Crm.DidoxContracts.PasswordFile = oldPf; }
+    // Firma nomi: CRM dagi nom bazalar ro'yxatidagi bilan (qavsdagi izoh, tutuq belgisi, MCHJ/МЧЖ farqi)
+    string NN(string s) => IshonchDesktop.Crm.DidoxContracts.NormName(s);
+    Check(NN("EVOLUTION NETWORKS") == NN("EVOLUTION NETWORKS (DONT WASTE TIME)") && NN("FARG'ONA ISHONCH SAVDO MCHJ") == NN("FARGONA ISHONCH SAVDO")
+        && NN("\"EXCELLENT SERVICE TRADE\" МЧЖ") == NN("EXCELLENT SERVICE TRADE") && NN("EXCELLENT SERVICE TRADE") != NN("EXCELLENT SERVICE AND TRADE"),
+        "firma nomi: bazalar ro'yxati bilan taqqoslash");
+
     // Kesh: shartnoma va PDF qayta so'ralmaydi, ro'yxat 1 kun saqlanadi
     var oldDir = IshonchDesktop.Crm.CrmCache.Dir;
     IshonchDesktop.Crm.CrmCache.Dir = Path.Combine(Path.GetTempPath(), "ish-crm-kesh-" + Guid.NewGuid().ToString("N"));

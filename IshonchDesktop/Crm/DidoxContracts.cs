@@ -42,6 +42,8 @@ public sealed class DidoxContracts
     /// <summary>Solishtiruv'ning didox_data papkalari (firms.json bori), eng yangisi birinchi.</summary>
     public static List<string> DataDirs()
     {
+        // Sinov: Solishtiruv o'rnatilmagan kompyuterni taqlid qilish
+        if (Environment.GetEnvironmentVariable("ISHONCH_NO_SOLISHTIRUV") == "1") return new();
         var desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var cands = new[]
@@ -84,7 +86,11 @@ public sealed class DidoxContracts
     public static string NormName(string s)
     {
         s = Translit(s.ToUpperInvariant());
-        s = Regex.Replace(s, @"[""'`«»“”‘’ʻʼ.,()\-]", " ");
+        // Bazalar ro'yxatidagi qavs ichidagi izoh («EVOLUTION NETWORKS (DONT WASTE TIME)») olib tashlanadi;
+        // tutuq belgisi so'zni bo'lmaydi («FARG'ONA» = «FARGONA»)
+        s = Regex.Replace(s, @"\([^)]*\)", " ");
+        s = Regex.Replace(s, @"['`‘’ʻʼ]", "");
+        s = Regex.Replace(s, @"[""«»“”.,()\-]", " ");
         s = Regex.Replace(s, @"\b(MCHJ|OOO|LLC|XK|QK|AJ)\b", " ");
         return Regex.Replace(s, @"\s+", " ").Trim();
     }
@@ -168,10 +174,52 @@ public sealed class DidoxContracts
         return r.StatusCode is not (HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) && r.IsSuccessStatusCode;
     }
 
-    /// <summary>Firma uchun yaroqli token: xotiradagi, Solishtiruv sessiyasi, keyin parol bilan kirish.</summary>
+    // ---- Ishonch'ning o'z Didox paroli va sessiyalari (Solishtiruv o'rnatilmagan kompyuterlar uchun) ----------
+    // Parol hamma firmalar uchun bir xil: bir marta so'raladi va shu Windows foydalanuvchisi uchun DPAPI bilan saqlanadi.
+    // Sessiya tokenlari ham saqlanadi — har safar parol bilan kirilmaydi (Didox ko'p kirishni bloklaydi).
+
+    static readonly byte[] Entropy = Encoding.UTF8.GetBytes("Ishonch.Didox.v1");
+    public static string PasswordFile { get; set; } = Path.Combine(Paths.AppData, "didox-parol.dat");
+    public static string TokensFile { get; set; } = Path.Combine(Paths.AppData, "didox-sessiya.dat");
+
+    /// <summary>Parolni so'rash oynasi (UI dan beriladi). Argument — izoh (masalan «parol noto'g'ri»); null — bekor qilindi.</summary>
+    public static Func<string, Task<string?>>? PasswordPrompt { get; set; }
+
+    static string? ReadProtected(string path)
+    {
+        try { return File.Exists(path) ? Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser)) : null; }
+        catch { return null; }
+    }
+
+    static void WriteProtected(string path, string text)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tmp = path + ".tmp";
+        File.WriteAllBytes(tmp, ProtectedData.Protect(Encoding.UTF8.GetBytes(text), Entropy, DataProtectionScope.CurrentUser));
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    public static string OwnPassword() => ReadProtected(PasswordFile) ?? "";
+    public static void SaveOwnPassword(string pwd) => WriteProtected(PasswordFile, pwd);
+    public static void ForgetOwnPassword() { try { File.Delete(PasswordFile); } catch { } }
+
+    static Dictionary<string, string> OwnTokens()
+    {
+        try { return JsonSerializer.Deserialize<Dictionary<string, string>>(ReadProtected(TokensFile) ?? "{}") ?? new(); }
+        catch { return new(); }
+    }
+
+    static void SaveOwnToken(string tin, string token)
+    {
+        try { var t = OwnTokens(); t[tin] = token; WriteProtected(TokensFile, JsonSerializer.Serialize(t)); }
+        catch (Exception e) { Log.Error("Didox sessiyasini saqlash", e); }
+    }
+
+    /// <summary>Firma uchun yaroqli token: xotiradagi, Ishonch saqlagan sessiya, Solishtiruv sessiyasi, keyin parol bilan kirish.</summary>
     public async Task<string> TokenAsync(Firm firm, Action<string> status)
     {
         if (Session.TryGetValue(firm.Tin, out var t) && await ValidAsync(t)) return t;
+        if (OwnTokens().TryGetValue(firm.Tin, out var own) && own.Length > 0 && await ValidAsync(own)) return Session[firm.Tin] = own;
         var dirs = DataDirs();
         foreach (var dd in dirs)
         {
@@ -180,22 +228,54 @@ public sealed class DidoxContracts
                 if (toks.TryGetValue(slug, out var tok) && tok.Length > 0 && await ValidAsync(tok))
                     return Session[firm.Tin] = tok;
         }
-        var pwd = dirs.Select(SolishtiruvPassword).FirstOrDefault(p => p.Length > 0) ?? "";
-        if (pwd.Length == 0)
-            throw new InvalidOperationException("Didox sessiyasi eskirgan va Solishtiruv'da Didox paroli saqlanmagan. Solishtiruv'da shu firmaga Didox orqali bir marta kiring.");
-        status("Didox'ga kirilmoqda…");
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{Api}/v1/auth/{firm.Tin}/password/uz")
+        // Parol: Ishonch'da saqlangani, bo'lmasa Solishtiruv'dagisi, bo'lmasa foydalanuvchidan bir marta so'raladi
+        var pwd = OwnPassword();
+        var fromUser = false;
+        if (pwd.Length == 0) pwd = dirs.Select(SolishtiruvPassword).FirstOrDefault(p => p.Length > 0) ?? "";
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (pwd.Length == 0)
+            {
+                var asked = PasswordPrompt is null ? null
+                    : await PasswordPrompt(attempt == 0 ? "" : "Parol noto'g'ri bo'ldi — qayta kiriting.");
+                if (string.IsNullOrEmpty(asked)) throw new InvalidOperationException("Didox paroli kiritilmadi.");
+                pwd = asked;
+                fromUser = true;
+            }
+            status("Didox'ga kirilmoqda…");
+            var (token, code) = await LoginAsync(firm.Tin, pwd);
+            if (token is not null)
+            {
+                if (fromUser) SaveOwnPassword(pwd); // to'g'ri chiqqan parol saqlanadi (keyingi safar so'ralmaydi)
+                SaveOwnToken(firm.Tin, token);
+                return Session[firm.Tin] = token;
+            }
+            if (code == 423) throw new InvalidOperationException("Didox parol bilan kirishni vaqtincha bloklagan (423). Keyinroq urinib ko'ring.");
+            if (code is >= 400 and < 500 and not 429)
+            {
+                // Parol noto'g'ri: saqlangani o'chiriladi va qayta so'raladi
+                if (!fromUser) ForgetOwnPassword();
+                pwd = "";
+                continue;
+            }
+            throw new InvalidOperationException($"Didox'ga kirib bo'lmadi (HTTP {code}).");
+        }
+        throw new InvalidOperationException("Didox'ga kirib bo'lmadi: parol noto'g'ri.");
+    }
+
+    static async Task<(string? token, int code)> LoginAsync(string tin, string pwd)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{Api}/v1/auth/{tin}/password/uz")
         {
             Content = new StringContent(JsonSerializer.Serialize(new { password = pwd }), Encoding.UTF8, "application/json"),
         };
         req.Headers.UserAgent.ParseAdd("Mozilla/5.0");
         using var resp = await Http.SendAsync(req);
-        if ((int)resp.StatusCode == 423) throw new InvalidOperationException("Didox parol bilan kirishni vaqtincha bloklagan (423). Keyinroq urinib ko'ring.");
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"Didox'ga kirib bo'lmadi (HTTP {(int)resp.StatusCode}).");
+        if (!resp.IsSuccessStatusCode) return (null, (int)resp.StatusCode);
         var j = JsonNode.Parse(await resp.Content.ReadAsStringAsync());
         var token = Str(j?["token"]) is { Length: > 0 } a ? a : Str(j?["data"]?["token"]) is { Length: > 0 } b ? b : Str(j?["user"]?["token"]);
         if (token.Length == 0) throw new InvalidOperationException("Didox javobida token yo'q.");
-        return Session[firm.Tin] = token;
+        return (token, 200);
     }
 
     // ---- so'rovlar ----------------------------------------------------------------------------

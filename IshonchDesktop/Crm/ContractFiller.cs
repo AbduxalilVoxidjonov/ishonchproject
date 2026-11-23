@@ -25,6 +25,8 @@ public static class ContractFiller
         using (var r = new StreamReader(s))
             await core.AddScriptToExecuteOnDocumentCreatedAsync(await r.ReadToEndAsync());
         // Бухгалтерия arizalari kuzatuvi: holat o'zgarsa Windows bildirishnomasi, tab nomida son, sahifa tepasida ro'yxat
+        // Didox paroli (hamma firmalar uchun bir xil) kerak bo'lsa — bir marta so'raladi, shifrlab saqlanadi
+        DidoxContracts.PasswordPrompt = note => DidoxPasswordForm.AskAsync(tab.FindForm(), note);
         var watcher = new CrmWatcher(tab);
         watcher.UnseenChanged += n =>
         {
