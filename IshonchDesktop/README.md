@@ -157,6 +157,10 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.1
+
+- Reliz Gemini kaliti bilan yig'iladi (GitHub secret `GEMINI_API_KEY`): shartnoma maqsadi shartnoma tilida aniqlanadi va 👁 oynasida manbasi sariq bilan belgilanadi.
+
 ## 0.11.0 — Main Ishonch (CRM): shartnoma to'ldirish va Бухгалтерия kuzatuvi
 
 - Bosh sahifada **«Main Ishonch (shartnoma)»**: main.ishonchsale.uz alohida tabda (login/parolni brauzer bir marta saqlashni taklif qiladi).
