@@ -124,7 +124,8 @@ Check(!File.Exists(file + ".part"), ".part qoldirilmadi");
 
 var progress = new List<double>();
 await UpdateInstaller.DownloadAsync(info, null, new Progress<double>(progress.Add), CancellationToken.None, dl, allowLocal: true, validator: NoCheck);
-await Task.Delay(100);
+// Progress<T> xabarlarni keyinroq (navbat orqali) yetkazadi: sekin CI da 100 ms yetmasligi mumkin — 2 s gacha kutiladi
+for (var w = 0; w < 40 && !(progress.Count > 0 && progress.Max() >= 0.99); w++) await Task.Delay(50);
 Check(progress.Count > 0 && progress.Max() >= 0.99, "jarayon xabar qilindi");
 
 serveBadBytes = true;
