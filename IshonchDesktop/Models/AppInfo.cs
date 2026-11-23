@@ -49,6 +49,8 @@ public static class AppInfo
     /// <summary>Exe ga yig'ishda yozilgan xatolar yig'uvchisi manzili (bo'lmasa null).</summary>
     public static string? BuiltInCollectorUrl { get; } = Metadata("LogCollectorUrl");
     public static string? BuiltInCollectorKey { get; } = Metadata("LogCollectorKey");
+    /// <summary>Exe ga yig'ishda yozilgan Gemini API kaliti (bo'lmasa null — maqsad oddiy qoidalar bilan aniqlanadi).</summary>
+    public static string? BuiltInGeminiKey { get; } = Metadata("GeminiApiKey");
 
     static string? Metadata(string key) =>
         typeof(AppInfo).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value is { Length: > 0 } v ? v.Trim() : null;

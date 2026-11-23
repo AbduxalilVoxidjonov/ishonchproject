@@ -5,3 +5,6 @@ dist/
 *.log
 .env
 .env.local
+
+# Gemini API kaliti (faqat lokal yig'ish uchun; relizda GitHub secret GEMINI_API_KEY)
+IshonchDesktop/gemini.key

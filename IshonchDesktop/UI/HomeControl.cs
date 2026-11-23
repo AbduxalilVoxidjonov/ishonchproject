@@ -26,6 +26,7 @@ public sealed class HomeControl : UserControl
     readonly Button openUnsellable = Big("🚫   Sotib bo'lmaydigan markirovkalar");
     readonly Button openElektr = Big("⚡   Elektr (HET kabinetlari)");
     readonly Button openSolishtiruv = Big("🔍   Solishtiruv (ombor va Didox)");
+    readonly Button openCrm = Big("📝   Main Ishonch (shartnoma)");
     readonly Button openHelp = Big("❓   Yordam");
 
     public event Action<BaseEntry>? OpenOneC;
@@ -39,6 +40,7 @@ public sealed class HomeControl : UserControl
     public event Action? OpenUnsellable;
     public event Action? OpenElektr;
     public event Action? OpenSolishtiruv;
+    public event Action? OpenCrm;
     /// <summary>«Yordam» tugmasi bosildi (tugmaning o'zi — menyuni uning ostida ochish uchun).</summary>
     public event Action<Control>? HelpClicked;
     public event Action? CheckUpdatesClicked;
@@ -172,6 +174,7 @@ public sealed class HomeControl : UserControl
         right.Controls.Add(openUnsellable);
         right.Controls.Add(openElektr);
         right.Controls.Add(openSolishtiruv);
+        right.Controls.Add(openCrm);
         right.Controls.Add(openHelp);
 
         reloadBtn.Size = new Size(190, 30);
@@ -231,6 +234,7 @@ public sealed class HomeControl : UserControl
         openUnsellable.Click += (_, _) => OpenUnsellable?.Invoke();
         openElektr.Click += (_, _) => OpenElektr?.Invoke();
         openSolishtiruv.Click += (_, _) => OpenSolishtiruv?.Invoke();
+        openCrm.Click += (_, _) => OpenCrm?.Invoke();
         openHelp.Click += (_, _) => HelpClicked?.Invoke(openHelp);
         reloadBtn.Click += (_, _) => { store.Load(); Fill(Selected?.Id); };
         fileBtn.Click += (_, _) =>
@@ -294,7 +298,7 @@ public sealed class HomeControl : UserControl
         title.Height = S(m.TitleH);
         right.Width = S(m.RightW) + SystemInformation.VerticalScrollBarWidth; // aylantirish chizig'i tugmalarni siqmasin
         info.Size = S2(m.Info);
-        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, openBatchDebtor, open4790, openUnsellable, openElektr, openSolishtiruv, openHelp })
+        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, openBatchDebtor, open4790, openUnsellable, openElektr, openSolishtiruv, openCrm, openHelp })
         {
             b.Font = new Font(b.Font.FontFamily, m.ButtonFont * f, FontStyle.Bold);
             b.Size = S2(m.Big);

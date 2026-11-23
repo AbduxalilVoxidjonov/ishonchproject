@@ -157,6 +157,15 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.0 — Main Ishonch (CRM): shartnoma to'ldirish va Бухгалтерия kuzatuvi
+
+- Bosh sahifada **«Main Ishonch (shartnoma)»**: main.ishonchsale.uz alohida tabda (login/parolni brauzer bir marta saqlashni taklif qiladi).
+- **«Шартнома яратиш»** ochilishi bilan firma Didox'idan shu hamkor bilan shartnoma qidiriladi (007 shartnoma va erkin shakl 000) va maydonlar to'ldiriladi: hamkor nomi, MFO (bank nomi bilan), hisob raqami, Didox ID, raqam, summa, sanalar, maqsad, PDF fayl. «Яратиш» va «tasdiqlayman» bosilmaydi.
+- Bir nechta shartnoma bo'lsa ro'yxat; **👁** — shartnoma alohida oynada: maqsad olingan joy sariq va qizil ramkada, summa/sana/muddat/hisob/MFO o'z rangida; u yerdan «Shu shartnomani tanlash».
+- Didox'da yo'q maydonlar shartnoma PDF idan **OCR** (Windows, rus tili) va shablon bilan olinadi; maqsad **Gemini** orqali shartnoma tilida (kalit relizda GitHub secret `GEMINI_API_KEY`). Natijalar keshlanadi — qayta so'rov yuborilmaydi (tugma bosilsa yangilanadi).
+- **Бухгалтерия kuzatuvi**: har daqiqada «Масъул бўлим: Бухгалтерия» arizalari tekshiriladi; yangi yoki holati o'zgargan bo'lsa Windows bildirishnomasi («Main'dan yangi xabar — shartnomani ko'ring»), tab nomida son, sahifa tepasida ro'yxat; o'zgargan qatorlar holati yana o'zgarmaguncha qizil ramkada. Filtr o'zi «Бухгалтерияда» qilinadi.
+- Main Ishonch tabi ochiq bo'lsa ✕ dasturni yopmaydi — tray'da ishlashda davom etadi (chiqish: tray menyusi → «Chiqish»).
+
 ## 0.10.3
 
 - Ishonch kutilmaganda yopilsa, Solishtiruv jarayoni yetim qolmaydi: keyingi ochilishda eskisi o'chiriladi (bir ma'lumotlar papkasida ikkita nusxa ishlamasin).

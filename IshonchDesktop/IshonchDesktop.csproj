@@ -2,13 +2,13 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Ishonch</AssemblyName>
     <RootNamespace>IshonchDesktop</RootNamespace>
-    <Version>0.10.3</Version>
+    <Version>0.11.0</Version>
     <!-- Mahsulot nomi «Ishonch» o'zgarmaydi: eski versiyalar yangilanish faylini shu nom bo'yicha tekshiradi -->
     <Product>Ishonch</Product>
     <!-- Ko'rinadigan nom (Vazifalar menejeri, fayl xususiyatlari) va belgi -->
@@ -34,7 +34,14 @@
          kodda saqlanmaydi. Berilmasa — har kompyuterda Yordam → «Xatolar jurnali» da qo'lda kiritiladi. -->
     <AssemblyMetadata Include="LogCollectorUrl" Value="$(LogCollectorUrl)" Condition="'$(LogCollectorUrl)' != ''" />
     <AssemblyMetadata Include="LogCollectorKey" Value="$(LogCollectorKey)" Condition="'$(LogCollectorKey)' != ''" />
+    <!-- Gemini API kaliti (shartnoma maqsadini aniqlash): relizda GitHub secret GEMINI_API_KEY (muhitdan GeminiApiKey),
+         lokal yig'ishda git'ga tushmaydigan gemini.key faylidan. Repozitoriyda saqlanmaydi. -->
+    <AssemblyMetadata Include="GeminiApiKey" Value="$(GeminiApiKey)" Condition="'$(GeminiApiKey)' != ''" />
   </ItemGroup>
+
+  <PropertyGroup Condition="'$(GeminiApiKey)' == '' and Exists('$(MSBuildProjectDirectory)\gemini.key')">
+    <GeminiApiKey>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\gemini.key').Trim())</GeminiApiKey>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
@@ -66,6 +73,7 @@
     <EmbeddedResource Include="..\tasnifsoliq\extension\page-active.js" LogicalName="soliq/page-active.js" />
 
     <EmbeddedResource Include="Unmarked\driver.js" LogicalName="unmarked/driver.js" />
+    <EmbeddedResource Include="Crm\crm.js" LogicalName="crm/crm.js" />
 
     <!-- Elektr bo'limi: interfeys + parallel-app mantiqi o'zgarishsiz -->
     <EmbeddedResource Include="Elektr\web\index.html" LogicalName="elektr/index.html" />

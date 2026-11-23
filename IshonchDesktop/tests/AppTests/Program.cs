@@ -519,6 +519,146 @@ Console.WriteLine("Dovernis rejasi");
     });
     Check(parsed.Count == 1 && parsed[0].Amount == 1874696m, "Excel: faqat chiqim, summa o'qiladi");
 }
+// ---- CRM shartnoma: summa va maqsad (Didox JSON'idan) ----
+Console.WriteLine("CRM shartnoma summasi va maqsadi");
+{
+    var CT = typeof(IshonchDesktop.Crm.ContractTerms);
+    System.Text.Json.Nodes.JsonNode J(string s) => System.Text.Json.Nodes.JsonNode.Parse(s)!;
+    // Summa: tovar qatoridagi narx emas, shartnomada yozilgan summa
+    var withPart = J("""{"contractdoc":{"contractno":"12","contractname":"Oldi-sotdi"},"products":[{"name":"Muzlatkich","deliverysumwithvat":"1"}],"parts":[{"ordno":1,"title":"Shartnoma summasi","body":"Ушбу шартноманинг умумий суммаси 150 000 000 (бир юз эллик миллион) сўмни ташкил этади."}]}""");
+    Check(IshonchDesktop.Crm.ContractTerms.StatedSum(withPart) == 150_000_000m, "summa bandi matnidan, narx (1) emas");
+    Check(IshonchDesktop.Crm.ContractTerms.StatedSum(J("""{"contractdoc":{"contractno":"1","contractsum":"25000000.00"}}""")) == 25_000_000m, "summa alohida maydondan");
+    Check(IshonchDesktop.Crm.ContractTerms.StatedSum(J("""{"parts":[{"body":"Общая сумма договора составляет 1.250.000,50 сум"}]}""")) == 1_250_000.50m, "ruscha matn, nuqtali minglik");
+    var noSum = J("""{"contractdoc":{"contractno":"7"},"products":[{"name":"Televizor","deliverysumwithvat":"3500000"}],"parts":[{"body":"Товар нархи ҳисобварақ-фактурада кўрсатилади."}]}""");
+    Check(IshonchDesktop.Crm.ContractTerms.StatedSum(noSum) is null, "summa yozilmagan shartnoma — null (narx olinmaydi)");
+    var (ctS1, ctN1) = IshonchDesktop.Crm.ContractTerms.SumOrDefault(null);
+    Check(ctS1 == 1_000_000_000m && ctN1.Contains("1 000 000 000"), "summa yo'q — 1 mlrd va eslatma");
+    var (ctS2, ctN2) = IshonchDesktop.Crm.ContractTerms.SumOrDefault(150_000_000m);
+    Check(ctS2 == 150_000_000m && ctN2 == "", "summa bor — eslatmasiz");
+    Check(IshonchDesktop.Crm.ContractTerms.ParseAmount("1,500,000.50") == 1_500_000.50m && IshonchDesktop.Crm.ContractTerms.ParseAmount("150 000 000") == 150_000_000m, "summa ko'rinishlari");
+
+    // Eng oxirgi faktura: faqat shu shartnoma raqami bo'yicha
+    var refs = new List<IshonchDesktop.Crm.InvoiceRef>
+    {
+        new("a", 0, "№ 12", "01.03.2025", "2025-03-01 10:00"),
+        new("b", 0, "12", "15.04.2025", "2025-04-15 09:00"),
+        new("c", 0, "13", "20.05.2025", "2025-05-20 09:00"),
+        new("d", 1, "12", "2025-04-15", "2025-04-15 11:00"),
+    };
+    Check(IshonchDesktop.Crm.ContractTerms.LatestFor(refs, "№12")?.DocId == "d", "shu shartnomaning eng oxirgi fakturasi (sana, keyin vaqt)");
+    Check(IshonchDesktop.Crm.ContractTerms.LatestFor(refs, "99") is null, "shartnoma bo'yicha faktura yo'q — null");
+
+    // Maqsad: markirovkali tovar bo'lsa — uning guruhi
+    var inv = J("""{"contractdoc":{"contractno":"12"},"productlist":{"products":[{"name":"Stul","catalogcode":"09401001001000000","catalogname":"Stullar","deliverysumwithvat":"900000","marks":{"kiz":[]}},{"name":"Samsung muzlatkich RB30","catalogcode":"08418001001000000","catalogname":"Muzlatkichlar","deliverysumwithvat":"500000","marks":{"kiz":["0104600000000000215abc"]}},{"name":"LG kir yuvish mashinasi","catalogcode":"08450001001000000","catalogname":"Kir yuvish mashinalari","deliverysumwithvat":"400000","marks":{"identtransupak":["x1"]}}]}}""");
+    var lines = IshonchDesktop.Crm.ContractTerms.InvoiceLines(inv);
+    Check(lines.Count == 3 && lines.Count(l => l.Marked) == 2, "faktura qatorlari va markirovka belgisi");
+    Check(IshonchDesktop.Crm.ContractTerms.InvoiceContractNo(inv) == "12", "fakturadagi shartnoma raqami");
+    Check(IshonchDesktop.Crm.ContractTerms.PurposeFrom(lines) == "Maishiy texnika", "markirovkali — maishiy texnika (markirovkasiz stul hisobga olinmaydi)");
+    // Markirovkasiz: tovar turiga qarab
+    var plain = IshonchDesktop.Crm.ContractTerms.InvoiceLines(J("""{"productlist":{"products":[{"name":"Stul","catalogcode":"09401001001000000","catalogname":"Stullar","deliverysumwithvat":"900000"},{"name":"Qog'oz A4","catalogcode":"04802001001000000","catalogname":"Qog'oz","deliverysumwithvat":"100000"},{"name":"Shakar","catalogcode":"01701001001000000","catalogname":"Shakar","deliverysumwithvat":"200000"}]}}"""));
+    Check(IshonchDesktop.Crm.ContractTerms.PurposeFrom(plain) == "Mebel; Shakar; Qog'oz mahsulotlari", "markirovkasiz — turlar summasi bo'yicha");
+    Check(IshonchDesktop.Crm.ContractTerms.PurposeFrom(new List<IshonchDesktop.Crm.InvoiceLine>()) == "", "qator yo'q — bo'sh maqsad");
+}
+// ---- CRM shartnoma: PDF (OCR matni) shabloni ----
+Console.WriteLine("CRM shartnoma PDF shabloni (OCR)");
+{
+    // Haqiqiy skanerlangan erkin shakl shartnomasining OCR parchasi (ustunlar aralashgan, «МФО:О1О71», «2()26»)
+    var ocr1 = """
+        2.1. Общая стоимость работ, предусмотренных договором, составляет: 9 811 200.00 (Девять миллионов восемьсот
+        одиннадцать тысяч двести) сумм с НДС.
+        12.6. Срок действия договора: до 31 декабря 2()26 г.
+        Банк: АИТ «Ориент финанс»
+        Р/С: 20208000105241156001
+        ЗАКАЗЧИК
+        р/с 20208000905324182001
+        ТОШКЕНТ Ш., АТ “ АЛОКАБАНК” БОШ
+        МФО:О1О71
+        инн: 307493514
+        Код банка: 00401
+        инн: 308059584
+        """;
+    var f1 = IshonchDesktop.Crm.ContractPdfTemplate.Parse(ocr1, "20208000905324182001", "00401");
+    Check(f1.Sum == 9_811_200m, "PDF: «Общая стоимость … составляет» summasi");
+    Check(f1.ExpireDate == "2026-12-31", "PDF: «Срок действия: до 31 декабря 2()26» — OCR xatosi bilan");
+    Check(f1.PartnerAccount == "20208000105241156001", "PDF: hamkor hisobi (firmaning o'z hisobi emas)");
+    Check(f1.PartnerMfo == "01071", "PDF: MFO «О1О71» → 01071, firmaning MFO si chiqarib tashlanadi");
+    // Didox yaratgan shartnoma PDF i: MFO lar oxirida yonma-yon
+    var ocr2 = "ЮР: 20208000605652898001\nБанк: САМАРКАНД Ш., “КАПИТАЛБАНК“ АТ\nЮР: 20208000905324182001\nМФО: 00401\nМФО: 01061\n";
+    var f2 = IshonchDesktop.Crm.ContractPdfTemplate.Parse(ocr2, "20208000905324182001", "00401");
+    Check(f2.PartnerAccount == "20208000605652898001" && f2.PartnerMfo == "01061", "PDF: Didox shakli — hamkor hisobi va MFO si");
+    Check(IshonchDesktop.Crm.ContractPdfTemplate.Sum(IshonchDesktop.Crm.ContractPdfTemplate.Normalize("Общая сумма договора 3000 000 000 (Три миллиарда) сум 00 тийин")) == 3_000_000_000m,
+        "PDF: «3000 000 000» (OCR guruhlashi)");
+    Check(IshonchDesktop.Crm.ContractPdfTemplate.Expire("Ушбу шартнома 31.12.2026 йилгача амал қилади") == "2026-12-31", "PDF: o'zbekcha «…гача амал қилади»");
+    Check(IshonchDesktop.Crm.ContractPdfTemplate.ParseDate("«15» мая 2026") == "2026-05-15" && IshonchDesktop.Crm.ContractPdfTemplate.ParseDate("1 mart 2027") == "2027-03-01", "PDF: sana so'z bilan");
+    var none = IshonchDesktop.Crm.ContractPdfTemplate.Parse("Окончательная сумма Договора определяется путем сложения всех сумм Спецификаций", null, null);
+    Check(none.Sum is null && none.ExpireDate is null && none.PartnerAccount is null, "PDF: summa yozilmagan — hech narsa to'qib chiqarilmaydi");
+    var red = IshonchDesktop.Crm.GeminiPurpose.Redact("р/с 20208000105241156001, ИНН: 307493514, JShShIR 31809900231725, тел +998 33 003 63 33, сумма 9 811 200.00");
+    Check(!red.Contains("20208000105241156001") && !red.Contains("307493514") && !red.Contains("31809900231725") && !red.Contains("003 63 33") && red.Contains("9 811 200.00"),
+        "Gemini'ga yuborishdan oldin hisob, STIR, JShShIR va telefon olib tashlanadi, summa qoladi");
+
+    // Ko'rish oynasi: maqsad manbasi va maydonlar OCR so'zlari ichidan topiladi
+    IshonchDesktop.Crm.OcrLine Ln(double y, params string[] ws) =>
+        new(string.Join(" ", ws), ws.Select((w, i) => new IshonchDesktop.Crm.OcrWord(w, 0.1 + i * 0.08, y, 0.07, 0.02)).ToList());
+    var hp = new List<IshonchDesktop.Crm.OcrPage>
+    {
+        new(Array.Empty<byte>(), 1000, 1400, new()
+        {
+            Ln(0.10, "ДОГОВОР", "-", "23/11/2026"),
+            Ln(0.20, "1.", "ПРЕДМЕТ", "ДОГОВОРА"),
+            Ln(0.22, "Исполнитель", "обязуется", "изготовить,", "поставить"),
+            Ln(0.24, "и", "установить", "металлические", "стелажи"),   // OCR xatosi: «стелажи»
+            Ln(0.60, "12.6.", "Срок", "действия", "договора:", "до", "31", "декабря", "2()26", "г."),
+            Ln(0.80, "Р/С:", "20208000105241156001"),
+            Ln(0.82, "МФО:О1О71"),
+        }),
+    };
+    var qm = IshonchDesktop.Crm.ContractHighlights.FindQuote(hp, "Исполнитель обязуется изготовить, поставить и установить металлические стеллажи", "maqsad");
+    Check(qm.Count >= 8 && qm.All(m => m.Y >= 0.22 && m.Y <= 0.24), "ko'rish: maqsad iqtibosi ikki qatorda topiladi (OCR xatosi bilan)");
+    Check(IshonchDesktop.Crm.ContractHighlights.FindQuote(hp, "Поставка бытовой техники и мебели для дома", "maqsad").Count == 0, "ko'rish: matnda yo'q iqtibos belgilanmaydi");
+    Check(IshonchDesktop.Crm.ContractHighlights.FindDigits(hp, "20208000105241156001", "hisob").Single().Y == 0.80, "ko'rish: hisob raqam");
+    Check(IshonchDesktop.Crm.ContractHighlights.FindDigits(hp, "01071", "mfo").Count == 1, "ko'rish: MFO («О1О71» OCR xatosi bilan)");
+    Check(IshonchDesktop.Crm.ContractHighlights.FindDigits(hp, "41156", "mfo").Count == 0, "ko'rish: hisob raqam ichidagi 5 raqam MFO deb belgilanmaydi");
+    Check(IshonchDesktop.Crm.ContractHighlights.FindDate(hp, "2026-12-31", "muddat").Count == 3, "ko'rish: «31 декабря 2()26» sanasi");
+    var html = IshonchDesktop.Crm.ContractHighlights.Html("T", hp, new List<(IshonchDesktop.Crm.HighlightTarget, List<IshonchDesktop.Crm.Mark>)>
+        { (new("maqsad", "Maqsad", "Изготовление <стеллажей>", "#fde047"), qm) }, "izoh");
+    Check(html.Contains("p1.png") && html.Contains("#fde047") && html.Contains("&lt;стеллажей&gt;"), "ko'rish: HTML sahifa (rasm, sariq belgi, matn ekranlangan)");
+
+    // Бухгалтерия kuzatuvi: yangi kelgan va holati o'zgarganlar; birinchi tekshiruvda xabar yo'q
+    IshonchDesktop.Crm.CrmItemState St(string id, string key) => new(id, "1" + id, "Hamkor " + id, "Firma", key, "Holat " + key, "2026-11-23T10:00:00Z");
+    var before = new Dictionary<string, IshonchDesktop.Crm.CrmItemState> { ["a"] = St("a", "K1"), ["b"] = St("b", "K1"), ["c"] = St("c", "K2") };
+    var nowList = new[] { St("a", "K1"), St("b", "K3"), St("d", "K1") };   // b o'zgardi, d yangi, c ketdi
+    var ch = IshonchDesktop.Crm.CrmWatcher.Diff(before, nowList);
+    Check(ch.Count == 2 && ch.Any(x => x.Id == "b" && !x.IsNew && x.OldStatus == "Holat K1" && x.NewStatus == "Holat K3") && ch.Any(x => x.Id == "d" && x.IsNew),
+        "kuzatuv: holati o'zgargan va yangi kelgan arizalar (ketgani hisoblanmaydi)");
+    Check(IshonchDesktop.Crm.CrmWatcher.Diff(null, nowList).Count == 0, "kuzatuv: birinchi tekshiruvda eski arizalar uchun xabar yo'q");
+    var chB = ch.First(x => x.Id == "b");
+    var nowMap = nowList.ToDictionary(x => x.Id);
+    Check(IshonchDesktop.Crm.CrmWatcher.Still(chB, nowMap), "kuzatuv: holati o'zgarmagan xabar ro'yxatda qoladi");
+    nowMap["b"] = St("b", "K4");
+    Check(!IshonchDesktop.Crm.CrmWatcher.Still(chB, nowMap), "kuzatuv: holati yana o'zgarsa xabar o'zi ketadi");
+    nowMap.Remove("b");
+    Check(!IshonchDesktop.Crm.CrmWatcher.Still(chB, nowMap), "kuzatuv: Бухгалтерия'dan chiqsa xabar o'zi ketadi");
+
+    // Kesh: shartnoma va PDF qayta so'ralmaydi, ro'yxat 1 kun saqlanadi
+    var oldDir = IshonchDesktop.Crm.CrmCache.Dir;
+    IshonchDesktop.Crm.CrmCache.Dir = Path.Combine(Path.GetTempPath(), "ish-crm-kesh-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        var kc = new IshonchDesktop.Crm.DidoxContract("DOC1", "59", "2026-10-20", "", "Imzolangan", "\"X\" MCHJ", "313172579", "20208000907502224001", "00873",
+            "", 9_811_200m, "Поставка сотовых телефонов", "n1", false, "00401", "matn", "tovar");
+        IshonchDesktop.Crm.CrmCache.PutDoc(kc, "maqsad Gemini orqali aniqlandi", new byte[] { 0x25, 0x50, 0x44, 0x46 });
+        var kBack = IshonchDesktop.Crm.CrmCache.GetDoc("DOC1");
+        Check(kBack is { } b && b.c == kc && b.note.Contains("Gemini") && b.pdf?.Length == 4, "kesh: shartnoma, izoh va PDF qaytadi");
+        Check(IshonchDesktop.Crm.CrmCache.GetDoc("YOQ") is null, "kesh: saqlanmagan hujjat — null");
+        IshonchDesktop.Crm.CrmCache.PutList("308059584", "207180749", new List<System.Text.Json.Nodes.JsonObject> { new() { ["doc_id"] = "DOC1" } });
+        Check(IshonchDesktop.Crm.CrmCache.GetList("308059584", "207180749")?.Single()["doc_id"]?.ToString() == "DOC1", "kesh: ro'yxat qaytadi");
+        var lp = Directory.GetFiles(Path.Combine(IshonchDesktop.Crm.CrmCache.Dir, "royxat")).Single();
+        File.SetLastWriteTimeUtc(lp, DateTime.UtcNow.AddDays(-2));
+        Check(IshonchDesktop.Crm.CrmCache.GetList("308059584", "207180749") is null, "kesh: 1 kundan eski ro'yxat qayta so'raladi");
+    }
+    finally { try { Directory.Delete(IshonchDesktop.Crm.CrmCache.Dir, true); } catch { } IshonchDesktop.Crm.CrmCache.Dir = oldDir; }
+}
+
 listener.Stop();
 try { Directory.Delete(tmp, true); } catch { }
 {

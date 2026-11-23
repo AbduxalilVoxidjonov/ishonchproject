@@ -13,6 +13,8 @@ public sealed class MainForm : Form
     int CloseSize => LogicalToDeviceUnits(14);
 
     readonly BaseStore store = new();
+    /// <summary>Haqiqiy chiqish (tray menyusidagi «Chiqish»): ✕ dagi kabi tray'ga yashirilmaydi.</summary>
+    public bool ExitRequested { get; set; }
     readonly Settings settings = Settings.Load();
     readonly TabControl tabs = new()
     {
@@ -56,6 +58,7 @@ public sealed class MainForm : Form
         home.OpenUnsellable += OpenUnsellable;
         home.OpenElektr += () => OpenElektrTab();
         home.OpenSolishtiruv += () => OpenSolishtiruvTab();
+        home.OpenCrm += () => OpenCrmTab();
         home.SelectionChanged += b => settings.LastBaseId = b.Id;
 
         updater = new UpdateCoordinator(this, settings, home);
@@ -66,7 +69,19 @@ public sealed class MainForm : Form
 
         tabs.DrawItem += DrawTab;
         tabs.MouseDown += TabMouseDown;
-        FormClosing += (_, _) => { SaveOpenTabs(); SaveWindow(); settings.Save(); };
+        FormClosing += (_, e) =>
+        {
+            SaveOpenTabs(); SaveWindow(); settings.Save();
+            // Main Ishonch kuzatuvi ochiq bo'lsa — ✕ bosilganda dastur yopilmaydi, tray'da (soat yonida) ishlashda davom etadi.
+            // Chiqish: tray menyusidagi «Chiqish». Yangilanish va Windows o'chishi bunga kirmaydi.
+            if (!ExitRequested && e.CloseReason == CloseReason.UserClosing && updater.PendingRestart is null
+                && FindTab(CrmKey) is not null && Crm.CrmWatcher.Current is { } w)
+            {
+                e.Cancel = true;
+                Hide();
+                w.ShowHiddenTip();
+            }
+        };
         // Yangilanishdan keyin yangi nusxa ishga tushadi (ma'lumotlar saqlangandan so'ng)
         FormClosed += (_, _) =>
         {
@@ -133,6 +148,7 @@ public sealed class MainForm : Form
                 if (key == ElektrKey) OpenElektrTab(select: false);
                 else if (key == SolishtiruvTab.Key) OpenSolishtiruvTab(select: false);
                 else if (key == UnsellableKey) OpenUnsellableTab(select: false);
+                else if (key == CrmKey) OpenCrmTab(select: false);
                 else if (key == "soliq") OpenSoliqTab(null, select: false);
                 else if (key.StartsWith("soliq-") && store.Bases.FirstOrDefault(b => "soliq-" + b.Inn == key) is { } sb) OpenSoliqTab(sb, select: false);
                 else if (store.Bases.FirstOrDefault(b => b.ProfileKey == key) is { } bb) OpenBase(bb, select: false);
@@ -335,6 +351,21 @@ public sealed class MainForm : Form
         return AddWebTab(new WebTab(b.Db + " — " + b.Firm, key, b.Url), key, select);
     }
 
+    const string CrmKey = "crm";
+
+    /// <summary>Main Ishonch (main.ishonchsale.uz): «Шартнома яратиш» oynasini Didox'dagi eng yangi shartnoma bilan to'ldirish.</summary>
+    WebTab OpenCrmTab(bool select = true)
+    {
+        if (FindTab(CrmKey) is { } existing)
+        {
+            if (select) tabs.SelectedTab = existing;
+            return existing.Controls.OfType<WebTab>().First();
+        }
+        var tab = new WebTab("Main Ishonch", CrmKey, "https://main.ishonchsale.uz/mf2/new-payments");
+        tab.BeforeNavigate = t => Crm.ContractFiller.AttachAsync(t, () => store.Bases);
+        return AddWebTab(tab, CrmKey, select);
+    }
+
     WebTab OpenSoliqTab(BaseEntry? b, bool select = true)
     {
         // Soliq kabineti firma INN bo'yicha alohida profilda: bir nechta firma yonma-yon kira oladi
@@ -406,7 +437,7 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(page);
         if (select) tabs.SelectedTab = page;
 
-        web.TitleChanged += w => { page.Text = Short(w.Title); tabs.Invalidate(); };
+        web.TitleChanged += w => { if (key != CrmKey) page.Text = Short(w.Title); tabs.Invalidate(); };
         web.OpenRequested += (w, url) =>
         {
             // Yangi oyna so'ralsa — o'sha profil bilan yangi tab (login saqlanadi)

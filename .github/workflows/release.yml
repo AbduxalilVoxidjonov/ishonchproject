@@ -40,6 +40,8 @@ jobs:
         env:
           LogCollectorUrl: ${{ vars.LOG_COLLECTOR_URL }}
           LogCollectorKey: ${{ secrets.LOG_COLLECTOR_KEY }}
+          # Shartnoma maqsadini aniqlash uchun Gemini kaliti (Secrets: GEMINI_API_KEY); berilmasa maqsad oddiy qoidalar bilan
+          GeminiApiKey: ${{ secrets.GEMINI_API_KEY }}
         run: >
           dotnet publish IshonchDesktop/IshonchDesktop.csproj -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
