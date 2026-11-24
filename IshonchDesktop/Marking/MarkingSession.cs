@@ -217,7 +217,7 @@ public sealed class MarkingSession : IDisposable
             await Task.Yield(); // so'rovga javob oqimi bloklanmasin
             using var dialog = new SaleDialog(baseEntry, getSoliqTab, receipt);
             Log.Write("sotish oynasi ochilmoqda: " + receipt.Lines.Count + " qator");
-            dialog.ShowDialog(oneC.FindForm());
+            await dialog.ShowAsync(); // modal emas: asosiy oynadagi my.soliq.uz tabiga o'tib kirish mumkin
             Log.Write("sotish oynasi yopildi, sotildi=" + (dialog.Result is not null));
             return dialog.Result is { } r
                 ? new { ok = true, sold = true, receiptSeq = r.ReceiptSeq, fiscalSign = r.FiscalSign, qrCodeUrl = r.QrCodeUrl, dateTime = r.DateTime }

@@ -24,6 +24,7 @@ public sealed class HomeControl : UserControl
     readonly Button openBatchDebtor = Big("📥   Hamma bazalar: debitor/kreditor (xls)");
     readonly Button open4790 = Big("🧾   4790 to'ldiruvchi");
     readonly Button openUnsellable = Big("🚫   Sotib bo'lmaydigan markirovkalar");
+    readonly Button openMarkCheck = Big("🔎   Markirovka tekshirish (soliq.uz)");
     readonly Button openElektr = Big("⚡   Elektr (HET kabinetlari)");
     readonly Button openSolishtiruv = Big("🔍   Solishtiruv (ombor va Didox)");
     readonly Button openCrm = Big("📝   Main Ishonch (shartnoma)");
@@ -38,6 +39,8 @@ public sealed class HomeControl : UserControl
     public event Action<BaseEntry>? OpenDebtor;
     public event Action<BaseEntry>? OpenDoverennost;
     public event Action? OpenUnsellable;
+    /// <summary>«Markirovka tekshirish»: tanlangan baza (bo'lmasa null — umumiy my.soliq.uz tabi).</summary>
+    public event Action<BaseEntry?>? OpenMarkCheck;
     public event Action? OpenElektr;
     public event Action? OpenSolishtiruv;
     public event Action? OpenCrm;
@@ -172,6 +175,7 @@ public sealed class HomeControl : UserControl
         right.Controls.Add(openBatchDebtor);
         right.Controls.Add(open4790);
         right.Controls.Add(openUnsellable);
+        right.Controls.Add(openMarkCheck);
         right.Controls.Add(openElektr);
         right.Controls.Add(openSolishtiruv);
         right.Controls.Add(openCrm);
@@ -232,6 +236,7 @@ public sealed class HomeControl : UserControl
         openBatchDebtor.Click += (_, _) => OpenBatchDebtor?.Invoke();
         open4790.Click += (_, _) => { if (Selected is { } b) Open4790?.Invoke(b); };
         openUnsellable.Click += (_, _) => OpenUnsellable?.Invoke();
+        openMarkCheck.Click += (_, _) => OpenMarkCheck?.Invoke(Selected);
         openElektr.Click += (_, _) => OpenElektr?.Invoke();
         openSolishtiruv.Click += (_, _) => OpenSolishtiruv?.Invoke();
         openCrm.Click += (_, _) => OpenCrm?.Invoke();
@@ -298,7 +303,7 @@ public sealed class HomeControl : UserControl
         title.Height = S(m.TitleH);
         right.Width = S(m.RightW) + SystemInformation.VerticalScrollBarWidth; // aylantirish chizig'i tugmalarni siqmasin
         info.Size = S2(m.Info);
-        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, openBatchDebtor, open4790, openUnsellable, openElektr, openSolishtiruv, openCrm, openHelp })
+        foreach (var b in new[] { openOneC, openSoliq, openMarking, openUnmarked, openDoverennost, openDebtor, openBatchDebtor, open4790, openUnsellable, openMarkCheck, openElektr, openSolishtiruv, openCrm, openHelp })
         {
             b.Font = new Font(b.Font.FontFamily, m.ButtonFont * f, FontStyle.Bold);
             b.Size = S2(m.Big);

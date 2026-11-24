@@ -748,6 +748,41 @@ try { Directory.Delete(tmp, true); } catch { }
             Console.WriteLine($"    {p.Date:dd.MM} №{p.Number} {p.Amount:N0} {p.Counterparty} | dog:{p.Contract} | {p.GoodsName}");
     }
 }
+Console.WriteLine("Markirovka tekshirish bo'limi");
+{
+    const string c1 = "0104780092902109215'Abc\"12;x,y", c2 = "010478009290210921ZZZ999";
+    var fromText = IshonchDesktop.Marking.MarkingCodeList.FromText(c1 + "\r\n\r\n  " + c2 + "\u001d  \r\n" + c1 + "\n1\tTovar nomi\t" + c2 + "\nizoh matni bor qator\n");
+    Check(fromText.Count == 2 && fromText[0] == c1 && fromText[1] == c2, "matndan kodlar: har qatorda bitta, takrorsiz, «;» va tirnoq kod ichida qoladi");
+    Check(IshonchDesktop.Marking.MarkingCodeList.FromText("").Count == 0, "bo'sh matn — kod yo'q");
+    var fromCells = IshonchDesktop.Marking.MarkingCodeList.FromCells(new[] { new object?[] { "№", "Kod" }, new object?[] { 1, c1 }, new object?[] { 2.0, null, c2 }, new object?[] { 3, c1 } });
+    Check(fromCells.Count == 2 && fromCells[1] == c2, "Excel kataklaridan kodlar: ustun ahamiyatsiz, sarlavha tashlanadi");
+    Check(IshonchDesktop.Marking.MarkingCodeList.BarcodeOf("0104780074206916215abc") == "4780074206916", "kod ichidagi GTIN dan shtrix-kod");
+
+    var ok = IshonchDesktop.Marking.MarkingCodeList.ToRow(c1, JsonSerializer.SerializeToElement(new
+    {
+        ok = true, verdict = "available", operation = "Ulgurji savdo", lastStir = "307 500 210", stirMatch = true,
+        history = new { product = "Konditsioner", size = "1 dona", importer = "Zavod", mxik = "08415001001120001", barcode = "4780092902109", last = new { company = "BIG WORLD", date = "20.11.2026" } },
+    }));
+    Check(ok.Verdict == "available" && ok.VerdictText == "Sotsa bo'ladi" && ok.LastStir == "307500210" && ok.Product == "Konditsioner" && ok.Company == "BIG WORLD" && ok.Date == "20.11.2026", "sotsa bo'ladigan kod qatori");
+    var sold = IshonchDesktop.Marking.MarkingCodeList.ToRow(c2, JsonSerializer.SerializeToElement(new { ok = true, verdict = "sold", operation = "Ulgurji savdo", lastStir = "111", stirMatch = false }));
+    Check(sold.VerdictText == "Sotib bo'lmaydi" && sold.Note.Contains("boshqa STIR"), "boshqa STIR dagi kod — sotib bo'lmaydi, sababi yoziladi");
+    var logged = IshonchDesktop.Marking.MarkingCodeList.ToRow(c2, JsonSerializer.SerializeToElement(new { ok = true, verdict = "unknown", reason = "kiring", notLoggedIn = true }));
+    Check(logged.NotLoggedIn && logged.VerdictText == "Aniqlanmadi" && logged.Note == "kiring", "kirilmagan holat ajratiladi");
+
+    var tasnif = IshonchDesktop.Marking.MarkingCodeList.ParseTasnif(JsonSerializer.SerializeToElement(new { data = new { content = new[] { new { mxikCode = "08415001001120001", mxikName = "Konditsionerlar" }, new { mxikCode = "08415001001120002", mxikName = "Boshqa" } } } }));
+    Check(tasnif.Status == "Bor" && tasnif.Mxik == "08415001001120001, 08415001001120002" && tasnif.Name.Contains("Boshqa"), "tasnif javobi: MXIK lar ro'yxati");
+    Check(IshonchDesktop.Marking.MarkingCodeList.ParseTasnif(JsonSerializer.SerializeToElement(new { data = new { content = Array.Empty<object>() } })).Status == "Topilmadi", "tasnifda yo'q");
+    Check((ok with { TasnifMxik = tasnif.Mxik }).MxikMatch == "✓ Mos" && (ok with { TasnifMxik = "0000" }).MxikMatch == "✗ Mos emas" && ok.MxikMatch == "", "MXIK mosligi");
+
+    var sheet = IshonchDesktop.Marking.MarkingCodeList.ToSheet(new[] { ok, sold });
+    Check(sheet.Count == 3 && (string?)sheet[0][2] == "Natija" && (string?)sheet[1][2] == "✓ Sotsa bo'ladi" && (string?)sheet[2][2] == "✗ Sotib bo'lmaydi" && (string?)sheet[1][1] == c1, "natija jadvali (.xlsx uchun)");
+    var xlsx = Path.Combine(Path.GetTempPath(), "ishonch-test-" + Guid.NewGuid().ToString("N") + ".xlsx");
+    IshonchDesktop.Debtors.XlsxWriter.Save(xlsx, "Markirovka", sheet);
+    var reread = IshonchDesktop.Marking.MarkingCodeList.FromFile(xlsx);
+    Check(reread.Count == 2 && reread[0] == c1 && reread[1] == c2, "saqlangan .xlsx qayta o'qilganda kodlar o'zgarmaydi");
+    try { File.Delete(xlsx); } catch { }
+}
+
 listener.Stop();
 try { Directory.Delete(tmp, true); } catch { }
 Console.WriteLine(failures == 0 ? "\nHAMMASI YAXSHI" : $"\n{failures} ta xato");

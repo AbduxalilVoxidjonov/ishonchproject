@@ -337,12 +337,28 @@ public sealed class CommunicatorTab : UserControl
         SetBusy(true);
         try
         {
+            // Markirovka kodlarining IKPU si my.soliq.uz dan olinadi — har firmaning o'z soliq tabi bor va unga ERI kalit bilan
+            // kirilgan bo'lishi kerak. Kirilmagan bo'lsa har kod alohida «topilmadi» bo'lib, sabab ko'rinmay qolardi.
+            // (30 ta kod bo'lsa oyna bir necha daqiqa «aylanib» turardi.) Endi oldindan tekshiriladi va kirilmagan bo'lsa soliq.uz
+            // so'rovlari tashlab ketiladi; qadoq kodlari baribir Communicator dan olinadi.
+            // my.soliq.uz faqat IKPU uchun kerak: 1C hujjatida IKPU bor bo'lsa sotish usiz ham mumkin (kodlarning IKPU si
+            // qo'shimcha tekshiruv, xolos); IKPU yo'q tovar bo'lsagina kirish shart.
+            var soliqReady = true;
+            if (lines.Any(l => l.IsMarked && l.Source.Codes.Any(c => !l.CodeMxik.ContainsKey(c))))
+            {
+                Log("my.soliq.uz ga kirilganligi tekshirilmoqda…");
+                soliqReady = await SoliqBridge.IsLoggedInAsync(getSoliqTab);
+                if (!soliqReady && lines.Any(l => l.IsMarked && l.ClassCode.Length != 17))
+                    Problem(SoliqBridge.NotLoggedInMessage + ". Shu firmaning my.soliq.uz tabi asosiy oynada ochildi — kirgach «" + ikpuBtn.Text + "» tugmasini qayta bosing (IKPU si yo'q tovarlar uchun kerak).");
+                else if (!soliqReady)
+                    Log("my.soliq.uz ga kirilmagan — kodlarning IKPU tekshiruvi o'tkazib yuborildi (IKPU 1C hujjatidan olingan, sotish mumkin). Tekshirish kerak bo'lsa: asosiy oynadagi my.soliq.uz tabiga kiring va «" + ikpuBtn.Text + "» ni qayta bosing.");
+            }
             foreach (var l in lines)
             {
                 if (l.IsMarked)
                 {
                     // Har bir kodning MXIK i my.soliq.uz dan (panel tekshirganlari qayta so'ralmaydi)
-                    foreach (var code in l.Source.Codes.Where(c => !l.CodeMxik.ContainsKey(c)))
+                    foreach (var code in soliqReady ? l.Source.Codes.Where(c => !l.CodeMxik.ContainsKey(c)).ToList() : new List<string>())
                     {
                         var found = await SoliqBridge.LookupProductAsync(getSoliqTab, code);
                         if (found.Mxik.Length == 17) l.CodeMxik[code] = found.Mxik;
@@ -378,8 +394,10 @@ public sealed class CommunicatorTab : UserControl
                 map.Save(l);
             }
         }
-        catch (Exception e) when (e is UzposException or IOException) { Problem("Xato: " + e.Message); }
-        finally { SetBusy(false); RefreshGrid(); }
+        // Oyna ish tugamasdan yopilgan (masalan soliq tabi uzoq ochilganda): xato emas, shunchaki to'xtaydi
+        catch (ObjectDisposedException) when (IsDisposed || Disposing) { return; }
+        catch (Exception e) when (e is UzposException or IOException or HttpRequestException or TaskCanceledException) { Problem("Xato: " + e.Message); }
+        finally { if (!IsDisposed && !Disposing) { SetBusy(false); RefreshGrid(); } }
     }
 
     // ---- kodlarni tekshirish (sotishsiz) ----------------------------------------------------
@@ -390,17 +408,54 @@ public sealed class CommunicatorTab : UserControl
         try
         {
             var bad = 0;
-            foreach (var l in lines.Where(l => l.IsMarked && l.ClassCode.Length == 17))
+            var checkedCount = 0;
+            var soliqReady = await SoliqBridge.IsLoggedInAsync(getSoliqTab);
+            Log(soliqReady
+                ? "Kodlar my.soliq.uz da tekshirilmoqda (u aniqlay olmaganlari — fiskal modulda)…"
+                : "my.soliq.uz ga kirilmagan — kodlar fiskal modul orqali tekshirilmoqda (my.soliq.uz da tekshirish uchun asosiy oynadagi soliq tabiga kiring)…");
+            var via = new Dictionary<string, int>();
+            foreach (var l in lines.Where(l => l.IsMarked && (soliqReady || l.ClassCode.Length == 17)))
                 foreach (var code in l.Source.Codes)
                 {
-                    var r = await client.ValidateMarkingAsync(code, l.ClassCode);
-                    if (!r.IsValid) { bad++; Log($"✗ {l.Name}: kod yaroqsiz ({Mask(code)})."); }
-                    else if (r.AlreadySold) { bad++; Log($"✗ {l.Name}: kod allaqachon sotilgan ({Mask(code)})."); }
+                    var r = await CheckCodeAsync(l, code, soliqReady);
+                    checkedCount++;
+                    via[r.Via] = via.GetValueOrDefault(r.Via) + 1;
+                    if (!r.Ok) { bad++; Log($"✗ {l.Name}: {Mask(code)} — {r.Reason}."); }
                 }
-            Log(bad == 0 ? "✓ Barcha kodlar yaroqli va sotilmagan." : $"{bad} ta kod muammoli.");
+            var how = string.Join(", ", via.Select(p => $"{p.Key}: {p.Value}"));
+            Log(bad == 0 ? $"✓ Barcha {checkedCount} ta kod yaroqli va sotilmagan ({how})." : $"{bad} / {checkedCount} ta kod muammoli ({how}).");
         }
-        catch (Exception e) when (e is UzposException or IOException) { Problem("Xato: " + e.Message); }
+        catch (Exception e) when (e is UzposException or IOException or HttpRequestException or TaskCanceledException)
+        {
+            Problem("Kodlarni tekshirib bo'lmadi: " + e.Message + " — my.soliq.uz da tekshirish uchun asosiy oynadagi soliq tabiga ERI kalit bilan kiring va qayta bosing.");
+        }
         finally { SetBusy(false); }
+    }
+
+    /// <summary>
+    /// Bitta markirovka kodini tekshiradi. my.soliq.uz ga kirilgan bo'lsa — avval o'sha yerda (kodning egasi va holati: boshqa
+    /// STIR da yoki sotilgan bo'lsa — yaroqsiz); u aniq javob bermasa yoki kirilmagan bo'lsa — fiskal modul (Communicator) orqali.
+    /// Shunda fiskal modul ishlamay turganda ham kodlarni tekshirish mumkin.
+    /// </summary>
+    async Task<(bool Ok, string Reason, string Via)> CheckCodeAsync(SaleLine l, string code, bool soliqReady)
+    {
+        if (soliqReady)
+        {
+            var raw = System.Text.Json.JsonSerializer.SerializeToElement(await SoliqBridge.CheckAsync(getSoliqTab, code, baseEntry.Inn));
+            var verdict = raw.TryGetProperty("verdict", out var v) ? v.GetString() : "unknown";
+            if (verdict == "available") return (true, "", "my.soliq.uz");
+            if (verdict == "sold")
+            {
+                var why = raw.TryGetProperty("operation", out var op) && op.GetString() is { Length: > 0 } o ? $" ({o})" : "";
+                return (false, "sotilgan yoki boshqa STIR da" + why + " — my.soliq.uz", "my.soliq.uz");
+            }
+            // «unknown» (topilmadi, tarix tushunarsiz): fiskal moduldan so'raladi
+        }
+        if (l.ClassCode.Length != 17) return (false, "tekshirib bo'lmadi: tovarning IKPU si yo'q", "tekshirilmadi");
+        var r = await client.ValidateMarkingAsync(code, l.ClassCode);
+        if (!r.IsValid) return (false, "kod yaroqsiz yoki IKPU ga mos emas (E-POS)", "fiskal modul");
+        if (r.AlreadySold) return (false, "allaqachon sotilgan (E-POS)", "fiskal modul");
+        return (true, "", "fiskal modul");
     }
 
     // ---- sotish -------------------------------------------------------------------------------
@@ -410,8 +465,20 @@ public sealed class CommunicatorTab : UserControl
         if (receipt is null) return;
         if (soldLog.WhenSold(receipt.ReceiptId) is { } when)
         {
-            Log($"Bu chek allaqachon sotilgan ({when}). Sotilmadi.");
-            return;
+            if (!soldLog.IsPending(receipt.ReceiptId))
+            {
+                Log($"Bu chek allaqachon sotilgan ({when}). Sotilmadi.");
+                return;
+            }
+            // Avval yuborilgan, lekin javob kelmagan: sotilgani noma'lum. Ilgari bu ham «sotilgan» deb ko'rsatilardi.
+            var ask = $"Bu chek avval yuborilgan ({when}), lekin fiskal moduldan javob kelmagan — sotilgani NOMA'LUM." + Environment.NewLine + Environment.NewLine +
+                      "Avval Communicator dagi so'nggi cheklarni tekshiring: chek u yerda bo'lsa — «No» ni bosing (ikki marta sotilmasin)." + Environment.NewLine + Environment.NewLine +
+                      "Chek u yerda yo'q bo'lsa, qayta yuborilsinmi?";
+            if (MessageBox.Show(this, ask, "Chek natijasi noaniq", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                Log($"Chek avval yuborilgan ({when}), natijasi noaniq — qayta yuborilmadi.");
+                return;
+            }
         }
 
         List<SaleItem> items;
@@ -430,17 +497,19 @@ public sealed class CommunicatorTab : UserControl
             return;
         }
 
-        // Sotishdan oldin har bir kod Communicator orqali tekshiriladi: yaroqsiz yoki sotilgan kod bo'lsa chek yuborilmaydi
+        // Sotishdan oldin har bir kod tekshiriladi (my.soliq.uz, u bilmasa — fiskal modul): yaroqsiz yoki sotilgan kod bo'lsa
+        // chek yuborilmaydi
         SetBusy(true);
-        var rejected = new List<(SaleLine Line, string Code, string Reason)>();
+        var rejected = new List<(SaleLine Line, string Code, string Reason, bool Confirmed)>();
         try
         {
+            var soliqReady = lines.Any(l => l.IsMarked) && await SoliqBridge.IsLoggedInAsync(getSoliqTab);
             foreach (var l in lines.Where(l => l.IsMarked))
                 foreach (var code in l.Source.Codes.Take((int)Math.Ceiling(l.Source.Quantity)))
                 {
-                    var r = await client.ValidateMarkingAsync(code, l.ClassCode);
-                    if (!r.IsValid) rejected.Add((l, code, "kod yaroqsiz yoki IKPU ga mos emas (E-POS)"));
-                    else if (r.AlreadySold) rejected.Add((l, code, "allaqachon sotilgan (E-POS)"));
+                    var r = await CheckCodeAsync(l, code, soliqReady);
+                    // «Sotilgan» deb faqat my.soliq.uz tasdiqlagan kod hisoblanadi; fiskal modulning o'zi rad etgani — hali hukm emas
+                    if (!r.Ok) rejected.Add((l, code, r.Reason, r.Via == "my.soliq.uz"));
                 }
         }
         catch (Exception e) when (e is UzposException or IOException or HttpRequestException)
@@ -452,9 +521,16 @@ public sealed class CommunicatorTab : UserControl
         SetBusy(false);
         if (rejected.Count > 0)
         {
-            foreach (var (l, code, reason) in rejected) Log($"✗ {l.Name}: {Mask(code)} — {reason}.");
-            UnsellableStore.AddCodes(baseEntry, ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Warehouse ?? "", rejected.Select(x => (x.Line.Name, x.Code, x.Reason)));
-            Problem($"{rejected.Count} ta kod sotilmaydi — chek yuborilmadi. Bu tovarlarni 1C hujjatidan olib tashlab, chekni qayta yig'ing.");
+            foreach (var (l, code, reason, _) in rejected) Log($"✗ {l.Name}: {Mask(code)} — {reason}.");
+            // «Sotib bo'lmaydigan markirovkalar» ro'yxatiga faqat my.soliq.uz tasdiqlagan kodlar yoziladi. Fiskal modul rad etgan,
+            // lekin my.soliq.uz da tekshirilmagan kod sotilgan degani emas (modul xato bergan bo'lishi mumkin) — ro'yxatga kirmaydi.
+            var confirmed = rejected.Where(x => x.Confirmed).ToList();
+            if (confirmed.Count > 0)
+                UnsellableStore.AddCodes(baseEntry, ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Warehouse ?? "", confirmed.Select(x => (x.Line.Name, x.Code, x.Reason)));
+            var unsure = rejected.Count - confirmed.Count;
+            Problem(unsure == 0
+                ? $"{rejected.Count} ta kod sotilmaydi (my.soliq.uz tasdiqladi) — chek yuborilmadi. Bu tovarlarni 1C hujjatidan olib tashlab, chekni qayta yig'ing."
+                : $"{rejected.Count} ta kod o'tmadi — chek yuborilmadi. Ulardan {unsure} tasini faqat fiskal modul rad etdi, my.soliq.uz da tekshirilmagan: bular «sotilgan» deb belgilanmadi. Asosiy oynadagi my.soliq.uz tabiga kirib «{checkBtn.Text}» ni bosing — haqiqiy holati o'sha yerda ko'rinadi.");
             return;
         }
         var total = SaleBuilder.Total(items);
@@ -471,7 +547,8 @@ public sealed class CommunicatorTab : UserControl
         try
         {
             // Ikki marta bosishdan saqlanish: yuborishdan OLDIN belgilanadi
-            soldLog.Mark(receipt.ReceiptId, "yuborildi");
+            // (javob kelmasa shu belgi qoladi — «natija noaniq»; fiskal modul rad etsa — olib tashlanadi)
+            soldLog.Mark(receipt.ReceiptId, SoldLog.Pending);
             var result = await client.SaleAsync(items, cash, card, "1C-" + receipt.ReceiptId, confirmRealFiscalReceipt: true);
             soldLog.Mark(receipt.ReceiptId, $"chek №{result.ReceiptSeq}, FP {result.FiscalSign}");
             if (epos.Module.Length == 0)
@@ -489,10 +566,17 @@ public sealed class CommunicatorTab : UserControl
                 $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} baza={baseEntry.Db} 1C-chek={receipt.ReceiptId} chek={result.ReceiptSeq} fp={result.FiscalSign} jami={total}{Environment.NewLine}");
             confirmReal.Checked = false;
         }
+        catch (UzposException e) when (e.Definite)
+        {
+            // Fiskal modul chekni rad etdi: chek yaratilmagan — «sotilgan» belgisi olib tashlanadi, tuzatib qayta yuborish mumkin
+            soldLog.Unmark(receipt.ReceiptId);
+            Problem("✗ Chek SOTILMADI — fiskal modul rad etdi: " + e.Message);
+            Log("  Chek yaratilmagan. Xatoni tuzatib «Sotish» ni qayta bosish mumkin.");
+        }
         catch (Exception e) when (e is UzposException or IOException)
         {
-            Problem("✗ Chek yaratilmadi: " + e.Message);
-            Log("  Agar xato 'javob bermadi' bo'lsa, chek yaratilgan bo'lishi mumkin: Communicator dagi so'nggi chekni tekshiring.");
+            Problem("✗ Chek natijasi NOANIQ: " + e.Message);
+            Log("  Fiskal moduldan javob kelmadi — chek yaratilgan bo'lishi ham, yaratilmagan bo'lishi ham mumkin. Communicator dagi so'nggi chekni tekshiring; yo'q bo'lsa «Sotish» ni qayta bosing (dastur so'raydi).");
         }
         finally { SetBusy(false); }
     }
@@ -546,8 +630,22 @@ public sealed class SaleDialog : Form
         var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
         Size = new Size(Math.Min(1500, screen.Width - 40), Math.Min(800, screen.Height - 40));
         MinimumSize = new Size(900, 560);
-        StartPosition = FormStartPosition.CenterParent;
+        StartPosition = FormStartPosition.CenterScreen;
+        ShowInTaskbar = true;
         tab = new CommunicatorTab(baseEntry, getSoliqTab, receipt) { Dock = DockStyle.Fill };
         Controls.Add(tab);
+    }
+
+    /// <summary>
+    /// Oynani alohida (modal bo'lmagan) oyna qilib ochadi va yopilganda sotuv natijasini qaytaradi. Ilgari oyna modal edi:
+    /// u ochiq turganda asosiy oynadagi my.soliq.uz tabiga o'tib ERI kalit bilan kirib bo'lmasdi — endi asosiy oyna ishlayveradi.
+    /// </summary>
+    public Task<SaleResult?> ShowAsync()
+    {
+        var done = new TaskCompletionSource<SaleResult?>();
+        FormClosed += (_, _) => done.TrySetResult(Result);
+        Show();
+        Activate();
+        return done.Task;
     }
 }

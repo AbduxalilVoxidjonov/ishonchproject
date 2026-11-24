@@ -6,6 +6,12 @@ namespace IshonchDesktop.Epos;
 public sealed class UzposException : Exception
 {
     public UzposException(string message) : base(message) { }
+
+    /// <summary>
+    /// Fiskal modul (Communicator) so'rovni aniq rad etdi — xato javobi keldi. Bunda chek YARATILMAGAN. false — javob
+    /// tushunarsiz yoki umuman kelmagan: natija noaniq (chek yaratilgan bo'lishi ham mumkin).
+    /// </summary>
+    public bool Definite { get; init; }
 }
 
 public sealed record Package(string Code, string Name);
@@ -234,7 +240,7 @@ public sealed class UzposClient : IDisposable
             try { root = JsonDocument.Parse(text).RootElement.Clone(); }
             catch { throw new UzposException($"Communicator tushunarsiz javob qaytardi ({(int)resp.StatusCode})."); }
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.True)
-                throw new UzposException(Str(root, "message") is { Length: > 0 } m ? m : "Communicator xato qaytardi.");
+                throw new UzposException(Str(root, "message") is { Length: > 0 } m ? m : "Communicator xato qaytardi.") { Definite = true };
             return root;
         }
     }

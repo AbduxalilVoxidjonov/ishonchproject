@@ -83,7 +83,7 @@ public sealed class WebTab : UserControl
 
         back.Click += (_, _) => { if (view.CanGoBack) view.GoBack(); };
         forward.Click += (_, _) => { if (view.CanGoForward) view.GoForward(); };
-        reload.Click += (_, _) => view.Reload();
+        reload.Click += (_, _) => { if (view.CoreWebView2 is not null) view.Reload(); }; // tab hali ochilib ulgurmagan bo'lsa — hech narsa
         zoomPlus.Click += (_, _) => ZoomBy(+1);
         zoomMinus.Click += (_, _) => ZoomBy(-1);
         zoomReset.Click += (_, _) => SetZoom(1.0);

@@ -158,6 +158,20 @@ public sealed class SoldLog
 
     public string? WhenSold(string receiptId) => receiptId.Length > 0 && sold.TryGetValue(receiptId, out var t) ? t : null;
 
+    /// <summary>Chek yuborilgan, lekin natijasi noma'lum (javob kelmagan) — «sotilgan» emas.</summary>
+    public const string Pending = "yuborildi, natija noaniq";
+
+    /// <summary>Yozuv «yuborildi» holatidami (sotilgani tasdiqlanmagan).</summary>
+    public bool IsPending(string receiptId) =>
+        receiptId.Length > 0 && sold.TryGetValue(receiptId, out var t) && t.Contains("(yuborildi", StringComparison.Ordinal);
+
+    /// <summary>Fiskal modul chekni rad etgan: belgi olib tashlanadi — chek sotilmagan, qayta yuborish mumkin.</summary>
+    public void Unmark(string receiptId)
+    {
+        if (receiptId.Length == 0 || !sold.Remove(receiptId)) return;
+        File.WriteAllText(path, JsonSerializer.Serialize(sold, Json));
+    }
+
     public void Mark(string receiptId, string info)
     {
         if (receiptId.Length == 0) return;

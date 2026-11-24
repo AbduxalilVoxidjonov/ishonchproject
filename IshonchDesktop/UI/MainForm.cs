@@ -56,6 +56,7 @@ public sealed class MainForm : Form
         home.OpenBatchDebtor += OpenBatchDebtor;
         home.Open4790 += async b => await Open4790Async(b);
         home.OpenUnsellable += OpenUnsellable;
+        home.OpenMarkCheck += OpenMarkCheck;
         home.OpenElektr += () => OpenElektrTab();
         home.OpenSolishtiruv += () => OpenSolishtiruvTab();
         home.OpenCrm += () => OpenCrmTab();
@@ -410,6 +411,22 @@ public sealed class MainForm : Form
         page.Controls.Add(new UnsellableTab());
         tabs.TabPages.Add(page);
         if (select) tabs.SelectedTab = page;
+    }
+
+    /// <summary>
+    /// «Markirovka tekshirish» bo'limi: kodlar ro'yxati my.soliq.uz da tekshiriladi (chek va 1C ga aloqasi yo'q). Har firma
+    /// uchun alohida tab — tekshiruv shu firmaning my.soliq.uz tabi (sessiyasi) orqali bajariladi.
+    /// </summary>
+    void OpenMarkCheck(BaseEntry? b)
+    {
+        var key = "markcheck-" + (b is { Inn.Length: > 0 } ? b.Inn : "umumiy");
+        if (FindTab(key) is { } existing) { tabs.SelectedTab = existing; return; }
+        var page = new TabPage("Markirovka tekshirish" + (b is null ? "" : " — " + b.Firm)) { Tag = key, Padding = new Padding(0) };
+        page.Controls.Add(new MarkingCheckTab(b,
+            async () => { var soliq = OpenSoliqTab(b, select: false); await soliq.Ready; return soliq; },
+            () => OpenSoliqTab(b, select: true)));
+        tabs.TabPages.Add(page);
+        tabs.SelectedTab = page;
     }
 
     /// <summary>Tanlangan baza 1C tabida «4790 to'ldiruvchi» panelini ochadi/yopadi (hujjatni saqlamaydi).</summary>

@@ -216,18 +216,28 @@ public sealed class UnmarkedPanel : UserControl
         menu.Show(epos, new Point(0, epos.Height));
     }
 
-    void Sell(MarkingReceipt receipt)
+    bool saleOpen;
+
+    async void Sell(MarkingReceipt receipt)
     {
+        if (saleOpen) return; // sotish oynasi allaqachon ochiq
         if (baseEntry is null || getSoliqTab is null) { IshonchDesktop.Models.Log.Write("E-POS (markirovkasiz): baza yoki soliq tabi yo'q"); return; }
         IshonchDesktop.Models.Log.Write($"E-POS (markirovkasiz): {receipt.ReceiptId} sotish oynasi ochilmoqda ({receipt.Lines.Count} qator)");
-        using var dialog = new SaleDialog(baseEntry, getSoliqTab, receipt);
-        dialog.ShowDialog(FindForm());
-        if (dialog.Result is { } sold)
+        saleOpen = true;
+        try
         {
-            posted.MarkSold(receipt.ReceiptId);
-            Log($"{receipt.ReceiptId} E-POS orqali sotildi: fiskal belgi {sold.FiscalSign}, chek № {sold.ReceiptSeq}", "ok");
+            using var dialog = new SaleDialog(baseEntry, getSoliqTab, receipt);
+            await dialog.ShowAsync(); // modal emas: asosiy oynadagi my.soliq.uz tabiga o'tib kirish mumkin
+            if (IsDisposed) return;
+            if (dialog.Result is { } sold)
+            {
+                posted.MarkSold(receipt.ReceiptId);
+                Log($"{receipt.ReceiptId} E-POS orqali sotildi: fiskal belgi {sold.FiscalSign}, chek № {sold.ReceiptSeq}", "ok");
+            }
+            UpdateEposButton();
         }
-        UpdateEposButton();
+        catch (Exception e) { IshonchDesktop.Models.Log.Error("E-POS (markirovkasiz)", e); }
+        finally { saleOpen = false; }
     }
 
     /// <summary>

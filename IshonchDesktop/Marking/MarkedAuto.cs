@@ -669,7 +669,7 @@ public sealed class MarkedAuto : IDisposable
             Status($"1C hujjati № {open.Number}: {open.Receipt.Lines.Count} ta tovar, {open.Receipt.Lines.Sum(l => l.Codes.Count)} ta kod — E-POS oynasi ochildi." +
                    (open.Warning.Length > 0 ? " DIQQAT: " + open.Warning : ""), open.Warning.Length > 0 ? "warn" : "info");
             using var dialog = new SaleDialog(baseEntry, getSoliqTab, open.Receipt);
-            dialog.ShowDialog(oneC.FindForm());
+            await dialog.ShowAsync(); // modal emas: asosiy oynadagi my.soliq.uz tabiga o'tib kirish mumkin
             if (dialog.Result is { } sold) Status($"№ {open.Number} E-POS orqali sotildi: chek № {sold.ReceiptSeq}, fiskal belgi {sold.FiscalSign}.", "ok");
         }
         catch (Exception e) { Status("Hujjatni o'qib bo'lmadi: " + e.Message, "err", e.ToString()); }

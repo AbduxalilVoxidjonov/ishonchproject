@@ -157,6 +157,16 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.7
+
+- **Yangi bo'lim — «🔎 Markirovka tekshirish (soliq.uz)»** (bosh sahifada): markirovka kodlari ro'yxati matn yoki fayldan (.xlsx / .xls / .txt) olinib my.soliq.uz da tekshiriladi — oxirgi operatsiyasi ulgurji va oxirgi olgan STIR bizniki bo'lsa «Sotsa bo'ladi». Jadvalda mahsulot, oxirgi operatsiya, sana, oxirgi egasi, MXIK va tasnif.soliq.uz dagi MXIK bilan mosligi; natija .xlsx ga saqlanadi, sotsa bo'ladigan kodlar nusxalanadi. Chekka va 1C ga bog'liq emas. (Ilgari alohida brauzer kengaytmasi edi.)
+- **E-POS orqali sotish oynasi**:
+  - asosiy oynani to'smaydi (alohida oyna) — u ochiq turganda my.soliq.uz tabiga o'tib ERI kalit bilan kirish mumkin;
+  - my.soliq.uz ga kirilmagan bo'lsa «aylanib» qolmaydi: 1C hujjatida IKPU bor bo'lsa kirish talab qilinmaydi, IKPU yo'q tovar bo'lsa buni aytadi;
+  - fiskal modul chekni rad etsa, chek endi «sotilgan» deb belgilanmaydi — xatoni tuzatib qayta yuborish mumkin. Javob kelmagan bo'lsa «natija noaniq» deb ko'rsatiladi va qayta yuborishdan oldin so'raladi;
+  - kodlar avval my.soliq.uz da tekshiriladi (u aniq javob bermasa — fiskal modulda); «Sotib bo'lmaydigan markirovkalar» ro'yxatiga faqat my.soliq.uz tasdiqlagan kod yoziladi.
+- Sotish oynasi ish tugamasdan yopilganda va hali ochilmagan tabda ⟳ bosilganda chiqadigan «Kutilmagan xato» lar tuzatildi.
+
 ## 0.11.6
 
 - **Yangilanish**: «GitHub so'rovlar limitiga yetildi» xatosi. GitHub API tokensiz bir IP manzildan soatiga 60 ta so'rovga ruxsat beradi, ofisda esa hamma kompyuter bitta IP dan chiqadi. Limit tugasa dastur endi API siz tekshiradi (github.com dagi so'nggi reliz sahifasi orqali) va yangilanishni odatdagidek yuklaydi.
