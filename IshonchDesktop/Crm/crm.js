@@ -9,6 +9,9 @@
 
   const dialog = () => [...document.querySelectorAll('[role=dialog]')].filter(vis)
     .find((d) => /Шартнома яратиш|Shartnoma yaratish/i.test(d.textContent));
+  // Har qanday ochiq oyna (faqat shartnoma oynasi emas): ochiq turganda sahifaning boshqa joyiga bosilmaydi
+  const anyDialog = () => [...document.querySelectorAll('[role=dialog]')].some(vis);
+  const diag = (text) => { try { chrome.webview.postMessage({ kind: 'crmDiag', text: String(text).slice(0, 300) }); } catch { /* yopilgan */ } };
 
   // Label matni bo'yicha maydon bloki (label + uning ostidagi input/tugma)
   const block = (dlg, re) => {
@@ -28,8 +31,8 @@
     el.dispatchEvent(new Event('blur', { bubbles: true }));
   };
 
-  const waitFor = async (fn, ms = 4000) => {
-    for (let t = 0; t < ms; t += 100) { const r = fn(); if (r) return r; await sl(100); }
+  const waitFor = async (fn, ms = 4000, step = 100) => {
+    for (let t = 0; t < ms; t += step) { const r = fn(); if (r) return r; await sl(step); }
     return null;
   };
 
@@ -37,14 +40,27 @@
   // Haqiqiy sichqoncha bosishi (CDP, C# orqali): bank ro'yxati oddiy JS click() ni qabul qilmaydi
   let clickSeq = 0;
   const clickWaits = new Map();
-  function trustedClick(el) {
+  // Bosish Ishonch'ga borib qaytguncha sahifa o'zgarishi mumkin (masalan «Шартнома яратиш» oynasi ochiladi): Ishonch
+  // bosishdan oldin shu yerdan so'raydi — nuqtada hali o'sha element turibdimi. Aks holda bosish oyna tashqarisiga
+  // tushib, ochiq oynani yopib yuboradi.
+  const clickTargets = new Map();
+  window.__ishCrmClickOk = (id, x, y) => {
+    const t = clickTargets.get(id);
+    if (!t || !t.el.isConnected || !vis(t.el)) return false;
+    if (t.noDialog && anyDialog()) return false;
+    const hit = document.elementFromPoint(x, y);
+    return !!hit && (t.el === hit || t.el.contains(hit));
+  };
+  function trustedClick(el, noDialog) {
     el.scrollIntoView({ block: 'nearest' });
     const r = el.getBoundingClientRect();
     const id = ++clickSeq;
+    clickTargets.set(id, { el, noDialog: !!noDialog });
     return new Promise((resolve) => {
-      clickWaits.set(id, resolve);
+      const done = (ok) => { clickTargets.delete(id); resolve(ok); };
+      clickWaits.set(id, done);
       chrome.webview.postMessage({ kind: 'crmClick', id, x: r.left + r.width / 2, y: r.top + r.height / 2 });
-      setTimeout(() => { if (clickWaits.delete(id)) resolve(false); }, 4000);
+      setTimeout(() => { if (clickWaits.delete(id)) done(false); }, 4000);
     });
   }
 
@@ -58,13 +74,13 @@
     for (let attempt = 0; attempt < 3 && !chosen(); attempt++) {
       // Ro'yxat ochiq bo'lmasa ochiladi va qidiruvga MFO yoziladi
       let inp = [...document.querySelectorAll('input[role=combobox]')].find(vis);
-      if (!inp) { btn.click(); inp = await waitFor(() => [...document.querySelectorAll('input[role=combobox]')].find(vis)); }
+      if (!inp) { btn.click(); inp = await waitFor(() => [...document.querySelectorAll('input[role=combobox]')].find(vis), 4000, 25); }
       if (!inp) continue;
       if (inp.value !== mfo) setValue(inp, mfo);
       // Natija serverdan keladi: ro'yxat ikki marta ketma-ket bir xil bo'lguncha (tinchlanguncha) kutiladi
       let prev = '';
-      for (let i = 0; i < 30; i++) {
-        await sl(250);
+      for (let i = 0; i < 75; i++) {
+        await sl(100);
         const cur = optText();
         if (cur && cur === prev && re.test(cur)) break;
         prev = cur;
@@ -73,7 +89,7 @@
       if (!opt) continue;
       seen = true;
       await trustedClick(opt);
-      await waitFor(chosen, 2500);
+      await waitFor(chosen, 2500, 25);
     }
     if (chosen()) return null;
     return seen ? 'MFO ' + mfo + ' tanlanmadi, qo\'lda tanlang' : 'MFO ' + mfo + ' CRM bank ro\'yxatida topilmadi';
@@ -94,10 +110,11 @@
     const btn = field(dlg, re, 'button');
     if (!btn) return 'sana maydoni topilmadi';
     btn.click();
-    const panel = await waitFor(() => [...document.querySelectorAll('[id^=headlessui-popover-panel]')].filter(vis).pop());
+    const panel = await waitFor(() => [...document.querySelectorAll('[id^=headlessui-popover-panel]')].filter(vis).pop(), 4000, 20);
     if (!panel) return 'kalendar ochilmadi';
+    const headOf = () => [...panel.querySelectorAll('span')].map((s) => norm(s.textContent)).find((t) => /^\S+ \d{4}$/.test(t));
     for (let k = 0; k < 400; k++) {
-      const head = [...panel.querySelectorAll('span')].map((s) => norm(s.textContent)).find((t) => /^\S+ \d{4}$/.test(t));
+      const head = headOf();
       if (!head) return 'kalendar sarlavhasi topilmadi';
       const [mn, yr] = head.split(' ');
       const cur = +yr * 12 + monthOf(mn), want = y * 12 + mo;
@@ -107,13 +124,15 @@
       const b = [...panel.querySelectorAll('button')].find((x) => x.querySelector('[class*="i-heroicons:' + icon + '"]'));
       if (!b) return 'kalendar tugmasi topilmadi';
       b.click();
-      await sl(60);
+      // Belgilangan vaqt emas — sarlavha (oy) almashishi kutiladi
+      await waitFor(() => headOf() !== head, 600, 10);
     }
     const day = [...panel.querySelectorAll('button')].filter(vis)
       .find((b) => norm(b.textContent) === String(d) && !/\/50\b/.test(b.className));
     if (!day) return 'kun topilmadi';
     day.click();
-    await sl(250);
+    // Kalendar yopilishi kutiladi (keyingi sana maydoni eski panelni topib olmasin)
+    await waitFor(() => !vis(panel) || !panel.isConnected, 400, 10);
     return null;
   }
 
@@ -148,16 +167,21 @@
     if (c.sum > 0) set(/суммаси|summasi/i, String(c.sum), 'Summa'); else errs.push("Summa: Didox hujjatida yo'q, qo'lda kiriting");
     if (!c.partnerAccount) errs.push("Hisob raqam va MFO: Didox'da topilmadi");
     set(/мақсади|maqsadi/i, c.purpose, 'Maqsad');
-    if (c.partnerMfo) { const e = await pickMfo(dlg, c.partnerMfo); if (e) errs.push('MFO: ' + e); }
-    let e = await pickDate(dlg, /бошланиш|boshlanish/i, c.date); if (e) errs.push('Boshlanish sanasi: ' + e);
-    e = await pickDate(dlg, /амал қилиш|amal qilish/i, c.expireDate); if (e) errs.push('Amal qilish muddati: ' + e);
+    // Avval bir zumda yoziladiganlari (matn maydonlari va fayl) — hammasi birdan; keyin ro'yxat/kalendar talab qiladiganlari
+    let e;
     if (pdf) { e = putFile(dlg, pdf, pdfName); if (e) errs.push('Fayl: ' + e); }
     else errs.push('Fayl: Didox PDF olinmadi, qo\'lda yuklang');
+    const t0 = Date.now();
+    e = await pickDate(dlg, /бошланиш|boshlanish/i, c.date); if (e) errs.push('Boshlanish sanasi: ' + e);
+    e = await pickDate(dlg, /амал қилиш|amal qilish/i, c.expireDate); if (e) errs.push('Amal qilish muddati: ' + e);
+    const t1 = Date.now();
+    if (c.partnerMfo) { e = await pickMfo(dlg, c.partnerMfo); if (e) errs.push('MFO: ' + e); }
+    diag('to\'ldirish: sanalar ' + (t1 - t0) + ' ms, MFO ' + (Date.now() - t1) + ' ms');
     return errs;
   }
 
   // ---- tugma va holat qatori ----
-  let bar = null, btn = null, msg = null, busy = false, list = null, lastReq = null;
+  let bar = null, btn = null, msg = null, idBox = null, busy = false, list = null, lastReq = null;
   // Oyna CRM tomonidan qayta ishlatiladi: o'zi to'ldirish «hamkor STIRi + firma hisobi» o'zgarganda qayta boshlanadi
   let autoKey = '';
   const dialogKey = (dlg) => {
@@ -171,20 +195,45 @@
     msg.style.color = kind === 'err' ? '#b91c1c' : kind === 'ok' ? '#166534' : '#374151';
   }
 
+  // Tashxis (Ishonch jurnaliga): oyna tanilmasa, tugma qo'yilmasa yoki oyna ochilib darrov yopilsa — sababi yoziladi
+  let seenAt = 0, diagSaid = '';
+  const diagOnce = (text) => { if (diagSaid !== text) { diagSaid = text; diag(text); } };
   function ensureBar() {
     const dlg = dialog();
-    if (!dlg) { bar = btn = msg = list = null; autoKey = ''; return; }
+    if (!dlg) {
+      if (seenAt && Date.now() - seenAt < 3000) diag('«Шартнома яратиш» oynasi ochilib ' + (Date.now() - seenAt) + ' ms da yopildi');
+      seenAt = 0;
+      const other = [...document.querySelectorAll('[role=dialog]')].filter(vis).find((d) => /шартнома|shartnoma/i.test(d.textContent));
+      if (other) diagOnce('shartnoma oynasi tanilmadi: ' + norm(other.textContent).slice(0, 120));
+      bar = btn = msg = idBox = list = null; autoKey = ''; return;
+    }
+    if (!seenAt) seenAt = Date.now();
     if (!(bar && dlg.contains(bar))) createBar(dlg);
+    if (!bar) diagOnce('«Шартнома яратиш» oynasida «фирма номи» maydoni topilmadi: ' + [...dlg.querySelectorAll('label')].map((l) => norm(l.textContent)).join(' | ').slice(0, 200));
     if (!bar || busy) return;
-    // Oyna ochilganda (yoki boshqa hamkor bilan qayta ishlatilganda) STIR va hisob kelishi bilan o'zi to'ldiradi
+    // Oyna o'zi to'ldirilmaydi: Didox'dan faqat tugma bosilganda olinadi. Oyna boshqa hamkor bilan qayta ishlatilsa —
+    // oldingi hamkorning ro'yxati va xabari tozalanadi
     const k = dialogKey(dlg);
     if (k && k !== autoKey) {
       autoKey = k;
+      filledId = '';
+      if (idBox) idBox.value = '';
       clearList();
-      say('Firma Didox\'idan shu hamkor bilan eng yangi shartnoma olinadi. «Яратиш» ni o\'zingiz bosasiz.');
-      start(false);
+      say(HINT);
     }
   }
+  const HINT = 'Tugmani bosing: firma Didox\'idan shu hamkor bilan shartnoma olinadi. Yonidagi katakka Didox ID yozilsa — aynan o\'sha shartnoma. «Яратиш» ni o\'zingiz bosasiz.';
+  // «Didox ID» maydonidagi qiymat (havola qo'yilgan bo'lsa — undagi ID). O'zimiz to'ldirgan ID hisobga olinmaydi:
+  // to'ldirilgandan keyin tugma yana bosilsa ro'yxat qaytadan olinadi
+  let filledId = '';
+  const idOf = (raw) => (norm(raw).match(/[0-9A-Za-z][0-9A-Za-z-]{14,}[0-9A-Za-z]/g) || []).pop() || '';
+  const typedDocId = (dlg) => {
+    // Yashil qatordagi katakka yozilgani har doim hisobga olinadi; CRM ning o'z maydonidagisi — o'zimiz to'ldirmagan bo'lsa
+    const own = idOf(idBox && idBox.value);
+    if (own) return own;
+    const id = idOf((field(dlg, /Didox/i) || {}).value);
+    return id && id.toUpperCase() !== filledId.toUpperCase() ? id : '';
+  };
 
   function createBar(dlg) {
     const firstLabel = [...dlg.querySelectorAll('label')].find((l) => /фирма номи|firma nomi/i.test(l.textContent));
@@ -195,9 +244,18 @@
     btn.type = 'button';
     btn.textContent = '⬇ Didox\'dan to\'ldirish';
     btn.style.cssText = 'background:#16a34a;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap';
+    // Didox ID katagi: yozilsa (ID yoki Didox havolasi) ro'yxat o'rniga aynan shu hujjat olinadi; Enter — tugma bilan bir xil
+    idBox = document.createElement('input');
+    idBox.type = 'text';
+    idBox.placeholder = 'Didox ID (ixtiyoriy)';
+    idBox.title = "Didox'dagi hujjat ID si yoki havolasi. Yozilsa aynan shu shartnoma olinadi; bo'sh bo'lsa hamkor bo'yicha qidiriladi.";
+    idBox.autocomplete = 'off';
+    idBox.style.cssText = 'width:270px;border:1px solid #86efac;border-radius:6px;padding:5px 8px;font:13px Inter,Segoe UI,sans-serif;background:#fff;color:#14532d';
+    idBox.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); start(true); } };
     msg = document.createElement('span');
-    msg.textContent = 'Firma Didox\'idan shu hamkor bilan eng yangi shartnoma olinadi. «Яратиш» ni o\'zingiz bosasiz.';
-    bar.append(btn, msg);
+    msg.style.flexBasis = '100%';
+    msg.textContent = HINT;
+    bar.append(btn, idBox, msg);
     // «Ҳамкор: … Фирма ҳисоб рақами: …» kartochkasidan keyin (u bo'lmasa — birinchi maydon oldidan)
     const info = [...dlg.querySelectorAll('div')]
       .filter((e) => /Фирма ҳисоб рақами|Firma hisob raqami/i.test(e.textContent) && !e.querySelector('input,textarea,label'))
@@ -219,10 +277,11 @@
     const m = /(?:Фирма ҳисоб рақами|Firma hisob raqami):?\s*(.+?)\s*-\s*(\d{20})/i.exec(txt);
     if (!m) { say('Oynadan firma nomi va hisob raqami o\'qilmadi', 'err'); return; }
     busy = true; btn.disabled = true; btn.style.opacity = '.6';
-    say('Didox\'dan qidirilmoqda…');
+    const byId = typedDocId(dlg);
+    say(byId ? 'Didox ID ' + byId + ' bo\'yicha shartnoma olinmoqda…' : 'Didox\'dan qidirilmoqda…');
     clearList();
     lastReq = { inn, firm: m[1], account: m[2], force: !!force, key: dialogKey(dlg) };
-    chrome.webview.postMessage({ kind: 'crmFill', ...lastReq });
+    chrome.webview.postMessage({ kind: 'crmFill', ...lastReq, ...(byId ? { docId: byId } : {}) });
   }
 
   function clearList() { closeViewer(); if (list) { list.remove(); list = null; } }
@@ -280,7 +339,7 @@
 
   chrome.webview.addEventListener('message', async (ev) => {
     const d = ev.data || {};
-    if (d.kind === 'crmClicked') { const f = clickWaits.get(d.id); if (f) { clickWaits.delete(d.id); f(true); } return; }
+    if (d.kind === 'crmClicked') { const f = clickWaits.get(d.id); if (f) { clickWaits.delete(d.id); f(d.ok !== false); } return; }
     // Oyna yopilib boshqa hamkor bilan ochilgan bo'lsa — eski so'rov javobi yangi oynaga yozilmaydi
     const cur = dialog();
     if (d.key && (!cur || dialogKey(cur) !== d.key)) {
@@ -300,6 +359,7 @@
     clearList();
     try {
       const errs = await fill(d.contract, d.pdf, d.pdfName);
+      filledId = d.contract.docId || '';
       const head = '№' + d.contract.number + ' (' + d.contract.date + ', ' + d.contract.status + ')' + (d.note ? ' — ' + d.note : '');
       if (errs.length) say('To\'ldirildi: ' + head + '. Qo\'lda tekshiring: ' + errs.join('; '), 'err');
       else say('To\'ldirildi: ' + head + '. Tekshirib, «tasdiqlayman» belgisini qo\'yib, «Яратиш» ni o\'zingiz bosing.', /tekshiring/.test(d.note || '') ? 'err' : 'ok');
@@ -385,10 +445,10 @@
 
   // «Масъул бўлим» filtri: sahifa ochilganda bo'sh bo'lsa — o'zi «Бухгалтерияда» qilinadi (foydalanuvchi boshqasini
   // tanlagan bo'lsa tegilmaydi). Ro'yxat oddiy JS bosishini qabul qilmaydi — haqiqiy sichqoncha bosishi (C#) ishlatiladi.
-  let filterPath = '', filterBusy = false;
+  let filterPath = '', filterBusy = false, filterTries = 0;
   async function autoFilter() {
     // Sahifa ko'rinib turganda (tab faol) — yashirin sahifaga sichqoncha bosishi yetmaydi
-    if (filterBusy || document.visibilityState !== 'visible' || !/\/new-payments/.test(location.pathname) || dialog()) return;
+    if (filterBusy || document.visibilityState !== 'visible' || !/\/new-payments/.test(location.pathname) || anyDialog()) return;
     if (filterPath === location.pathname) return;
     const b = [...document.querySelectorAll('main button')].find((x) => norm(x.textContent) === 'Масъул бўлим');
     if (!b) {
@@ -398,12 +458,17 @@
     }
     filterBusy = true;
     try {
-      await trustedClick(b);
-      const o = await waitFor(() => [...document.querySelectorAll('[role=option]')].filter(vis).find((x) => norm(x.textContent) === 'Бухгалтерияда'), 3000);
-      if (o) { await trustedClick(o); filterPath = location.pathname; }
+      // Ikki marta urinib bo'lmasa (ro'yxatda «Бухгалтерияда» yo'q — boshqa bo'lim xodimi) qayta-qayta bosilmaydi
+      if (++filterTries > 2) { filterPath = location.pathname; diag('filtr: «Бухгалтерияда» tanlanmadi, qayta urinilmaydi'); return; }
+      const opts = () => [...document.querySelectorAll('[role=option]')].filter(vis);
+      if (!(await trustedClick(b, true))) return;
+      const o = await waitFor(() => opts().find((x) => norm(x.textContent) === 'Бухгалтерияда'), 3000);
+      if (o && !anyDialog()) { if (await trustedClick(o, true)) filterPath = location.pathname; }
+      // Topilmasa ochilgan ro'yxat yopiladi (ochiq qolsa keyingi bosishlarni to'sadi)
+      else if (opts().length && !anyDialog()) await trustedClick(b, true);
     } finally { filterBusy = false; }
   }
-  setInterval(() => { if (!/\/new-payments/.test(location.pathname)) filterPath = ''; else autoFilter(); }, 1500);
+  setInterval(() => { if (!/\/new-payments/.test(location.pathname)) { filterPath = ''; filterTries = 0; } else autoFilter(); }, 1500);
   addEventListener('DOMContentLoaded', () => chrome.webview.postMessage({ kind: 'crmReady' }));
 
   // Skript hujjat yaratilayotganda ishlaydi (documentElement hali yo'q bo'lishi mumkin): document kuzatiladi, zaxira — taymer

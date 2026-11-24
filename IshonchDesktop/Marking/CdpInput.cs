@@ -70,10 +70,18 @@ public static class CdpInput
     /// Brauzer masshtabi 100% emas bo'lsa DevTools koordinatalari CSS pikselga teng kelmaydi (x * zoom).
     /// Sahifa nuqtasi (CSS piksel) beriladi, masshtab haqiqiy sichqoncha harakati bilan o'lchanadi (o'lcham o'zgarmaguncha eslab qolinadi).
     /// </summary>
-    public static async Task ClickAsync(CoreWebView2 core, double x, double y, int count = 1)
+    public static Task ClickAsync(CoreWebView2 core, double x, double y, int count = 1) => ClickAsync(core, x, y, count, null);
+
+    /// <summary>
+    /// <paramref name="stillThere"/> berilsa — masshtab o'lchangach, bosishdan bevosita oldin so'raladi; false qaytarsa bosilmaydi
+    /// (sahifa o'zgarib, nuqtada boshqa narsa turgan bo'lishi mumkin). Bosilgan bo'lsa true.
+    /// </summary>
+    public static async Task<bool> ClickAsync(CoreWebView2 core, double x, double y, int count, Func<Task<bool>>? stillThere)
     {
         var s = await ScaleAsync(core);
+        if (stillThere is not null && !await stillThere()) return false;
         await Click(core, Math.Round(x / s), Math.Round(y / s), Math.Max(1, count));
+        return true;
     }
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CoreWebView2, System.Runtime.CompilerServices.StrongBox<(string Sig, double Scale)>> Scales = new();

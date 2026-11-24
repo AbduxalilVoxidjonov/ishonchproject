@@ -241,3 +241,11 @@ Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv
 - Natija panelda jadval (kontragent, Dt, Kt, qoldiq, debitor/kreditor) va «Excelga saqlash» — 1C ning o'z «Сохранить» oynasi orqali «baza Firma.xls» nomi bilan tanlangan papkaga.
 - «Hamma bazalar»: bir nechta bazani belgilab, login ro'yxatdan tanlanadi va parol bir marta yoziladi; kirilgan har bir bazada hisobot tuziladi va baza nomli .xls ga saqlanadi (kira olmaganlari o'tkazib yuboriladi). Parol saqlanmaydi.
 - E-POS: to'lov faqat karta (naqd tanlovi olib tashlandi).
+
+## 0.11.8
+
+- **Main CRM «Шартнома яратиш» oynasi o'zi yopilib qolmaydi**: filtr («Бухгалтерияда») va ro'yxatlarni bosish endi oyna ochilganini tekshiradi — bosish oynadan tashqariga tushadigan bo'lsa bekor qilinadi; kerakli variant topilmasa 2 martadan keyin to'xtaydi.
+- **Oyna ochilganda o'zi to'ldirmaydi**: Didox'dan faqat yashil qatordagi «Didox'dan to'ldirish» tugmasi bosilganda olinadi.
+- **Didox ID katagi**: yashil qatorda «Didox ID (ixtiyoriy)» katagi — ID (yoki didox.uz havolasi) yozilib tugma yoki Enter bosilsa, aynan o'sha shartnoma olinadi.
+- **To'ldirish tezlashdi**: matn maydonlari va fayl bir zumda, sanalar va MFO kutish vaqtlari qisqartirilgan (≈1 soniya).
+- Sahifada nima bo'layotgani jurnalga yoziladi («CRM sahifa: …») — boshqa xodimda xato bo'lsa sababini topish uchun.

@@ -347,6 +347,42 @@ public sealed class DidoxContracts
             .ToList();
     }
 
+    /// <summary>
+    /// Didox ID bo'yicha bitta hujjat (ro'yxat qatori ko'rinishida). Avval hamkor bilan hujjatlar ro'yxatidan qidiriladi
+    /// (holati qanday bo'lmasin); u yerda bo'lmasa hujjatning o'zi so'raladi. Topilmasa null.
+    /// </summary>
+    public async Task<JsonObject?> ByIdAsync(string token, string docId, string partnerTin)
+    {
+        bool Same(JsonNode? n) => string.Equals(Str(n), docId, StringComparison.OrdinalIgnoreCase);
+        foreach (var doctype in new[] { "007", "000" })
+            foreach (var owner in new[] { 0, 1 })
+            {
+                var j = await GetJsonAsync(token, $"/v2/documents?page=1&limit=100&owner={owner}&doctype={doctype}&partner={partnerTin}");
+                var hit = (j?["data"] as JsonArray ?? new()).OfType<JsonObject>().FirstOrDefault(x => Same(x["doc_id"]));
+                if (hit is not null) return hit;
+            }
+        // Ro'yxatda yo'q (100 tadan ko'p hujjat yoki boshqa tur): hujjatning o'zi — kiruvchi, keyin chiquvchi tomondan
+        foreach (var owner in new[] { 1, 0 })
+        {
+            try
+            {
+                var data = (await GetJsonAsync(token, $"/v1/documents/{Uri.EscapeDataString(docId)}?owner={owner}"))?["data"];
+                if (data?["json"] is not JsonObject js) continue;
+                var doc = data["document"];
+                var type = Str(doc?["doctype"]) is { Length: > 0 } t ? t : js["contractdoc"] is not null && js["clients"] is not null ? "007" : "000";
+                var status = Str(doc?["doc_status"]) is { Length: > 0 } s ? s : Str(data["doc_status"]);
+                return new JsonObject
+                {
+                    ["doc_id"] = docId, ["owner"] = owner, ["doctype"] = type, ["doc_status"] = status,
+                    ["name"] = Str(doc?["name"]), ["doc_date"] = Str(doc?["doc_date"]), ["partnerTin"] = partnerTin,
+                    ["partnerCompany"] = Str(doc?["partnerCompany"]),
+                };
+            }
+            catch (InvalidOperationException e) when (!e.Message.Contains("sessiyasi")) { /* bu tomondan yo'q */ }
+        }
+        return null;
+    }
+
     static string ItemDate(JsonObject x) =>
         Str(x["contract_date"]) is { Length: > 0 } d ? d[..Math.Min(10, d.Length)] : Str(x["doc_date"]);
 

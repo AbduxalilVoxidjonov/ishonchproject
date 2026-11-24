@@ -60,13 +60,24 @@ public static class ContractFiller
             else if (req?.Kind == "crmClick")
             {
                 // Sahifa so'ragan nuqtaga haqiqiy sichqoncha bosishi (bank ro'yxati oddiy JS bosishini qabul qilmaydi)
-                try { await Marking.CdpInput.ClickAsync(core, req.X, req.Y); } catch (Exception ex) { Log.Error("CRM bosish", ex); }
-                Post(core, new { kind = "crmClicked", id = req.Id });
+                // Bosishdan oldin sahifadan so'raladi: nuqtada hali o'sha element turibdimi (oyna ochilib qolgan bo'lsa bosilmaydi —
+                // aks holda bosish oyna tashqarisiga tushib «Шартнома яратиш» ni yopib yuboradi)
+                var ok = false;
+                try
+                {
+                    var ask = FormattableString.Invariant($"!!(window.__ishCrmClickOk && window.__ishCrmClickOk({req.Id}, {req.X}, {req.Y}))");
+                    ok = await Marking.CdpInput.ClickAsync(core, req.X, req.Y, 1, async () => await core.ExecuteScriptAsync(ask) == "true");
+                    if (!ok) Log.Write("CRM bosish bekor qilindi: nuqtadagi element o'zgargan (oyna ochilgan yoki ro'yxat siljigan)");
+                }
+                catch (Exception ex) { Log.Error("CRM bosish", ex); }
+                Post(core, new { kind = "crmClicked", id = req.Id, ok });
             }
+            else if (req?.Kind == "crmDiag") Log.Write("CRM sahifa: " + req.Text);
         };
     }
 
-    sealed record Req(string Kind, string Inn, string Firm, string Account, string? DocId = null, int Id = 0, double X = 0, double Y = 0, bool Force = false, string? Key = null);
+    sealed record Req(string Kind, string Inn, string Firm, string Account, string? DocId = null, int Id = 0, double X = 0, double Y = 0, bool Force = false, string? Key = null,
+        string? Text = null);
 
     /// <summary>Joriy so'rov qaysi oyna (hamkor STIRi + firma hisobi) uchun: javoblarga qo'shiladi, sahifa boshqa oynanikini tashlab yuboradi.</summary>
     static readonly AsyncLocal<string?> CurrentKey = new();
@@ -115,6 +126,20 @@ public static class ContractFiller
                     Status(core, $"{firm.Name} ({firm.Tin}) Didox'i: shartnomalar qidirilmoqda…");
                     // Kesh: ro'yxat 1 kun saqlanadi (tugma qo'lda bosilsa — Didox'dan yangidan)
                     string? token = null;
+                    // «Didox ID» yozilgan: ro'yxat emas, aynan shu hujjat olinadi
+                    if (!string.IsNullOrWhiteSpace(req.DocId))
+                    {
+                        token = await didox.TokenAsync(firm, t => Status(core, t));
+                        var one = await didox.ByIdAsync(token, req.DocId.Trim(), req.Inn);
+                        if (one is null)
+                        {
+                            last = new InvalidOperationException($"{firm.Name} Didox'ida ID {req.DocId.Trim()} bo'yicha hujjat topilmadi — ID ni va firmani tekshiring.");
+                            continue;
+                        }
+                        Log.Write($"CRM shartnoma: Didox ID {req.DocId.Trim()} bo'yicha");
+                        await FillAsync(core, didox, firm, token, one, 1, req with { Force = true }, firms.Count > 1);
+                        return;
+                    }
                     var list = req.Force ? null : CrmCache.GetList(firm.Tin, req.Inn);
                     if (list is null)
                     {
