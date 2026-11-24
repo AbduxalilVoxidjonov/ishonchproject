@@ -134,9 +134,11 @@ function engineHarness({ placed = 2, fail = false } = {}) {
   const ctx = vm.createContext({ ReceiptMath, ReceiptLedger, document: {}, IS_MAC:false, IS_DESKTOP:false,
     state: { mode:'marked', status:'running', source:{warehouse:'A'}, items:[], index:0, history:[], document:{prefix:'form7'} },
     activeTask:null, resumeCount:0, StopError:class extends Error {}, saved:[], transfers:0,
+    finishEarly:false, EARLY_NOTE:'Chek erta yakunlandi', tickDetail:'',
     save:async function() { ctx.saved.push(JSON.parse(JSON.stringify(ctx.state))); },
     log(){}, render(){}, el:()=>({value:''}), sleep:async()=>{}, checkpoint:async()=>{},
     openPodbor:async()=>{}, enableMarkingMode:async()=>{}, searchItem:async()=>{},
+    markAndSearch:async(item)=>{ await ctx.enableMarkingMode(); await ctx.searchItem(item); },
     fillQuantities:async()=>placed, closePodbor:async()=>{}, fillPrices:async()=>0, applyMarkup:async()=>0, postKeepOpen:async p=>p, markupPercent:async()=>0,
     transfer:async()=>{ctx.transfers++; if(fail) throw Error('timeout');},
     assertDocument:()=> 'form7', formPrefix:()=> 'form8', salesPodborButton:()=>({}),
@@ -220,6 +222,46 @@ test('run finishes without a markup step: transfers happen once, total is the lo
 });
 
 
+test('finishing early closes the receipt with what is placed and leaves the rest for the next receipt', async()=>{
+  const {ctx,run}=engineHarness();
+  Object.assign(ctx, { validPercent:()=>true, percentValue:()=>0, receiptReady:true,
+    isVisible:()=>true, domClick(){}, realClick:async()=>{}, cdp:async()=>{}, waitFor:async()=>{},
+    norm:s=>String(s||'').trim().toLowerCase(), parseNumber:ReceiptMath.parseNumber, fmtSum:String, round2:n=>Math.round(n*100)/100,
+    snapshotReceipt:()=>{ctx.snapshot=ctx.state.pricingResult.total;}, announce(){},
+  });
+  vm.runInContext(source.slice(source.indexOf('  async function runLoop()'),source.indexOf('  /** Continue after a pause:')),ctx);
+  ctx.announce=()=>{};
+  ctx.state.items=['A','B','C'].map(name=>ReceiptLedger.normalizeItem({name,stock:5,price:100,qty:2,placed:0,status:'pending'}));
+  ctx.state.plan={target:600};
+  // «Chekni shu yerda yakunlash» is pressed while the first product is being transferred
+  ctx.transfer=async()=>{ctx.transfers++; ctx.finishEarly=true;};
+  await run('runLoop()');
+  assert.equal(ctx.transfers,1);
+  assert.equal(ctx.state.status,'done');
+  assert.equal(ctx.state.incomplete,false);
+  assert.equal(ctx.finishEarly,false);
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[2,0,0]);
+  assert.deepEqual(ctx.state.items.map(i=>i.status),['ok','skip','skip']);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[3,5,5]); // the untouched products keep their stock for the next receipt
+  assert.equal(ctx.snapshot,200);
+});
+
+test('finishing early does nothing while no product is transferred yet', async()=>{
+  const {ctx,run}=engineHarness();
+  Object.assign(ctx, { validPercent:()=>true, percentValue:()=>0, receiptReady:true,
+    isVisible:()=>true, domClick(){}, realClick:async()=>{}, cdp:async()=>{}, waitFor:async()=>{},
+    norm:s=>String(s||'').trim().toLowerCase(), parseNumber:ReceiptMath.parseNumber, fmtSum:String, round2:n=>Math.round(n*100)/100,
+    snapshotReceipt:()=>{}, announce(){}, finishEarly:true,
+  });
+  vm.runInContext(source.slice(source.indexOf('  async function runLoop()'),source.indexOf('  /** Continue after a pause:')),ctx);
+  ctx.announce=()=>{};
+  ctx.state.plan={target:220};
+  await run('runLoop()');
+  assert.equal(ctx.transfers,1);
+  assert.equal(ctx.state.items[0].placed,2);
+  assert.equal(ctx.state.status,'done');
+});
+
 test('three-product smoke selects the closest total at 0 percent for target 500',()=>{
   const run=harness();
   run("state.items=[{name:'A',price:100,stock:5,qty:0,placed:0},{name:'B',price:250,stock:5,qty:0,placed:0},{name:'C',price:150,stock:5,qty:0,placed:0}]; applyPlan(500)");
@@ -291,8 +333,10 @@ test('marked-only UI and engine contain no mode selector or plain-item path', ()
   assert.doesNotMatch(source, /aynan 2 xil tovar/);
   assert.doesNotMatch(source, /type="radio"|modeMarked|modeUnmarked|setMode|canChangeMode|disableMarkingMode|plainListGrid|pickedGrid|fillPlain|plainQuantityDialog|confirmPlainQuantity|focusColumn|visibleCellOf/);
   const process = source.slice(source.indexOf('  async function processItem('),source.indexOf('  async function runLoop('));
-  assert.match(process, /await enableMarkingMode\(\)/);
-  assert.match(process, /await searchItem\(item\)/);
+  assert.match(process, /await markAndSearch\(item\)/);
+  // markAndSearch: isbotlangan tartib — avval belgi, keyin nom bo'yicha qidiruv
+  const mas = source.slice(source.indexOf('  async function markAndSearch('), source.indexOf('  async function waitFiltered('));
+  assert.match(mas, /await enableMarkingMode\(\)[\s\S]*await searchItem\(item\)/);
   assert.match(process, /await fillQuantities\(item, need\)/);
   assert.doesNotMatch(process, /state\.mode/);
 });

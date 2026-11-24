@@ -5,7 +5,9 @@
   const label = 'Заполнить цены (себестоимость + %)';
 
   async function apply({ prefix, percent }, adapter) {
-    const { document, isVisible, domClick, realClick, cdp, waitFor, parseNumber, assertDocument } = adapter;
+    const { document, isVisible, domClick, realClick, cdp, waitFor, assertDocument } = adapter;
+    // 1C rus tilida «1,000» (uch xonali kasr) yozadi: oddiy o‘qishda bu noaniq (ming?) — bu maydonlarda vergul doim kasr belgisi
+    const parseNumber = (value) => { const n = adapter.parseNumber(value); return Number.isFinite(n) ? n : adapter.parseNumber(value, ','); };
     if (typeof prefix !== 'string' || !prefix ||
         !['number', 'string'].includes(typeof percent) || !String(percent).trim()) {
       throw new Error('Invalid markup percentage or document prefix');
@@ -102,10 +104,13 @@
       throw error;
     }
     await guard();
+    // Oyna yopilgach 1C narxlarni bir oz kechikib hisoblaydi: jami 0 bo'lib tursa bir necha soniya kutiladi
+    const totalSince = Date.now();
     const result = await wait(() => {
       const totalInput = visible(`${prefix}_ИтогиВсего_i0`);
       if (!totalInput || totalInput.tagName !== 'INPUT' || !String(totalInput.value).trim()) return null;
       const total = parseNumber(totalInput.value);
+      if (total === 0 && Date.now() - totalSince < (adapter.zeroTotalWait ?? 6000)) return null;
       return Number.isFinite(total) && total >= 0 ? { total } : null;
     }, 'realization grand total ready');
     await guard();

@@ -57,7 +57,7 @@ public sealed class MarkedAuto : IDisposable
             .ish-go { flex:3 1 auto; padding:10px 8px; font-size:13px; }
             #ishAuto input.ish-bad { border-color:#ef4444; outline:2px solid #fecaca; }`;
           const send = (action) => {
-            const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"]');
+            const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"], #ishCount [data-x="' + n + '"]');
             window.chrome?.webview?.postMessage({ kind: 'ishAuto', action,
               warehouse: q('wh')?.value || '', count: Number(q('count')?.value) || 1, post: !!q('post')?.checked, invDate: q('inv')?.value || '',
               markup: Number(String(q('markup')?.value || '0').replace(',', '.')) || 0 });
@@ -66,10 +66,9 @@ public sealed class MarkedAuto : IDisposable
             window.__ishAutoState = s;
             const box = document.getElementById('ishAuto'); if (!box || !s) return;
             // Sozlamalar (#ishAuto) va tugmalar (#ishAutoAct) alohida bloklarda
-            const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"], #ishAutoAct [data-x="' + n + '"]') || { };
+            const q = (n) => document.querySelector('#ishAuto [data-x="' + n + '"], #ishAutoAct [data-x="' + n + '"], #ishCount [data-x="' + n + '"]') || { };
             if (s.init) { q('inv').value = s.invDate || ''; q('wh').value = s.warehouse || ''; q('count').value = s.count || 1; q('post').checked = !!s.post; q('markup').value = s.markup ?? 0; s.init = false; }
             q('inv').disabled = q('wh').disabled = q('count').disabled = q('post').disabled = q('markup').disabled = q('go').disabled = !!s.running;
-            q('refresh').disabled = !!s.running;
             q('stop').disabled = !s.running;
             q('sellDoc').disabled = !!s.running;
             q('pause').disabled = !s.running;
@@ -92,16 +91,21 @@ public sealed class MarkedAuto : IDisposable
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Inventarizatsiya sanasi va vaqti</span><input class="inp" data-x="inv" type="datetime-local" step="1"></label></div>' +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: МАРКИРОВАН (EPOS)"></label></div>' +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Natsenka, % (1C «Заполнить → Заполнить цены (себестоимость + %)» bilan qo‘yiladi)</span><input class="inp" data-x="markup" type="number" min="0" max="1000" step="0.01" value="0"></label></div>' +
-              '<div class="row"><input type="hidden" data-x="count" value="1">' +
-              '<label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
+              '<div class="row"><label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
               (inSlots ? '' : '<div class="muted">Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>');
             const act = document.createElement('div');
             act.id = 'ishAutoAct'; act.className = inSlots ? 'ish-in' : 'ish-auto';
-            act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled>■ To‘xtatish</button></div>' +
+            act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled title="Bir marta: joriy tovar tugagach chek terilgani bilan yopiladi va provesti qilinadi, terilmagan summa maydonga qaytadi. Ikki marta: chekni yopmasdan hoziroq to‘xtaydi">■ To‘xtatish</button></div>' +
               '<div class="row"><button class="b small" data-x="sellDoc" title="1C da hozir ochiq turgan Реализация hujjatini (dastur yaratmagan bo‘lsa ham) markirovka kodlari bilan E-POS orqali sotish">📄 Ochiq 1C hujjatini E-POS orqali sotish</button></div>' +
-              '<div class="row"><button class="b small" data-x="reset" title="Qotib qolsa: jarayonni majburan to‘xtatadi, joriy chekni tozalaydi. Ombor qoldig‘i saqlanadi. Ishlatilgan kodlar va xato bazasi saqlanadi">⟲ Boshiga qaytarish</button></div>' +
-              '<div class="row"><button class="b small" data-x="refresh">↻ Inventarizatsiyani yangilash</button></div>' +
+              '<div class="row"><button class="b small" data-x="reset" title="Jarayonni to‘xtatadi, joriy chekni tozalaydi va keyingi «Avto boshlash» da inventarizatsiyani qaytadan yangilaydi. Ishlatilgan kodlar va xato bazasi saqlanadi">⟲ Boshiga qaytarish va inventarizatsiyani yangilash</button></div>' +
               '<div class="ish-st" id="ishAutoStatus"></div>';
+            // «Nechta chek» — «Maqsad summa» bilan bir qatorda, uning yonida
+            const cnt = document.createElement('label');
+            cnt.id = 'ishCount'; cnt.className = 'field'; cnt.style.flex = '0 1 96px';
+            cnt.title = '«Maqsad summa» shuncha chekka bo‘linadi (har xil summalar bilan), cheklar ketma-ket teriladi';
+            cnt.innerHTML = '<span>Nechta chek</span><input class="inp" data-x="count" type="number" min="1" max="200" step="1" value="1">';
+            const targetField = target.closest('label') || target;
+            targetField.parentNode.insertBefore(cnt, targetField.nextSibling);
             if (inSlots) { setSlot.appendChild(box); actSlot.appendChild(act); }
             else { row.parentNode.insertBefore(box, row); row.parentNode.insertBefore(act, row.nextSibling); }
             act.querySelector('[data-x="go"]').onclick = () => {
@@ -115,11 +119,10 @@ public sealed class MarkedAuto : IDisposable
             act.querySelector('[data-x="stop"]').onclick = () => send('stop');
             act.querySelector('[data-x="sellDoc"]').onclick = () => send('sellDoc');
             act.querySelector('[data-x="pause"]').onclick = () => send('pause');
-            act.querySelector('[data-x="reset"]').onclick = () => { if (confirm('Joriy chek tozalansinmi? Ombor qoldig‘i saqlanadi. (ishlatilgan kodlar va xato bazasi saqlanadi)')) send('reset'); };
-            act.querySelector('[data-x="refresh"]').onclick = () => send('refresh');
+            act.querySelector('[data-x="reset"]').onclick = () => { if (confirm('Joriy chek tozalanib, inventarizatsiya keyingi «Avto boshlash» da qaytadan yangilansinmi? (ishlatilgan kodlar va xato bazasi saqlanadi)')) send('reset'); };
             box.querySelector('[data-x="inv"]').onchange = () => send('save');
             box.querySelector('[data-x="wh"]').onchange = () => send('save');
-            box.querySelector('[data-x="count"]').onchange = () => send('save');
+            cnt.querySelector('[data-x="count"]').onchange = () => send('save');
             box.querySelector('[data-x="post"]').onchange = () => send('save');
             box.querySelector('[data-x="markup"]').onchange = () => send('save');
             const s = window.__ishAutoState; if (s) window.__ishAutoApply({ ...s, init: true });
@@ -140,7 +143,7 @@ public sealed class MarkedAuto : IDisposable
     public void OnMessage(JsonElement m)
     {
         var action = m.TryGetProperty("action", out var a) ? a.GetString() : "";
-        if (action == "stop") { cts?.Cancel(); return; }
+        if (action == "stop") { _ = StopAsync(); return; }
         if (action == "reset") { _ = ResetAsync(); return; }
         if (action == "pause") { _ = TogglePauseAsync(); return; }
         if (action == "sellDoc") { if (!Running) _ = SellOpenDocumentAsync(); return; }
@@ -151,13 +154,39 @@ public sealed class MarkedAuto : IDisposable
         if (m.TryGetProperty("markup", out var mk) && mk.ValueKind == JsonValueKind.Number) prefs.Markup = Math.Clamp(mk.GetDecimal(), 0m, 1000m);
         if (m.TryGetProperty("invDate", out var inv) && UnmarkedOptions.ParseInventoryDate(inv.GetString()) is { } when) inventoryDate = when;
         settings.Save();
-        if (action == "refresh")
-        {
-            prefs.CapturedOn = null;
-            settings.Save();
-            Status("Inventarizatsiya keyingi «Avto boshlash» da yangilanadi. Ishlatilgan markirovkalar saqlanadi.", "warn");
-        }
         if (action == "go") _ = RunAsync();
+    }
+
+    /// <summary>Panel hozir chek teryaptimi (Подбор bosqichi): shu paytda «To'xtatish» chekni yopib o'tkazadi.</summary>
+    bool collecting;
+    /// <summary>«To'xtatish» bosilgan: joriy tovar tugagach chek terilgani bilan yopiladi (yana bosilsa — darhol to'xtaydi).</summary>
+    bool finishing;
+
+    /// <summary>
+    /// «■ To'xtatish»: chek terilayotgan bo'lsa va kamida bitta tovar o'tkazilgan bo'lsa — joriy tovar tugagach chek shu yerda
+    /// yopiladi va (belgi yoqilgan bo'lsa) provesti qilinadi, qolgan summa keyingi chekka qoladi. Boshqa bosqichda yoki
+    /// ikkinchi bosishda — darhol to'xtaydi (panel pauzaga olinadi, chek keyin davom ettirilishi mumkin).
+    /// </summary>
+    async Task StopAsync()
+    {
+        if (!Running) return;
+        try
+        {
+            var s = await PanelStateAsync(CancellationToken.None);
+            var start = Str(s, "start");
+            if (!finishing && collecting && start is "Pauza" or "Davom" && int.TryParse(Str(s, "placed"), out var placed) && placed > 0)
+            {
+                finishing = true;
+                if (paused) { paused = false; gate?.Resume(); }
+                await PanelClickAsync("finish", CancellationToken.None);
+                Status("To'xtatilmoqda: joriy tovar tugagach chek shu yerda yopiladi" + (prefs.Post ? " va provesti qilinadi" : "") +
+                       "; terilmagan summa «Maqsad summa» ga yoziladi. (Hoziroq, chekni yopmasdan to‘xtatish uchun «■ To‘xtatish» ni yana bosing.)", "warn", report: false);
+                return;
+            }
+            if (start == "Pauza") await PanelClickAsync("start", CancellationToken.None); // panel ham to'xtaydi (pauza)
+        }
+        catch (Exception e) { Log.Write("MarkedAuto to'xtatish: " + e.Message); }
+        cts?.Cancel();
     }
 
     /// <param name="details">Istisno matni (muammolar jurnaliga).</param>
@@ -204,7 +233,8 @@ public sealed class MarkedAuto : IDisposable
             "(() => { const q = s => document.querySelector('#app ' + s); const b = n => q('[data-a=\"' + n + '\"]');" +
             " return { start: b('start')?.textContent?.trim() || '', startDisabled: !!b('start')?.disabled," +
             " capture: b('capture')?.textContent?.trim() || '', source: q('[data-el=\"source\"]')?.textContent?.trim() || ''," +
-            " full: q('[data-el=\"fullSource\"]')?.textContent?.trim() || '', message: q('[data-el=\"message\"]')?.textContent?.trim() || '' }; })()", ct);
+            " full: q('[data-el=\"fullSource\"]')?.textContent?.trim() || '', placed: q('[data-el=\"placedKinds\"]')?.textContent?.trim() || ''," +
+            " doneTotal: q('[data-el=\"doneTotal\"]')?.textContent?.trim() || '', doneLocal: q('[data-el=\"doneLocal\"]')?.textContent?.trim() || '', message: q('[data-el=\"message\"]')?.textContent?.trim() || '' }; })()", ct);
         using var doc = JsonDocument.Parse(raw);
         return doc.RootElement.Clone();
     }
@@ -240,7 +270,10 @@ public sealed class MarkedAuto : IDisposable
                 await PanelClickAsync("abort", CancellationToken.None);
                 Status("Majburan to'xtatildi va joriy chek tozalandi (1C sahifasi qayta yuklanadi). Ombor qoldig‘i saqlandi.", "warn");
             }
-            else Status("Boshiga qaytarildi: joriy chek tozalandi, ombor qoldig‘i saqlandi — «▶ Avto boshlash» ni bosing.", "ok");
+            else Status("Boshiga qaytarildi: joriy chek tozalandi. Inventarizatsiya keyingi «▶ Avto boshlash» da qaytadan yangilanadi.", "ok");
+            // Bitta tugma: boshiga qaytarish inventarizatsiyani ham yangilashga qo'yadi (ishlatilgan markirovkalar saqlanadi)
+            prefs.CapturedOn = null;
+            settings.Save();
         }
         catch (Exception e) { Status("Boshiga qaytarib bo'lmadi: " + e.Message, "err"); }
     }
@@ -351,6 +384,7 @@ public sealed class MarkedAuto : IDisposable
             await runner.InitAsync();
             Status("Tugallanmagan chek davom ettirilmoqda…");
             await StartPanelAsync(0, ct);
+            collecting = true;
             var stoppedSince = (DateTime?)null;
             await WaitAsync(async () =>
             {
@@ -360,12 +394,13 @@ public sealed class MarkedAuto : IDisposable
                 else stoppedSince = null;
                 return false;
             }, TimeSpan.FromHours(2), "chek yig'ilishi", ct);
+            collecting = false;
             if (!prefs.Post) { Status("Chek yig'ildi. Provesti belgisi o'chiq — tekshirib o'zingiz provesti qiling.", "ok"); return; }
             Status("Chek: provesti…");
             var r = await runner.PostCurrentAsync();
             if (!r.Ok) throw new OneCException("Chekni provesti qilib bo'lmadi: " + string.Join(" | ", r.Messages.Take(2)));
             done = true;
-            Status("Chek davom ettirildi va provesti qilindi ✓", "ok");
+            Status(finishing ? "To'xtatildi: terilgan qismi bilan chek yopildi va provesti qilindi ✓ Qolgani uchun summani kiritib «▶ Avto boshlash» ni bosing." : "Chek davom ettirildi va provesti qilindi ✓", "ok");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { Status("To'xtatildi — «▶ Avto boshlash» bosilsa yana qolgan joyidan davom ettirish taklif qilinadi.", "warn"); }
         catch (OneCException e) { Status(e.Message, "err"); }
@@ -376,6 +411,8 @@ public sealed class MarkedAuto : IDisposable
             cts = null;
             paused = false;
             gate = null;
+            collecting = false;
+            finishing = false;
             if (sum > 0 && done) { try { await PanelSetTargetAsync(sum, CancellationToken.None); } catch { } }
             Push();
         }
@@ -420,7 +457,7 @@ public sealed class MarkedAuto : IDisposable
         if (resumeReceipt) { await ContinueReceiptAsync(core, sum ?? 0, ct); return; }
         // Har «Avto boshlash» — bitta chek: «Maqsad summa» shu chekning summasi, tovarlar summaga qarab istalgancha olinadi
         // (bir tovardan nechta — panelning «Bir tovardan, dona» maydonida)
-        var n = 1;
+        var n = Math.Clamp(prefs.Count, 1, 200);
         if (sum is not > 0)
         {
             cts.Dispose(); cts = null;
@@ -428,8 +465,8 @@ public sealed class MarkedAuto : IDisposable
             return;
         }
         var targets = Planner.SplitTotal(sum.Value, n, 0.25m, new Random());
-        var msg = $"Markirovkali chek: {sum:N0} so'm (1 ta chek), sklad «{prefs.Warehouse}», natsenka {prefs.Markup:0.##}%.\n" +
-                  (prefs.Post ? "Chek PROVESTI QILINADI.\n" : "Chek provesti qilinmaydi (tekshirib o'zingiz provesti qilasiz).\n") + "\nBoshlansinmi?";
+        var msg = $"Markirovkali chek: {sum:N0} so'm ({n} ta chek" + (n > 1 ? ", summa cheklarga bo'linadi" : "") + $"), sklad «{prefs.Warehouse}», natsenka {prefs.Markup:0.##}%.\n" +
+                  (prefs.Post ? "Cheklar PROVESTI QILINADI.\n" : "Cheklar faqat yoziladi («Записать») — «Провести и закрыть» bosilmaydi.\n") + "\nBoshlansinmi?";
         if (MessageBox.Show(owner, msg, AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
             cts.Dispose(); cts = null;
@@ -438,6 +475,12 @@ public sealed class MarkedAuto : IDisposable
         }
 
         var done = 0;
+        var unposted = false;
+        var stopped = false;
+        decimal? closedTotal = null, rest = null;
+        // Ish tugagach «Maqsad summa» ga qaytariladigan summa: odatda kiritilgani; chek erta yopilgan bo'lsa — qolgani
+        var restore = sum.Value;
+        finishing = false;
         Status("Boshlanmoqda…");
         try
         {
@@ -495,41 +538,78 @@ public sealed class MarkedAuto : IDisposable
             }
 
             // 2) Har chek
-            for (var k = 0; k < n; k++)
+            // «To'xtatish» chekni erta yopsa, qolgan summa uchun yangi chek shu yerning o'zida boshlanadi
+            // (qolgan summa navbatga keyingi chek bo'lib qo'shiladi; undan keyingi cheklar o'z summasi bilan qoladi)
+            var goals = targets.ToList();
+            for (var k = 0; k < goals.Count; k++)
             {
-                Status($"{k + 1}/{n}-chek: yangi Реализация…");
+                var goal = goals[k];
+                restore = goals.Skip(k).Sum(); // shu yerda butunlay to'xtatilsa — terilmagan summa maydonga qaytadi
+                Status($"{k + 1}-chek: yangi Реализация…");
                 await runner.CreateMarkedDocumentAsync();
                 // Panel tovarlarni inventarizatsiya narxi (QQS'siz, natsenkasiz) bo'yicha tanlaydi; 1C da «Сумма» ga natsenka
                 // qo'shiladi va QQS ustiga («НДС сверху») — chek jami maqsadga teng chiqishi uchun panelga ikkalasisiz summa beriladi
-                await PanelSetTargetAsync(Math.Round(targets[k] / (1 + VatRate / 100m) / (1 + prefs.Markup / 100m)), ct);
+                await PanelSetTargetAsync(Math.Round(goal / (1 + VatRate / 100m) / (1 + prefs.Markup / 100m)), ct);
                 await Task.Delay(800, ct);
-                Status($"{k + 1}/{n}-chek: Подбор (≈{targets[k]:N0} so'm)…");
+                Status($"{k + 1}-chek: Подбор (≈{goal:N0} so'm)…");
                 await StartPanelAsync(k, ct);
+                collecting = true;
 
                 // Panel jarayoni tugashini kutamiz: «Yangi chekni boshlash» — tayyor; «Davom» — to'xtab qoldi
                 var stoppedSince = (DateTime?)null;
+                var reactivated = false;
                 await WaitAsync(async () =>
                 {
-                    var s = Str(await PanelStateAsync(ct), "start");
+                    var ps = await PanelStateAsync(ct);
+                    var s = Str(ps, "start");
                     if (s == "Yangi chekni boshlash") return true;
+                    // Hujjat tabi orqaga o'tib qolgan (1C sekin bo'lganda kechikkan bosish): bir marta oldinga chiqarib davom ettiriladi
+                    if (s == "Davom" && !paused && !reactivated && Str(ps, "message").Contains("hujjatini tanlang") && await runner.ActivateNewDocumentTabAsync())
+                    {
+                        reactivated = true;
+                        Status($"{k + 1}-chek: Реализация hujjati oldinga chiqarildi, davom ettirilmoqda…", "warn");
+                        await PanelClickAsync("start", ct);
+                        return false;
+                    }
                     if (s == "Davom" && !paused) { stoppedSince ??= DateTime.UtcNow; if (DateTime.UtcNow - stoppedSince > TimeSpan.FromSeconds(15)) throw new OneCException($"{k + 1}-chek to'xtab qoldi — panel jurnalini ko'ring, «Davom» bilan davom ettirib, keyin «▶ Avto boshlash» ni qayta bosing."); }
                     else stoppedSince = null;
                     return false;
                 }, TimeSpan.FromHours(2), $"{k + 1}-chek yig'ilishi", ct);
+                collecting = false;
+                // «To'xtatish» bilan erta yopilgan chek: 1C dagi jami (QQS bilan) — qolgan summa keyingi chekka qoladi
+                // (jami 1C hujjatining o'zidan o'qiladi; o'qilmasa — panel hisoblagan 1C jami)
+                if (finishing && await ClosedTotalAsync(runner, ct) is { } closed && closed > 0)
+                {
+                    closedTotal = closed;
+                    rest = Math.Max(0, Math.Round(goal - closed));
+                }
 
                 if (!prefs.Post)
                 {
-                    Status($"{k + 1}-chek yig'ildi. Provesti belgisi o'chiq — tekshirib o'zingiz provesti qiling.", "ok");
+                    // Belgi o'chiq: «Провести и закрыть» bosilmaydi — hujjat «Записать» qilinib yopiladi va keyingi chekka o'tiladi
+                    Status($"{k + 1}-chek: yozilmoqda («Записать»)…");
+                    await runner.SaveAndCloseCurrentAsync();
                     done++;
+                    Status($"{k + 1}-chek yozildi va yopildi ✓", "ok");
+                    if (!finishing) continue;
+                    restore = (rest ?? 0) + goals.Skip(k + 1).Sum();
+                    stopped = true;
                     break;
                 }
-                Status($"{k + 1}/{n}-chek: provesti…");
+                Status($"{k + 1}-chek: provesti…");
                 var r = await runner.PostCurrentAsync();
                 if (!r.Ok) throw new OneCException($"{k + 1}-chekni provesti qilib bo'lmadi: " + string.Join(" | ", r.Messages.Take(2)));
                 done++;
-                Status($"{k + 1}/{n}-chek provesti qilindi ✓", "ok");
+                Status($"{k + 1}-chek provesti qilindi ✓", "ok");
+                if (!finishing) continue;
+                // «To'xtatish»: chek terilgani bilan yopildi va o'tkazildi — ish shu yerda to'xtaydi; terilmagan summa maydonga qaytadi
+                restore = (rest ?? 0) + goals.Skip(k + 1).Sum();
+                stopped = true;
+                break;
             }
-            Status($"Tugadi: {done} ta chek.", "ok");
+            if (unposted) { /* holat yuqorida yozildi */ }
+            else if (stopped) Status($"To'xtatildi: {done} ta chek tayyor ✓" + RestNote(closedTotal, restore), "ok");
+            else { restore = sum.Value; Status($"Tugadi: {done} ta chek " + (prefs.Post ? "provesti qilindi." : "yozildi («Записать»)."), "ok"); }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { Status($"To'xtatildi ({done} ta chek tayyor).", "warn", report: false); }
         catch (OneCException e) { Status(e.Message, "err"); }
@@ -540,10 +620,32 @@ public sealed class MarkedAuto : IDisposable
             cts = null;
             paused = false;
             gate = null;
-            try { await PanelSetTargetAsync(sum.Value, CancellationToken.None); } catch { /* panel yopilgan */ }
+            collecting = false;
+            finishing = false;
+            // Erta yopilgan chekdan keyin «Maqsad summa» da qolgan summa turadi: «Avto boshlash» uni yangi chekka teradi
+            try { await PanelSetTargetAsync(restore > 0 ? restore : sum.Value, CancellationToken.None); } catch { /* panel yopilgan */ }
             Push();
         }
     }
+
+    /// <summary>
+    /// Erta yopilgan chekning jami summasi (QQS bilan): 1C hujjatidagi «Всего» (1C uni bir oz kechikib hisoblaydi — bir necha
+    /// soniya kutiladi), bo'lmasa panelning 1C jami, u ham bo'lmasa panelning lokal hisobi + natsenka + QQS (taxminan).
+    /// </summary>
+    async Task<decimal?> ClosedTotalAsync(UnmarkedRunner runner, CancellationToken ct)
+    {
+        for (var i = 0; i < 16; i++)
+        {
+            if (Parse(await runner.DocumentTotalTextAsync()) is > 0 and var fromDoc) return fromDoc;
+            await Task.Delay(500, ct);
+        }
+        var s = await PanelStateAsync(ct);
+        if (Parse(Str(s, "doneTotal")) is > 0 and var fromPanel) return fromPanel;
+        return Parse(Str(s, "doneLocal")) is > 0 and var local ? Math.Round(local * (1 + prefs.Markup / 100m) * (1 + VatRate / 100m)) : null;
+    }
+
+    static string RestNote(decimal? closed, decimal? rest) => closed is null ? "" :
+        $" Chek jami: {closed:N0} so'm." + (rest is > 0 ? $" Qolgan {rest:N0} so'm «Maqsad summa» ga yozildi — «▶ Avto boshlash» bosilsa yangi chekka teriladi." : "");
 
     bool sellingDoc;
 

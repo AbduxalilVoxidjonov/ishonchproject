@@ -104,6 +104,35 @@ public sealed class MarkingSession : IDisposable
         panelPorts.Clear();
     }
 
+    /// <summary>
+    /// 1C sahifasini so'roqsiz qayta yuklaydi. 1C yopilishdan oldin brauzerning «Saytdan chiqilsinmi?» oynasini chiqaradi —
+    /// javob berilmasa sahifa ham, panel ham («1C sahifasiga ulanmoqda…») qotib qoladi. Shuning uchun 1C ning shu so'rovi
+    /// qayta yuklashdan oldin o'chiriladi; baribir chiqsa — o'zi tasdiqlanadi.
+    /// </summary>
+    static async Task ReloadWithoutPromptAsync(CoreWebView2 core)
+    {
+        void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs e)
+        {
+            if (e.Kind == CoreWebView2ScriptDialogKind.Beforeunload) e.Accept();
+        }
+        void OnDone(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            core.ScriptDialogOpening -= OnDialog;
+            core.NavigationCompleted -= OnDone;
+            core.Settings.AreDefaultScriptDialogsEnabled = true;
+        }
+        try
+        {
+            await core.ExecuteScriptAsync(
+                "(() => { try { window.onbeforeunload = null; window.addEventListener('beforeunload', e => e.stopImmediatePropagation(), true); } catch (e) {} })()");
+        }
+        catch { /* sahifa javob bermasa ham qayta yuklanadi */ }
+        core.Settings.AreDefaultScriptDialogsEnabled = false;
+        core.ScriptDialogOpening += OnDialog;
+        core.NavigationCompleted += OnDone;
+        core.Reload();
+    }
+
     // ---- 1C sahifasidan keladigan so'rovlar (content.js) ---------------------------------
 
     async Task<object?> HandlePageRpc(JsonElement msg)
@@ -119,7 +148,7 @@ public sealed class MarkingSession : IDisposable
                 await CdpInput.RunAsync(oneC.Core!, msg.GetProperty("action"));
                 return new { ok = true };
             case "restartContent":
-                oneC.Core!.Reload();
+                await ReloadWithoutPromptAsync(oneC.Core!);
                 return new { ok = true };
             case "mxik-check-marking":
                 return await SoliqBridge.CheckAsync(getSoliqTab,

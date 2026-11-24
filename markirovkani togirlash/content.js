@@ -84,7 +84,8 @@
     legacyModeBlocked: false,
     plan: null, // { target, total } when the quantities come from a sum plan
     captureLimit: '', // optional first N physical inventory rows
-    perItemLimit: '2', // units per product: a whole number, or empty for the whole stock
+    perItemLimit: '', // units per product: a whole number; empty (the default) — no limit, up to the whole stock
+    perItemDefaultCleared: true, // the old default «2» was dropped once (see the restore below)
     stir: '', // our STIR: a code is taken only when its last operation is wholesale to this STIR
     clock: null, // WorkClock of the current task
     badCodes: [], // marking codes skipped in this receipt: { name, rows, position, code, reason, time }
@@ -107,6 +108,8 @@
   });
   let state = emptyState();
   let activeTask = null; // 'capture' | 'run' while one of them is executing (never both)
+  let finishEarly = false; // «Chekni shu yerda yakunlash»: after the current product the receipt closes with what is placed
+  const EARLY_NOTE = 'Chek erta yakunlandi — keyingi chekka o‘tadi';
   let captureProgress = null; // { read, total } while «Olish» runs: rows read so far (shown, also while paused)
   let resumeCount = 0; // grows every time a pause ends: steps use it to re-check the cursor
 
@@ -1020,27 +1023,50 @@
     }
   }
 
+  let tickDetail = ''; // oxirgi belgi qo'yish qadamining ichki o'lchovi (⏱ qatoriga qo'shiladi)
   async function enableMarkingMode() {
-    // 1C replaces controls while rendering. Reacquire on every poll and never
-    // repeat a dispatched click: a delayed response could otherwise toggle off.
-    let clicked = false;
+    // 1C replaces controls while rendering. Reacquire on every poll.
+    // Подбор eslab qolgan ko'rinishida ochiladi: ba'zan «По остаткам расширенный коды маркировки» allaqachon belgilangan,
+    // ba'zan yo'q (oddiy ro'yxat). Belgilanmagan bo'lsa bosiladi. 1C band paytda (ro'yxat yuklanayotganda) bosishni yutib
+    // yuborishi mumkin — ilgari bir marta bosilib 15 soniya kutilar va tovar tashlab ketilardi. Endi belgi qo'yilmasa har
+    // 4 soniyada holat qayta tekshirilib yana bosiladi (ikkinchisidan boshlab haqiqiy sichqoncha bosishi); kech kelgan javob
+    // belgini o'chirib yuborsa ham keyingi tekshiruv uni qayta qo'yadi.
+    let clicks = 0;
+    let lastClick = 0;
+    let clicking = false;
+    let checkedAt = 0;
+    const began = Date.now();
+    let firstClick = 0;
+    tickDetail = '';
     await waitFor(() => {
       const cb = podborCheckbox();
       if (!cb || cb.isConnected === false) return false;
       if (cb.classList.contains('select')) {
+        if (!checkedAt) checkedAt = Date.now();
+        // o'lchov: bosishgacha · belgi qo'yilguncha · jadval chiqquncha (soniya)
+        const sec = (a, b) => ((b - a) / 1000).toFixed(1);
+        tickDetail = firstClick ? `bosish ${sec(began, firstClick)} · belgilandi ${sec(firstClick, checkedAt)} · jadval ${sec(checkedAt, Date.now())}` : `oldindan belgilangan · jadval ${sec(began, Date.now())}`;
         const grid = markingGrid();
         const input = searchInput();
         const prefix = formPrefix(cb);
         return grid && input && grid.isConnected !== false && input.isConnected !== false &&
           formPrefix(grid) === prefix && formPrefix(input) === prefix && grid;
       }
-      if (!clicked && !cb.disabled && cb.getAttribute('aria-disabled') !== 'true' &&
-          !cb.classList.contains('disabled')) {
-        clicked = true;
-        domClick(cb);
+      checkedAt = 0;
+      const enabled = !cb.disabled && cb.getAttribute('aria-disabled') !== 'true' && !cb.classList.contains('disabled');
+      if (enabled && !clicking && clicks < 5 && Date.now() - lastClick > 4000) {
+        clicks++;
+        lastClick = Date.now();
+        if (!firstClick) firstClick = lastClick;
+        if (clicks === 1) domClick(cb);
+        else {
+          log(`«По остаткам расширенный коды маркировки» belgilanmadi — ${clicks}-marta bosilmoqda.`, 'warn');
+          clicking = true;
+          realClick(cb).catch(() => {}).finally(() => { clicking = false; lastClick = Date.now(); });
+        }
       }
       return false;
-    }, T.openForm, 'markirovka kodlari jadvali va «Найти» maydoni');
+    }, 45000, 'markirovka kodlari jadvali va «Найти» maydoni');
   }
 
   const rowsOfItem = (grid, cols, item) =>
@@ -1083,7 +1109,19 @@
   async function searchItem(item, gridFn = markingGrid) {
     await typeSearch(item.name);
     await cdp({ type: 'key', key: 'Enter' });
+    await waitFiltered(item, gridFn);
+  }
 
+  /** Подбор ochilgach: markirovka kodlari ko'rinishi yoqiladi va tovar nomi bo'yicha qidiriladi (qadamlar vaqti `mark` ga yoziladi). */
+  async function markAndSearch(item, mark = () => {}) {
+    // Isbotlangan tartib: avval belgi, keyin nom. («Avval nom, keyin belgi» TestDB11 da bir marta ishladi, lekin har doim
+    // bir xil natija berishi tasdiqlanmadi — «Найти» ning qidiruv tarixi ro'yxati ochilib qolishi mumkin — shuning uchun ishlatilmaydi.)
+    await enableMarkingMode(); mark('belgi');
+    await searchItem(item); mark('qidiruv');
+  }
+
+  /** The list shows only this item (or nothing at all). */
+  async function waitFiltered(item, gridFn = markingGrid) {
     // Done when the list shows only this item (or nothing at all)
     const grid = await waitFor(gridFn, 5000, 'Подбор ro‘yxati');
     const cols = gridColumns(grid);
@@ -1439,7 +1477,7 @@
    * «Провести» (hujjat yopilmaydi): 1C tannarxni («Сумма списания») provesti paytida hisoblaydi — natsenka shundan keyin
    * «Заполнить цены (себестоимость + %)» bilan qo'yiladi. 1C provesti qila olmasa (xabar chiqarsa) ish to'xtatiladi.
    */
-  async function postKeepOpen(prefix) {
+  async function postKeepOpen(prefix, again = false) {
     const btn = document.getElementById(`${prefix}_ФормаПровести`);
     if (!btn || !isVisible(btn)) throw docError('Hujjatda «Провести» tugmasi topilmadi');
     await realClick(btn);
@@ -1451,7 +1489,7 @@
       return number && title && !title.endsWith('*');
     }, 90000, '«Провести» (1C xabarini tekshiring)', { pausable: false }); // forma qayta chizilayotganda hujjat tekshiruvi yo'q
     if (state.document) state.document = documentIdentity(current);
-    log(`Hujjat provesti qilindi (№ ${document.getElementById(`${current}_Номер_i0`)?.value?.trim() || '?'}) — endi natsenka qo‘yiladi.`, 'info');
+    if (!again) log(`Hujjat provesti qilindi (№ ${document.getElementById(`${current}_Номер_i0`)?.value?.trim() || '?'}) — endi natsenka qo‘yiladi.`, 'info');
     return current;
   }
 
@@ -1464,7 +1502,7 @@
     const followDocument = () => (prefix = followReceiptDocument(prefix));
     const sameForm = async () => followDocument();
     const adapter = {
-      document, isVisible, realClick, cdp, parseNumber, mac: IS_MAC, timeout: 15000,
+      document, isVisible, realClick, cdp, parseNumber, mac: IS_MAC, timeout: 15000, zeroTotalWait: 1500,
       // 1C formani qayta chizayotganda umumiy hujjat tekshiruvi (checkpoint) xato bermasin — hujjatni followDocument kuzatadi
       waitFor: (fn, timeout, what) => waitFor(fn, timeout, what, { pausable: false }),
       domClick: async (el) => (/_ФормаЗаполнить$/.test(el?.id || '') ? realClick(el) : domClick(el)),
@@ -1480,11 +1518,33 @@
           log(`Natsenka ${markup}% «Заполнить цены (себестоимость + %)» bilan qo‘yildi. 1C dagi jami: ${fmtSum(total)}.`, 'info');
           return total;
         }
+        // «Заполнить цены» narxlarni qatorlarga qo'yadi, lekin 1C «Всего» ni hujjat yozilmaguncha 0 ko'rsatadi:
+        // qatorlarda summa bo'lsa hujjat qayta o'tkaziladi va jami shundan keyin o'qiladi
+        const filledGrid = document.getElementById(`${prefix}_Товары`);
+        const filledCols = filledGrid ? gridColumns(filledGrid) : null;
+        const sumCol = filledCols ? colOf(filledCols, 'lineSum') : undefined;
+        if (filledGrid && sumCol !== undefined && gridRows(filledGrid).some((l) => parseNumber(spanText(l, filledCols, sumCol), ',') > 0)) {
+          prefix = await postKeepOpen(prefix, true);
+          const written = await waitFor(() => {
+            const v = parseNumber(document.getElementById(`${prefix}_ИтогиВсего_i0`)?.value, ',');
+            return v > 0 ? { v } : null;
+          }, 8000, '«Всего» summasi', { pausable: false }).catch(() => null);
+          if (written) {
+            const total = await captureDocLines(prefix);
+            log(`Natsenka ${markup}% «Заполнить цены (себестоимость + %)» bilan qo‘yildi. 1C dagi jami: ${fmtSum(total)}.`, 'info');
+            return total;
+          }
+        }
         log('«Заполнить цены» narx qo‘ymadi (jami 0) — «Сумма» = «Сумма списания» + natsenka qo‘lda yoziladi.', 'warn');
         break;
       } catch (e) {
         if (e?.code === 'MARKUP_SUBMIT_UNKNOWN') throw e; // natija noaniq — qayta urinib bo'lmaydi, hujjatni tekshirish kerak
         await sleep(1500);
+        // «Заполнить цены» oynasi ochiq qolgan bo'lsa × bilan yopiladi: aks holda u hujjat jadvalini to'sib, keyingi qadam ishlamaydi
+        if ([...document.querySelectorAll('input[id$="_ПроцентНаценки_i0"]')].some(isVisible)) {
+          const x = [...document.querySelectorAll('[id*="headerTopLine_cmd_CloseButton"]')].filter(isVisible).pop();
+          if (x) { await realClick(x).catch(() => {}); await sleep(800); }
+        }
         followDocument();
         if (state.document?.prefix === prefix) state.document = documentIdentity(prefix);
         if (attempt === 1) {
@@ -1572,12 +1632,15 @@
     if (!need) return;
     state.current = { name: item.name, need, placed: 0 };
     log(`▶ ${item.name} — kerak: ${need} dona`);
-    await openPodbor();
-    await enableMarkingMode();
-    await searchItem(item);
+    // Qadamlar vaqti (soniya): qayerda sekinlashayotgani jurnalda ko'rinadi
+    const lap = { t: Date.now(), parts: [] };
+    const mark = (what) => { const now = Date.now(); lap.parts.push(`${what} ${((now - lap.t) / 1000).toFixed(1)}`); lap.t = now; };
+    const lapLog = () => log(`⏱ ${lap.parts.join(' · ')} s${tickDetail ? ` (belgi: ${tickDetail})` : ''}`);
+    await openPodbor(); mark('Подбор');
+    await markAndSearch(item, mark);
     let placed;
     try {
-      placed = await fillQuantities(item, need);
+      placed = await fillQuantities(item, need); mark('kodlar');
     } catch (e) {
       if (!e?.needIkpu) throw e;
       // Bir tovarning kodlari turli IKPU da: qaysi biri to'g'riligini 1C nomenklaturasi aytadi. Hech narsa o'tkazilmagan —
@@ -1589,8 +1652,7 @@
       assertDocument();
       state.current = { name: item.name, need, placed: 0 };
       await openPodbor();
-      await enableMarkingMode();
-      await searchItem(item);
+      await markAndSearch(item);
       placed = await fillQuantities(item, need);
     }
     if (placed < need) {
@@ -1600,13 +1662,14 @@
     }
     if (placed === 0) {
       await closePodbor(); // nothing to transfer
+      mark('yopish'); lapLog();
       return;
     }
     assertDocument();
     if (!Number.isFinite(placed) || placed < 0 || placed > need) throw new Error('O‘tkazish miqdori noto‘g‘ri');
     state.inFlight = { index: state.index, confirmedPlaced: item.placed + placed, prefix: state.document.prefix };
     await save(); // durable intent BEFORE any transfer click
-    await transfer();
+    await transfer(); mark('o‘tkazish');
     assertDocument();
     globalThis.ReceiptLedger.commit(item, state.inFlight.confirmedPlaced);
     markCodesUsed(item);
@@ -1617,6 +1680,7 @@
       item.note = '';
     }
     log(`✓ ${item.name}: ${placed} dona o‘tkazildi.`, 'ok');
+    lapLog();
     try { learnIkpu(state.document?.prefix); } catch { /* IKPU ni o'rganib bo'lmasa ham chek davom etadi */ }
   }
 
@@ -1681,6 +1745,23 @@
     try {
       while (state.index < state.items.length) {
         await checkpoint();
+        if (finishEarly) {
+          finishEarly = false;
+          if (!hasProgress()) log('Chekni yakunlab bo‘lmaydi: hali birorta tovar o‘tkazilmagan.', 'warn');
+          else {
+            // Terilgani shu chekda qoladi; boshlanmagan tovarlar bu chekdan chiqariladi (qoldig‘i keyingi chekka qoladi)
+            let left = 0;
+            for (const i of state.items.slice(state.index)) {
+              if ((i.status === 'pending' || i.status === 'xato') && !(i.placed > 0)) { i.status = 'skip'; i.note = EARLY_NOTE; left++; }
+            }
+            state.index = state.items.length;
+            state.current = null;
+            log(`Chek shu yerda yakunlanmoqda: ${state.items.filter((i) => i.placed > 0).length} xil tovar terildi, ${left} xil tovar keyingi chekka qoldi.`, 'warn');
+            save();
+            render();
+            break;
+          }
+        }
         const item = state.items[state.index];
         if (item.status === 'pending' || (item.status === 'xato' && item.placed < item.qty)) {
           try {
@@ -1744,7 +1825,7 @@
       log(`Jami${state.pricingResult.local ? ' (lokal hisob)' : ' (1C)'}: ${fmtSum(state.pricingResult.total)}${state.receiptTarget != null ? `; maqsaddan farq: ${fmtSum(round2(state.pricingResult.total - state.receiptTarget))}` : ''}. Yakuniy summa 1C da hujjat o‘tkazilganda (QQS, 1C narxi) farq qilishi mumkin.`, 'warn');
       const ok = state.items.filter((i) => i.status === 'ok').length;
       const short = state.items.filter((i) => i.status === 'kam').length;
-      const skipped = state.items.filter((i) => i.status === 'skip' && i.qty > 0).length;
+      const skipped = state.items.filter((i) => i.status === 'skip' && i.qty > 0 && i.note !== EARLY_NOTE).length;
       if (state.incomplete) log(`CHEK TO‘LIQ EMAS: kamida 1 xil turli tovar, har biridan ${capText(state.plan?.perItem)}, turlar soni cheklanmagan sharti bajarilmadi. Faqat haqiqiy o‘tkazilgan miqdor qoldiqdan ayrildi; qo‘shimcha tovar qo‘shilmadi.`, 'warn');
       log(`${state.incomplete ? 'To‘liq bo‘lmagan qoralama' : 'Yig‘ib bo‘lindi'}: ${ok} ta tovar to‘liq, ${short} ta tovarda kod yetmadi${skipped ? `, ${skipped} ta tovar xato sababli tashlab ketildi` : ''}. ${state.incomplete ? 'To‘liq bo‘lmagan chekni tekshiring.' : 'Chek yig‘ildi, hujjatni o‘zingiz o‘tkazasiz.'} Keyingi chek: Инвентаризация oynasida «Olish» ni bosing (sotilganlari chiqqan yangi qoldiq o‘qiladi), yangi bo‘sh Реализация oching, summa va ustamani kiriting, «Boshlash» ni bosing. Oldingi cheklardagi markirovkalar qayta olinmaydi.`, 'ok');
     } catch (e) {
@@ -1755,6 +1836,7 @@
       }
     } finally {
       activeTask = null;
+      finishEarly = false;
       if (state.status !== 'paused') cdp({ type: 'detach' }).catch(() => {});
       save();
       render();
@@ -2026,7 +2108,7 @@
           <div class="auto-slot" id="ishAutoSettingsSlot"></div>
           <div class="row">
             <label class="field"><span>Maqsad summa, UZS</span><input class="inp" data-el="target" type="text" inputmode="decimal" placeholder="umumiy summa"></label>
-            <label class="field" title="Har bir tovardan nechta dona olinadi. Qoldiq kam bo‘lsa boricha olinadi. Bo‘sh qoldirilsa tovarning hammasi olinadi."><span>Bir tovardan, dona</span><input class="inp" data-el="perItem" type="text" inputmode="numeric" placeholder="hammasi"></label>
+            <label class="field" title="Yozilsa — har bir tovardan ko‘pi bilan shuncha dona olinadi (qoldiq kam bo‘lsa boricha). Bo‘sh qoldirilsa cheklov yo‘q: summaga qarab qoldiqqacha olinadi."><span>Bir tovardan, dona</span><input class="inp" data-el="perItem" type="text" inputmode="numeric" placeholder="cheklovsiz"></label>
           </div>
           <div class="row">
             <label class="field" title="100 — boshidan 100 qator; 4-20 — 4-qatordan 20-qatorgacha (17 qator); bo‘sh — hammasi"><span>Inventarizatsiyadan qatorlar</span><input class="inp" data-el="captureLimit" type="text" inputmode="text" placeholder="hammasi (yoki 100, 4-20)"></label>
@@ -2052,6 +2134,7 @@
           <div class="row"><button class="b" data-a="capture" title="Ochiq inventarizatsiyadan tovarlarni o‘qish">Olish</button><button class="b primary" data-a="start">Boshlash</button></div>
           <div class="row"><button class="b" data-a="all">Barcha mahsulotlarni qo‘shish</button></div>
           <div class="row"><button class="b small" data-a="clear" title="Joriy chekni tozalash">Tozalash</button><button class="b small" data-a="clearWarehouse" title="O‘qilgan ombor ma’lumotlarini tozalash">Omborni tozalash</button><button class="b small" data-a="abort" title="Qotib qolgan amalni tugatadi va joriy chekni nolga qaytaradi (ombor qoldig‘i saqlanadi)">⛔ To‘liq to‘xtatish</button></div>
+          <div class="row"><button class="b small" data-a="finish" title="Joriy tovar tugagach chek shu yerda yopiladi: terilgani shu chekda qoladi, qolgan tovarlar keyingi chekka o‘tadi">✂ Chekni shu yerda yakunlash</button><span data-el="placedKinds" hidden></span><span data-el="doneTotal" hidden></span><span data-el="doneLocal" hidden></span></div>
         </section>
 
         <div class="badbox" data-el="badBox" hidden><details open><summary data-el="badTitle">Xato markirovkalar</summary><div class="bad" data-el="bad"></div><div class="row"><button class="b small" data-a="clearBadDb" title="Doimiy xato markirovkalar bazasini bo‘shatadi: kodlar qayta soliq.uz da tekshiriladi">Xato bazasini tozalash</button></div></details></div>
@@ -2163,6 +2246,10 @@
     const totalUnits = state.items.reduce((a, i) => a + i.qty, 0); // planned units (skipped items have 0)
     const doneUnits = state.items.reduce((a, i) => a + Math.min(i.placed, i.qty), 0);
     el('bar').style.width = totalUnits ? `${(doneUnits / totalUnits) * 100}%` : '0';
+    el('placedKinds').textContent = String(state.items.filter((i) => i.placed > 0).length);
+    el('doneTotal').textContent = state.status === 'done' && state.pricingResult?.total > 0 && !state.pricingResult.local ? String(state.pricingResult.total) : '';
+    el('doneLocal').textContent = state.status === 'done' && state.pricingResult?.total > 0 && state.pricingResult.local ? String(state.pricingResult.total) : '';
+    btn('finish').disabled = finishEarly || state.status === 'done' || state.phase === 'pricing' || capturing || !!state.inFlight || !hasProgress();
     const statusText = { idle: 'Tayyor', running: 'Ishlamoqda…', paused: 'Pauza', stopped: 'To‘xtatilgan', done: 'Tugadi' }[state.status];
     // While paused, show exactly what is being held
     const held =
@@ -2276,6 +2363,17 @@
       }
       case 'eposSale':
         await eposSale().catch((err) => log(`Xato: ${err.message || err}`, 'error'));
+        break;
+      case 'finish':
+        if (state.status === 'done' || state.phase === 'pricing' || activeTask === 'capture' || state.inFlight || !hasProgress()) {
+          log('Chekni yakunlab bo‘lmaydi: hozir terilayotgan, kamida bitta tovari o‘tkazilgan chek yo‘q.', 'warn');
+          break;
+        }
+        finishEarly = true;
+        log('Joriy tovar tugagach chek shu yerda yakunlanadi…', 'warn');
+        if (state.status === 'paused') resume(); // pauzada bo‘lsa davom ettiriladi: joriy tovar tugaydi va chek yopiladi
+        else if (!activeTask) runLoop();
+        render();
         break;
       case 'start':
         await primaryAction().catch((err) => log(`Xato: ${err.message || err}`, 'error'));
@@ -2402,6 +2500,8 @@
     if (data[STORE_KEY]) state = globalThis.ReceiptStateMigration.migrate(data[STORE_KEY], VERSION, emptyState, globalThis.ReceiptLedger);
     // Time between the last save and a page reload is unknown: it is not counted
     if (state.clock) state.clock.since = null;
+    // «Bir tovardan» endi sukut bo'yicha bo'sh (cheklovsiz): eski sukut «2» bir marta olib tashlanadi, keyin yozilgani saqlanadi
+    if (!data[STORE_KEY]?.perItemDefaultCleared) { state.perItemLimit = ''; state.perItemDefaultCleared = true; }
     // Nothing runs right after loading: a saved «running» (the page or the program was closed mid-run) is a pause,
     // so «Davom» / «Tozalash» work instead of the panel staying locked
     if (state.status === 'running') state.status = 'paused';

@@ -1233,8 +1233,55 @@ public sealed class UnmarkedRunner
         log("Yangi Реализация: sklad qo'yildi, «Товар маркирован» belgilandi", "info");
     }
 
+    /// <summary>
+    /// Yangi (hali yozilmagan) Реализация tabini oldinga chiqaradi: 1C sekin bo'lganda kechikkan bosish ro'yxat tabini
+    /// faollashtirib qo'yishi mumkin — panel shunda «Ochiq Реализация hujjatini tanlang» deb to'xtaydi.
+    /// </summary>
+    public async Task<bool> ActivateNewDocumentTabAsync()
+    {
+        var doc = (await TabsAsync()).LastOrDefault(t => t.Text.StartsWith("Реализация") && t.Text.Contains("(создание)"));
+        if (doc is null) return false;
+        if (!doc.Selected) { await d.ClickAsync(doc.Pos); await d.DelayAsync(800); }
+        return true;
+    }
+
     /// <summary>Ochiq Реализация ni «Провести и закрыть».</summary>
     public Task<PostResult> PostCurrentAsync() => PostAsync();
+
+    /// <summary>Ochiq Реализация ning «Всего» (QQS bilan) summasi matni — hujjat ochiq turganda.</summary>
+    public Task<string> DocumentTotalTextAsync() => TotalTextAsync();
+
+    /// <summary>
+    /// Ochiq Реализация ni «Записать» qilib tabini yopadi («Провести и закрыть» bosilmaydi) — «Provesti qilish» belgisi
+    /// o'chiq bo'lganda keyingi chekka o'tish uchun.
+    /// </summary>
+    public async Task SaveAndCloseCurrentAsync()
+    {
+        await d.ClickSuffixAsync("_ФормаЗаписать", "Записать");
+        await d.WaitTrueAsync(async () =>
+        {
+            if (await d.ModalTextAsync() is { } m)
+            {
+                if (m.Contains("Не удалось", StringComparison.OrdinalIgnoreCase) || m.Contains("Ошибка", StringComparison.OrdinalIgnoreCase))
+                {
+                    var ok = await d.ModalButtonAsync("ОК") ?? await d.ModalButtonAsync("OK");
+                    if (ok is { } okPt) await d.ClickAsync(okPt);
+                    throw new OneCException("Hujjatni yozib bo'lmadi: " + m);
+                }
+                if (await d.ModalButtonAsync("Да") is { } yes) await d.ClickAsync(yes);
+                return false;
+            }
+            return (await TabsAsync()).Any(t => t.Selected && t.Text.StartsWith("Реализация") && !t.Text.Contains("(создание)") && !t.Text.Contains(" *"));
+        }, 60000, "hujjatni yozish («Записать»)");
+        await d.DelayAsync(300);
+        var active = (await TabsAsync()).FirstOrDefault(t => t.Selected && t.Text.StartsWith("Реализация") && t.Close is not null);
+        if (active?.Close is { } close)
+        {
+            await d.ClickAsync(close);
+            await d.DelayAsync(600);
+            if (await d.ModalButtonAsync("Нет") is { } no) await d.ClickAsync(no);
+        }
+    }
 
     async Task<PostResult> PostAsync()
     {

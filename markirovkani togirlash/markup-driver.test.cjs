@@ -79,6 +79,7 @@ test('opens exact submenu leaf, commits percentage with Tab and verifies roundin
 test('reuses existing dynamic dialog and accepts zero percent and zero total', async () => {
   const h = harness({open:true});
   h.adapter.document.getElementById('form7_ИтогиВсего_i0').value = '0';
+  h.adapter.zeroTotalWait = 0; // haqiqiy ishda jami 0 bo'lsa 1C hisoblab bo'lguncha bir oz kutiladi
   assert.deepEqual(await run(h, 0), {percent:0,rounding:0.01,total:0});
   assert.ok(!h.clicks.includes(h.toolbar));
 });

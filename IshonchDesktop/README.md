@@ -157,6 +157,21 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.4
+
+Markirovkali chek:
+
+- **«Nechta chek»** maydoni («Maqsad summa» yonida): umumiy summa shuncha chekka har xil bo'linadi va cheklar ketma-ket teriladi — «▶ Avto boshlash» bir marta bosiladi. «Provesti qilish» o'chiq bo'lsa ham to'xtamaydi: har chek «Записать» qilinib yopiladi va keyingisiga o'tiladi.
+- **«Bir tovardan, dona»** endi sukut bo'yicha bo'sh (cheklovsiz): son yozilsa shunga rioya qilinadi, yozilmasa summaga qarab qoldiqqacha olinadi.
+- **«■ To'xtatish»**: bir marta — joriy tovar tugagach chek terilgani bilan yopiladi va o'tkaziladi, terilmagan summa «Maqsad summa» ga qaytadi; ikki marta — chekni yopmasdan darhol to'xtaydi (panel ham pauzaga olinadi). Qo'lda boshqarishda «✂ Chekni shu yerda yakunlash».
+- **Bitta tugma**: «⟲ Boshiga qaytarish va inventarizatsiyani yangilash» (ikki tugma birlashtirildi).
+- **Natsenka («Заполнить цены»)**: 1C rus tilida foizni «1,000» ko'rinishida yozadi — dastur o'qiy olmay har chekda ~35 soniya kutardi; tuzatildi. 1C «Всего» ni hujjat yozilmaguncha 0 ko'rsatgani uchun narx qo'yilmagan deb hisoblanardi — endi hujjat qayta o'tkazilib jami 1C dan o'qiladi. Oyna ochiq qolsa yopiladi.
+- **Подбор**: «По остаткам расширенный коды маркировки» belgisi qo'yilmasa qayta bosiladi (ilgari tovar tashlab ketilardi). Har tovardan keyin jurnalga «⏱ Подбор · belgi · qidiruv · kodlar · o'tkazish» vaqtlari yoziladi.
+- 1C sekin bo'lganda hujjat tabi orqaga o'tib qolsa, dastur uni o'zi oldinga chiqarib davom etadi.
+- **«⛔ To'liq to'xtatish»** dan keyin panel «1C sahifasiga ulanmoqda…» da qotib qolmaydi (1C ning «Saytdan chiqilsinmi?» so'rovi o'zi tasdiqlanadi).
+
+Markirovkasiz sotish: oyna ikki kartaga ajratildi («① Sozlamalar», «② Cheklar»); summa bilan cheklar soni, qatorlar bilan «bir tovardan» yonma-yon.
+
 ## 0.11.3
 
 - **1C rus tilida ochiladi** (brauzer tili ru-RU): avval Windows tili inglizcha bo'lsa 1C en_US rejimida ochilib, sana «oy/kun/yil AM/PM» shaklida bo'lardi va inventarizatsiya sanasi buzilib yozilardi (2623-yil). Sana yozish/o'qish ikkala shaklni ham tushunadi (inventarizatsiya, dovernis, debitor). Yangilanishdan keyin 1C har bazada bir marta qayta kirishni so'raydi.

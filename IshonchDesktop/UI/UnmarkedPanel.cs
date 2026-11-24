@@ -23,7 +23,7 @@ public sealed class UnmarkedPanel : UserControl
     readonly PostedReceiptStore posted;
     readonly Settings settings;
     readonly UnmarkedPrefs prefs;
-    readonly TextBox target = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
+    readonly TextBox target = new() { BorderStyle = BorderStyle.FixedSingle, TextAlign = HorizontalAlignment.Right };
     readonly NumericUpDown count = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly NumericUpDown lines = new() { Minimum = 1, Maximum = 500, Width = 80, TextAlign = HorizontalAlignment.Right };
     readonly NumericUpDown maxPerItem = new() { Minimum = 0, Maximum = 100000, Width = 80, TextAlign = HorizontalAlignment.Right };
@@ -33,7 +33,7 @@ public sealed class UnmarkedPanel : UserControl
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "dd.MM.yyyy  HH:mm:ss", Value = UnmarkedOptions.DefaultInventoryDate(),
     };
-    readonly TextBox warehouse = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
+    readonly TextBox warehouse = new() { BorderStyle = BorderStyle.FixedSingle };
     readonly CheckBox post = new() { Text = "Hujjatlarni provesti qilish", AutoSize = true, Dock = DockStyle.Top };
     readonly CheckBox refresh = new() { Text = "Boshlashdan oldin inventarizatsiyani yangilash", AutoSize = true, Dock = DockStyle.Top };
     readonly Button start = PanelStyle.Primary(new Button { Text = "▶  Boshlash", Height = 36, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) });
@@ -43,6 +43,7 @@ public sealed class UnmarkedPanel : UserControl
     UnmarkedRunner? runner;
     /// <summary>To'xtatilgan yoki xato bilan tugagan jarayon — «Boshlash» uni qolgan cheklardan davom ettiradi.</summary>
     UnmarkedRunner? resumable;
+    readonly ToolTip tips = new();
     readonly Button close = PanelStyle.Secondary(new Button { Text = "✕", Width = 32, Dock = DockStyle.Right });
     readonly RichTextBox logBox = new() { ReadOnly = true, Dock = DockStyle.Fill, BackColor = Color.White, Font = new Font("Consolas", 9f), BorderStyle = BorderStyle.None };
     CancellationTokenSource? cts;
@@ -84,41 +85,58 @@ public sealed class UnmarkedPanel : UserControl
         header.Controls.Add(title);
         header.Controls.Add(close);
 
-        // Parametrlar kartasi: chapda nom, o'ngda maydon
-        var card = PanelStyle.CardPanel(new Padding(12, 10, 12, 10));
-        card.Dock = DockStyle.Top;
-        var grid = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, BackColor = PanelStyle.Card };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
-        void Row(string label, Control c, bool wide = false)
+        // Ikki karta: ① Sozlamalar (kam o'zgaradi) va ② Cheklar (har ishga tushirishda). Maydon nomi tepada, o'zi pastda;
+        // juft maydonlar (summa + cheklar soni, qatorlar + bir tovardan) bir qatorda yonma-yon turadi.
+        Control Field(string label, Control c, string? tip = null)
         {
-            var l = new Label { Text = label, AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.FromArgb(51, 65, 85), Height = 28 };
-            if (wide)
-            {
-                grid.Controls.Add(l);
-                grid.SetColumnSpan(l, 2);
-                c.Dock = DockStyle.Fill;
-                grid.Controls.Add(c);
-                grid.SetColumnSpan(c, 2);
-                return;
-            }
-            c.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            grid.Controls.Add(l);
-            grid.Controls.Add(c);
+            var p = new Panel { Dock = DockStyle.Fill, Height = 50, Margin = new Padding(0, 0, 8, 6), BackColor = PanelStyle.Card };
+            c.Dock = DockStyle.Top;
+            var l = new Label { Text = label, Dock = DockStyle.Top, Height = 20, AutoEllipsis = true, ForeColor = PanelStyle.Muted, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(c);
+            p.Controls.Add(l);
+            if (tip is not null) { tips.SetToolTip(l, tip); tips.SetToolTip(c, tip); }
+            return p;
         }
-        Row("Inventarizatsiya sanasi va vaqti", inventoryDate, wide: true);
-        Row("Umumiy summa (NDS bilan, so'm)", target, wide: true);
-        Row("Cheklar soni", count);
-        Row("Qatorlar soni (har chekda)", lines);
-        Row("Bir tovardan ko'pi bilan, dona", maxPerItem);
-        Row("Narxga foiz, %", percent);
-        Row("Sklad (1C dagi nomi)", warehouse, wide: true);
-        var checks = new Panel { Dock = DockStyle.Top, Height = 50, Padding = new Padding(0, 6, 0, 0), BackColor = PanelStyle.Card };
+        TableLayoutPanel Grid(int leftPercent)
+        {
+            var g = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, BackColor = PanelStyle.Card };
+            g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, leftPercent));
+            g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 - leftPercent));
+            return g;
+        }
+        Panel Section(string number, string caption, TableLayoutPanel g, Control? below = null)
+        {
+            var c = PanelStyle.CardPanel(new Padding(12, 8, 4, 6));
+            c.Dock = DockStyle.Top;
+            var head = new Label { Text = number + "  " + caption, Dock = DockStyle.Top, Height = 26, Font = PanelStyle.Bold, ForeColor = PanelStyle.Accent, TextAlign = ContentAlignment.MiddleLeft };
+            if (below is not null) c.Controls.Add(below);
+            c.Controls.Add(g);
+            c.Controls.Add(head);
+            // Kartaning balandligi ichidagiga moslanadi
+            void Fit() => c.Height = head.Height + g.PreferredSize.Height + (below?.Height ?? 0) + c.Padding.Vertical + 2;
+            Load += (_, _) => Fit();
+            g.SizeChanged += (_, _) => Fit();
+            c.Height = 200;
+            return c;
+        }
+
+        var setGrid = Grid(64);
+        setGrid.Controls.Add(Field("Sklad (1C dagi nomi)", warehouse), 0, 0);
+        setGrid.Controls.Add(Field("Narxga foiz, %", percent, "Inventarizatsiya narxiga qo'shiladigan foiz"), 1, 0);
+        var dateField = Field("Inventarizatsiya sanasi va vaqti", inventoryDate, "Qoldiq shu sana va vaqt holatida olinadi");
+        setGrid.Controls.Add(dateField, 0, 1);
+        setGrid.SetColumnSpan(dateField, 2);
+        var setCard = Section("①", "Sozlamalar", setGrid);
+
+        var checkGrid = Grid(64);
+        checkGrid.Controls.Add(Field("Umumiy summa (NDS bilan, so'm)", target, "Hamma cheklarning jami summasi — cheklarga har xil bo'linadi"), 0, 0);
+        checkGrid.Controls.Add(Field("Nechta chek", count, "Umumiy summa shuncha chekka bo'linadi"), 1, 0);
+        checkGrid.Controls.Add(Field("Qatorlar soni (har chekda)", lines, "Har chekka inventarizatsiya tepasidan shuncha tovar qatori olinadi"), 0, 1);
+        checkGrid.Controls.Add(Field("Bir tovardan, dona", maxPerItem, "Bir tovardan ko'pi bilan shuncha dona; 0 — cheklov yo'q"), 1, 1);
+        var checks = new Panel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(0, 2, 0, 0), BackColor = PanelStyle.Card };
         checks.Controls.Add(refresh);
         checks.Controls.Add(post);
-        card.Controls.Add(checks);
-        card.Controls.Add(grid);
-        card.Height = 386;
+        var checkCard = Section("②", "Cheklar", checkGrid, checks);
 
         var buttons = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 3, Padding = new Padding(0, 8, 0, 4) };
         buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
@@ -151,11 +169,11 @@ public sealed class UnmarkedPanel : UserControl
         Controls.Add(eposRow);
         Controls.Add(buttons);
         Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8 });
-        Controls.Add(card);
+        Controls.Add(checkCard);
+        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8 });
+        Controls.Add(setCard);
         Controls.Add(header);
 
-        // Kartaning balandligi ichidagiga moslanadi
-        Load += (_, _) => card.Height = grid.PreferredSize.Height + checks.Height + card.Padding.Vertical + 4;
 
         close.Click += (_, _) =>
         {
