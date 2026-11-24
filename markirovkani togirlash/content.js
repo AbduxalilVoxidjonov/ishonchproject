@@ -1690,6 +1690,91 @@
     try { learnIkpu(state.document?.prefix); } catch { /* IKPU ni o'rganib bo'lmasa ham chek davom etadi */ }
   }
 
+  /** How many products are filled in one Подбор before a single «Перенести в документ» (1 — one by one, the old way). */
+  let BATCH_SIZE = 1; // guruhlab terish 1C da to'liq sinalguncha o'chiq (yoqish: 5)
+
+  /**
+   * Several products in one Подбор. 1C keeps the «1» typed for a product while «Найти» is changed to the next one
+   * (checked in 1C), so Подбор — whose list takes 7–9 s to load — opens once for the whole group and one
+   * «Перенести в документ» moves everything. Nothing is committed before the transfer is confirmed: an error while
+   * filling drops the whole group (the caller closes Подбор and goes on one by one).
+   */
+  async function processBatch(indexes) {
+    if (state.legacyModeBlocked) throw docError('Eski markirovkasiz chek bloklangan: yangi bo‘sh hujjatda «Yangi chekni boshlash» kerak.');
+    if (state.inFlight) throw docError('O‘tkazish natijasini tasdiqlang; qayta o‘tkazish bloklangan.');
+    assertDocument();
+    const lap = { t: Date.now(), parts: [] };
+    const mark = (what) => { const now = Date.now(); lap.parts.push(`${what} ${((now - lap.t) / 1000).toFixed(1)}`); lap.t = now; };
+    const lapLog = (n) => log(`⏱ ${n} ta tovar bir «Подбор» da: ${lap.parts.join(' · ')} s${tickDetail ? ` (belgi: ${tickDetail})` : ''}`);
+    const entries = [];
+    const touched = [];
+    try {
+      await openPodbor(); mark('Подбор');
+      for (const index of indexes) {
+        if (finishEarly && entries.length) break; // «To‘xtatish»: terilgani o‘tkaziladi, qolgani keyingi chekka
+        const item = state.items[index];
+        const need = Math.max(0, Math.round((item.qty - item.placed) * 10000) / 10000);
+        if (!need) continue;
+        state.current = { name: item.name, need, placed: 0 };
+        log(`▶ ${item.name} — kerak: ${need} dona`);
+        await markAndSearch(item);
+        const placed = await fillQuantities(item, need);
+        if (!Number.isFinite(placed) || placed < 0 || placed > need) throw new Error('O‘tkazish miqdori noto‘g‘ri');
+        touched.push({ item, status: item.status, note: item.note });
+        if (placed < need) {
+          item.status = 'kam';
+          item.note = `Markirovka kodi yetmadi: ${placed} / ${need}`;
+          log(`⚠ ${item.name}: faqat ${placed} dona (${need} kerak).`, 'warn');
+        }
+        if (placed > 0) entries.push({ index, placed, confirmedPlaced: item.placed + placed, codes: [...(state.pendingCodes || [])] });
+        state.pendingCodes = [];
+        mark(`${indexes.indexOf(index) + 1}-tovar`);
+      }
+    } catch (e) {
+      // Hech narsa o‘tkazilmagan: belgilar tiklanadi, «Подбор» dagi «1» lar yopilganda tashlanadi
+      for (const t of touched) { t.item.status = t.status; t.item.note = t.note; }
+      state.pendingCodes = [];
+      state.current = null;
+      throw e;
+    }
+    if (!entries.length) {
+      await closePodbor(); // nothing to transfer
+      mark('yopish'); lapLog(touched.length);
+      state.current = null;
+      return;
+    }
+    assertDocument();
+    // Durable intent BEFORE the transfer click: after a reload the user confirms the whole group at once
+    state.inFlight = { index: entries[0].index, confirmedPlaced: entries[0].confirmedPlaced, prefix: state.document.prefix,
+      batch: entries.map((e) => ({ index: e.index, confirmedPlaced: e.confirmedPlaced, codes: e.codes })) };
+    state.pendingCodes = entries.flatMap((e) => e.codes);
+    await save();
+    await transfer(); mark('o‘tkazish');
+    assertDocument();
+    commitBatch(state.inFlight.batch);
+    state.inFlight = null;
+    await save();
+    for (const e of entries) {
+      const item = state.items[e.index];
+      if (item.status !== 'kam') { item.status = 'ok'; item.note = ''; }
+      log(`✓ ${item.name}: ${e.placed} dona o‘tkazildi.`, 'ok');
+    }
+    lapLog(touched.length);
+    try { learnIkpu(state.document?.prefix); } catch { /* IKPU ni o'rganib bo'lmasa ham chek davom etadi */ }
+  }
+
+  /** A confirmed group transfer: every product's amount is committed and its codes belong to this receipt. */
+  function commitBatch(batch) {
+    if (!state.usedCodes || typeof state.usedCodes !== 'object') state.usedCodes = {};
+    const time = new Date().toLocaleString('ru-RU');
+    for (const e of batch) {
+      const item = state.items[e.index];
+      globalThis.ReceiptLedger.commit(item, e.confirmedPlaced);
+      for (const code of e.codes || []) state.usedCodes[code] = { name: item.name, receiptId: state.receiptId, time };
+    }
+    state.pendingCodes = [];
+  }
+
   /** The transfer is confirmed: its codes belong to this receipt and are skipped by later ones. */
   function markCodesUsed(item) {
     if (!state.usedCodes || typeof state.usedCodes !== 'object') state.usedCodes = {};
@@ -1748,6 +1833,7 @@
     save();
     render();
     let skipsInRow = 0;
+    let batchOff = false; // guruhlab terishda xato bo'lsa shu chek oxirigacha bittadan teriladi
     try {
       while (state.index < state.items.length) {
         await checkpoint();
@@ -1769,6 +1855,44 @@
           }
         }
         const item = state.items[state.index];
+        const due = (i) => i.status === 'pending' || (i.status === 'xato' && i.placed < i.qty);
+        if (BATCH_SIZE > 1 && !batchOff && due(item)) {
+          const indexes = [];
+          for (let j = state.index; j < state.items.length && indexes.length < BATCH_SIZE; j++) if (due(state.items[j])) indexes.push(j);
+          if (indexes.length > 1) {
+            try {
+              await processBatch(indexes);
+              skipsInRow = 0;
+            } catch (e) {
+              if (e instanceof StopError) throw e;
+              if (state.inFlight || e?.document) {
+                log(`✗ Guruhlab o‘tkazish: ${String(e.message || e)}. Pauza qilindi — tekshirib, «Davom» ni bosing.`, 'error');
+                state.status = 'paused';
+                save();
+                render();
+                if (state.inFlight) break; // uncertain outcome must never auto-retry
+                await checkpoint();
+                continue;
+              }
+              // Guruhda xato (hech narsa o‘tkazilmagan): «Подбор» yopiladi va shu chek tovarlari bittadan teriladi
+              batchOff = true;
+              log(`Guruhlab terishda xato (${String(e.message || e)}) — bu chekning qolgan tovarlari bittadan teriladi.`, 'warn');
+              if (podborCheckbox()) {
+                try { await closePodbor(); } catch {
+                  log('«Подбор» yopilmadi — 1C ni tekshiring, keyin «Davom» ni bosing.', 'error');
+                  state.status = 'paused';
+                  save();
+                  render();
+                  await checkpoint();
+                }
+              }
+            }
+            state.current = null;
+            save();
+            render();
+            continue; // terilgan tovarlar endi «pending» emas — sikl ularning ustidan o‘tib ketadi
+          }
+        }
         if (item.status === 'pending' || (item.status === 'xato' && item.placed < item.qty)) {
           try {
             await processItem(item);
@@ -1991,13 +2115,18 @@
     if (activeTask || !state.inFlight) return;
     const intent = state.inFlight;
     // User confirms after inspecting the actual document, including after reload.
+    // Guruhli o'tkazish (bir «Подбор» da bir nechta tovar): tasdiq butun guruhga tegishli
+    const group = Array.isArray(intent.batch) && intent.batch.length ? intent.batch.filter((e) => state.items[e.index]) : null;
     if (added) {
-      globalThis.ReceiptLedger.commit(state.items[intent.index], intent.confirmedPlaced);
-      markCodesUsed(state.items[intent.index]);
+      if (group) commitBatch(group);
+      else {
+        globalThis.ReceiptLedger.commit(state.items[intent.index], intent.confirmedPlaced);
+        markCodesUsed(state.items[intent.index]);
+      }
     } else {
       state.pendingCodes = [];
     }
-    state.items[intent.index].status = 'pending';
+    for (const e of group || [intent]) state.items[e.index].status = 'pending';
     state.inFlight = null;
     state.current = null;
     state.status = 'paused';

@@ -70,6 +70,10 @@ _ = Task.Run(async () =>
             body = JsonSerializer.SerializeToUtf8Bytes(new { tag_name = latestTag, body = "Yangi: Elektr bo'limi", html_url = "https://github.com/o/r/releases/tag/" + latestTag, assets });
         }
         else if (path == "/repos/o/none/releases/latest") { status = 404; body = Encoding.UTF8.GetBytes("{}"); }
+        // GitHub API limiti tugagan holat: API 403 beradi, github.com sahifasi esa so'nggi tegga yo'naltiradi
+        else if (path == "/repos/o/limit/releases/latest") { status = 403; body = Encoding.UTF8.GetBytes("{}"); }
+        else if (path == "/o/limit/releases/latest") { status = 302; body = Array.Empty<byte>(); c.Response.RedirectLocation = base_ + "/o/limit/releases/tag/" + latestTag; }
+        else if (path == "/o/limit/releases/download/" + latestTag + "/Ishonch.exe.sha256") { type = "text/plain"; body = Encoding.UTF8.GetBytes(exeHash + "  Ishonch.exe"); }
         else if (path is "/dl/Ishonch.exe" or "/asset/1")
         {
             type = "application/octet-stream";
@@ -97,6 +101,16 @@ r = await checker.CheckAsync("o/r", null, new Version(0, 8, 0));
 Check(r.State == UpdateCheckState.UpToDate, "mahalliy versiya yangiroq — yangilanish yo'q");
 r = await checker.CheckAsync("o/none", null, v06);
 Check(r.State == UpdateCheckState.Failed && r.Message.Contains("private"), "404 — tushunarli xabar");
+// API limiti tugaganda yangilanish github.com sahifasi orqali topiladi (API siz)
+var webChecker = new UpdateChecker(base_, null, base_);
+r = await webChecker.CheckAsync("o/limit", null, v06);
+Check(r.State == UpdateCheckState.Available && r.Update!.Version == new Version(0, 7, 0), "limit: yangi versiya API siz topildi");
+Check(r.Update?.Sha256 == exeHash, "limit: kontrol yig'indisi .sha256 faylidan olindi");
+Check(r.Update?.AssetDownloadUrl == base_ + "/o/limit/releases/download/" + latestTag + "/Ishonch.exe", "limit: yuklash manzili");
+r = await webChecker.CheckAsync("o/limit", null, new Version(0, 7, 0));
+Check(r.State == UpdateCheckState.UpToDate, "limit: bir xil versiya — yangilanish yo'q");
+r = await webChecker.CheckAsync("o/limit", "token", v06);
+Check(r.State == UpdateCheckState.Failed, "limit: token bilan (yopiq repozitoriy) API siz yo'lga o'tilmaydi");
 includeExe = false;
 r = await checker.CheckAsync("o/r", null, v06);
 Check(r.State == UpdateCheckState.Failed && r.Message.Contains("Ishonch.exe"), "exe fayli yo'q");

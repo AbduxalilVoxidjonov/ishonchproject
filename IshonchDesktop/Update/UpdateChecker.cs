@@ -25,12 +25,16 @@ public sealed class UpdateChecker
 
     static readonly Regex RepoPattern = new(@"^[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+$", RegexOptions.Compiled);
 
+    public const string DefaultWebBase = "https://github.com";
+
     readonly string apiBase;
+    readonly string webBase;
     readonly HttpClient http;
 
-    public UpdateChecker(string apiBase = DefaultApiBase, HttpClient? http = null)
+    public UpdateChecker(string apiBase = DefaultApiBase, HttpClient? http = null, string webBase = DefaultWebBase)
     {
         this.apiBase = apiBase.TrimEnd('/');
+        this.webBase = webBase.TrimEnd('/');
         this.http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
     }
 
@@ -52,6 +56,8 @@ public sealed class UpdateChecker
                 case HttpStatusCode.Unauthorized:
                     return Fail("GitHub tokenni qabul qilmadi (noto'g'ri yoki muddati tugagan).");
                 case HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests:
+                    // Limit tugagan: ochiq repozitoriyda API siz (github.com sahifasi orqali) tekshiriladi
+                    if (string.IsNullOrWhiteSpace(token) && await CheckWebAsync(repo, current, ct) is { } viaWeb) return viaWeb;
                     return Fail("GitHub so'rovlar limitiga yetildi yoki ruxsat yo'q. Birozdan keyin qayta urinib ko'ring (yoki token qo'shing).");
             }
             if (!resp.IsSuccessStatusCode) return Fail($"GitHub javobi: {(int)resp.StatusCode} {resp.ReasonPhrase}");
@@ -98,10 +104,42 @@ public sealed class UpdateChecker
         return new CheckResult(UpdateCheckState.Available, info, $"Yangi versiya mavjud: {AppInfo.Format(version)} (hozirgi {AppInfo.Format(current)}).");
     }
 
+    /// <summary>
+    /// GitHub API siz tekshirish. API tokensiz bir IP manzildan soatiga 60 ta so'rovga ruxsat beradi — ofisda hamma
+    /// kompyuter bitta IP dan chiqadi va limit tez tugaydi. github.com/…/releases/latest sahifasi esa so'nggi teg sahifasiga
+    /// yo'naltiradi (limitga kirmaydi); fayllar …/releases/download/{teg}/ manzilidan olinadi.
+    /// </summary>
+    async Task<CheckResult?> CheckWebAsync(string repo, Version current, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{webBase}/{repo}/releases/latest");
+            req.Headers.UserAgent.ParseAdd($"Ishonch/{AppInfo.Text}");
+            using var resp = await UpdateInstaller.SendNoRedirectAsync(http, req, ct);
+            if ((int)resp.StatusCode is not (301 or 302 or 303 or 307 or 308) || resp.Headers.Location is not { } loc) return null;
+            var m = Regex.Match(loc.ToString(), @"/releases/tag/([^/?#]+)");
+            if (!m.Success) return null;
+            var tag = Uri.UnescapeDataString(m.Groups[1].Value);
+            var version = AppInfo.ParseVersion(tag);
+            if (version is null) return null;
+            if (version <= current)
+                return new CheckResult(UpdateCheckState.UpToDate, null, $"Sizda so'nggi versiya o'rnatilgan ({AppInfo.Format(current)}).");
+            var download = $"{webBase}/{repo}/releases/download/{Uri.EscapeDataString(tag)}/";
+            string? sha = null;
+            try { sha = ParseHashFile(await FetchTextAsync(download + HashAssetName, "", null, ct)); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { /* kontrol yig'indisi olinmadi: yuklashda ogohlantiriladi */ }
+            var info = new UpdateInfo(version, tag, "", $"{webBase}/{repo}/releases/tag/{Uri.EscapeDataString(tag)}", AppInfo.AssetName,
+                "", download + AppInfo.AssetName, 0, sha);
+            return new CheckResult(UpdateCheckState.Available, info, $"Yangi versiya mavjud: {AppInfo.Format(version)} (hozirgi {AppInfo.Format(current)}).");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return null; }
+    }
+
     async Task<string> FetchTextAsync(string publicUrl, string apiUrl, string? token, CancellationToken ct)
     {
         var url = token is not null && apiUrl.Length > 0 ? apiUrl : publicUrl;
-        using var resp = await UpdateInstaller.GetFollowingAsync(http, url, token, "application/octet-stream", allowLocal: IsLocal(apiBase), ct);
+        using var resp = await UpdateInstaller.GetFollowingAsync(http, url, token, "application/octet-stream", allowLocal: IsLocal(apiBase) || IsLocal(webBase), ct);
         resp.EnsureSuccessStatusCode();
         var text = await resp.Content.ReadAsStringAsync(ct);
         return text.Length > 4096 ? text[..4096] : text;

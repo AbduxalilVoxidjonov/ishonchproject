@@ -65,7 +65,7 @@ public static class UpdateInstaller
     static readonly HttpClient NoRedirect = new(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(2) })
     { Timeout = Timeout.InfiniteTimeSpan };
 
-    static Task<HttpResponseMessage> SendNoRedirectAsync(HttpClient _, HttpRequestMessage req, CancellationToken ct) =>
+    internal static Task<HttpResponseMessage> SendNoRedirectAsync(HttpClient _, HttpRequestMessage req, CancellationToken ct) =>
         NoRedirect.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
 
     /// <summary>

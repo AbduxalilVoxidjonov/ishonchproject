@@ -147,6 +147,7 @@ function engineHarness({ placed = 2, fail = false } = {}) {
   });
   vm.runInContext(source.slice(source.indexOf('  async function processItem('), source.indexOf('  async function runLoop(')),ctx);
   vm.runInContext(source.slice(source.indexOf('  async function reconcileTransfer('), source.indexOf('  // Panel UI')).split('  // ---------------------------------------------------------------------------')[0],ctx);
+  vm.runInContext('BATCH_SIZE = 1', ctx); // eski testlar bittadan terishni tekshiradi; guruh uchun alohida test bor
   ctx.state.items=[ReceiptLedger.normalizeItem({name:'A',stock:5,price:100,qty:3,placed:0,status:'pending'})];
   return {ctx,run:expr=>vm.runInContext(expr,ctx)};
 }
@@ -259,6 +260,96 @@ test('finishing early does nothing while no product is transferred yet', async()
   await run('runLoop()');
   assert.equal(ctx.transfers,1);
   assert.equal(ctx.state.items[0].placed,2);
+  assert.equal(ctx.state.status,'done');
+});
+
+function batchHarness() {
+  const h = engineHarness();
+  const { ctx } = h;
+  Object.assign(ctx, { validPercent:()=>true, percentValue:()=>0, receiptReady:true,
+    isVisible:()=>true, domClick(){}, realClick:async()=>{}, cdp:async()=>{}, waitFor:async()=>{},
+    norm:s=>String(s||'').trim().toLowerCase(), parseNumber:ReceiptMath.parseNumber, fmtSum:String, round2:n=>Math.round(n*100)/100,
+    snapshotReceipt:()=>{}, announce(){}, podborCheckbox:()=>null, opened:0, closed:0, searched:[],
+  });
+  vm.runInContext(source.slice(source.indexOf('  async function runLoop()'),source.indexOf('  /** Continue after a pause:')),ctx);
+  ctx.announce=()=>{};
+  vm.runInContext('BATCH_SIZE = 5', ctx);
+  ctx.state.items=['A','B','C'].map(name=>ReceiptLedger.normalizeItem({name,stock:5,price:100,qty:2,placed:0,status:'pending'}));
+  ctx.state.plan={target:600};
+  ctx.state.receiptId=7;
+  ctx.openPodbor=async()=>{ctx.opened++;};
+  ctx.closePodbor=async()=>{ctx.closed++;};
+  ctx.markAndSearch=async(item)=>{ctx.searched.push(item.name);};
+  // every product gets its own two codes, as the real fill step leaves them in state.pendingCodes
+  ctx.fillQuantities=async(item)=>{ctx.state.pendingCodes=[item.name+'1',item.name+'2']; return 2;};
+  return h;
+}
+
+test('several products are filled in one Подбор and moved with a single transfer', async()=>{
+  const {ctx,run}=batchHarness();
+  await run('runLoop()');
+  assert.equal(ctx.opened,1);
+  assert.equal(ctx.transfers,1);
+  assert.deepEqual(ctx.searched,['A','B','C']);
+  assert.equal(ctx.state.status,'done');
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[2,2,2]);
+  assert.deepEqual(ctx.state.items.map(i=>i.status),['ok','ok','ok']);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[3,3,3]);
+  assert.equal(ctx.state.inFlight,null);
+  // each code is recorded against its own product
+  assert.deepEqual(Object.entries(ctx.state.usedCodes).map(([c,v])=>c+':'+v.name).sort(),['A1:A','A2:A','B1:B','B2:B','C1:C','C2:C']);
+  assert.equal(ctx.state.pendingCodes.length,0);
+});
+
+test('the group intent is saved before the transfer click and a failed transfer commits nothing', async()=>{
+  const {ctx,run}=batchHarness();
+  ctx.transfer=async()=>{ctx.transfers++; ctx.intent=JSON.parse(JSON.stringify(ctx.saved[ctx.saved.length-1].inFlight)); throw Error('timeout');};
+  await run('runLoop()');
+  assert.deepEqual(ctx.intent.batch.map(e=>[e.index,e.confirmedPlaced,e.codes.join('')]),[[0,2,'A1A2'],[1,2,'B1B2'],[2,2,'C1C2']]);
+  assert.equal(ctx.transfers,1); // uncertain outcome is never retried automatically
+  assert.equal(ctx.state.status,'paused');
+  assert.ok(ctx.state.inFlight);
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[0,0,0]);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[5,5,5]);
+  // the user confirms after looking at the document: the whole group is committed at once
+  await run('reconcileTransfer(true)');
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[2,2,2]);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[3,3,3]);
+  assert.equal(Object.keys(ctx.state.usedCodes).length,6);
+  assert.equal(ctx.state.inFlight,null);
+});
+
+test('a group whose transfer did not happen is dropped as a whole', async()=>{
+  const {ctx,run}=batchHarness();
+  ctx.transfer=async()=>{ctx.transfers++; throw Error('timeout');};
+  await run('runLoop()');
+  await run('reconcileTransfer(false)');
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[0,0,0]);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[5,5,5]);
+  assert.deepEqual(ctx.state.items.map(i=>i.status),['pending','pending','pending']);
+  assert.equal(Object.keys(ctx.state.usedCodes||{}).length,0);
+  assert.equal(ctx.state.pendingCodes.length,0);
+});
+
+test('an error while filling a group transfers nothing of it and the receipt goes on one by one', async()=>{
+  const {ctx,run}=batchHarness();
+  let calls=0;
+  ctx.fillQuantities=async(item)=>{ if(++calls===2) throw Error('jadval topilmadi'); ctx.state.pendingCodes=[item.name+'1',item.name+'2']; return 2; };
+  await run('runLoop()');
+  // group: A filled, B failed -> nothing moved; then one by one: A, B, C each with its own transfer
+  assert.equal(ctx.transfers,3);
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[2,2,2]);
+  assert.deepEqual(ctx.state.items.map(i=>i.stock),[3,3,3]);
+  assert.equal(ctx.state.status,'done');
+});
+
+test('finishing early inside a group moves what is filled and leaves the rest for the next receipt', async()=>{
+  const {ctx,run}=batchHarness();
+  ctx.fillQuantities=async(item)=>{ctx.state.pendingCodes=[item.name+'1',item.name+'2']; ctx.finishEarly=true; return 2;};
+  await run('runLoop()');
+  assert.equal(ctx.transfers,1);
+  assert.deepEqual(ctx.state.items.map(i=>i.placed),[2,0,0]);
+  assert.deepEqual(ctx.state.items.map(i=>i.status),['ok','skip','skip']);
   assert.equal(ctx.state.status,'done');
 });
 
