@@ -1520,10 +1520,16 @@
         }
         // «Заполнить цены» narxlarni qatorlarga qo'yadi, lekin 1C «Всего» ni hujjat yozilmaguncha 0 ko'rsatadi:
         // qatorlarda summa bo'lsa hujjat qayta o'tkaziladi va jami shundan keyin o'qiladi
-        const filledGrid = document.getElementById(`${prefix}_Товары`);
-        const filledCols = filledGrid ? gridColumns(filledGrid) : null;
-        const sumCol = filledCols ? colOf(filledCols, 'lineSum') : undefined;
-        if (filledGrid && sumCol !== undefined && gridRows(filledGrid).some((l) => parseNumber(spanText(l, filledCols, sumCol), ',') > 0)) {
+        // (1C narxlarni oyna yopilgach bir necha soniyada qo'yadi — qatorlarda summa paydo bo'lishi kutiladi)
+        const rowsFilled = () => {
+          const g = document.getElementById(`${prefix}_Товары`);
+          if (!g) return false;
+          const cols = gridColumns(g);
+          const sumCol = colOf(cols, 'lineSum');
+          return sumCol !== undefined && gridRows(g).some((l) => parseNumber(spanText(l, cols, sumCol), ',') > 0);
+        };
+        const filled = await waitFor(() => { followDocument(); return rowsFilled(); }, 10000, 'narxlar qo‘yilishi', { pausable: false }).catch(() => false);
+        if (filled) {
           prefix = await postKeepOpen(prefix, true);
           const written = await waitFor(() => {
             const v = parseNumber(document.getElementById(`${prefix}_ИтогиВсего_i0`)?.value, ',');

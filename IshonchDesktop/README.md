@@ -157,6 +157,10 @@ Markirovkali cheklar orasida ombor qoldig‘i va ishlatilgan kodlar saqlanadi, k
 - Yaratilgan dovernislar eslab qolinadi va 1C ro'yxatida belgilanadi (ЭДО orqali yuborishni foydalanuvchi o'zi bajaradi).
 - 4790 to'ldiruvchi bosishlari brauzer masshtabiga (zoom) moslanadi.
 
+## 0.11.5
+
+- Markirovkali chek, natsenka («Заполнить цены»): 1C narxlarni oyna yopilgach bir necha soniya kechikib qo'yadi — dastur erta tekshirib zaxira usulga o'tar va chek «Реализация jadvalida tanlangan katak topilmadi» deb to'xtab qolishi mumkin edi. Endi qatorlarda summa paydo bo'lishi kutiladi (10 soniyagacha), keyin hujjat qayta o'tkazilib jami 1C dan o'qiladi.
+
 ## 0.11.4
 
 Markirovkali chek:
