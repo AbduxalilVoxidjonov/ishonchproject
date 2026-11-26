@@ -169,6 +169,7 @@ public sealed class MarkingSession : IDisposable
                 {
                     store.Set(o);
                     UnsellableStore.AddFromPanelState(o, baseEntry, ZoomStore.Settings?.GetMarked(baseEntry.ProfileKey).Warehouse ?? "");
+                    GoodsKind.AddFromPanelState(o, baseEntry);
                 }
                 return new { ok = true };
             default:

@@ -105,7 +105,7 @@ public sealed class MarkedAuto : IDisposable
               (inSlots ? '' : '<div class="muted">Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>');
             const act = document.createElement('div');
             act.id = 'ishAutoAct'; act.className = inSlots ? 'ish-in' : 'ish-auto';
-            act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled title="Bir marta: joriy tovar tugagach chek terilgani bilan yopiladi va provesti qilinadi, terilmagan summa maydonga qaytadi. Ikki marta: chekni yopmasdan hoziroq to‘xtaydi">■ To‘xtatish</button></div>' +
+            act.innerHTML = '<div class="row"><button class="b primary ish-go" data-x="go">▶ Avto boshlash</button><button class="b small" data-x="pause" disabled>⏸ Pauza</button><button class="b small" data-x="stop" disabled title="Joriy tovar tugagach chek terilgani bilan yopiladi va provesti qilinadi, terilmagan summa maydonga qaytadi. Chekni yopmasdan to‘xtatish — «⏸ Pauza» (shu joyidan davom etadi)">■ To‘xtatish</button></div>' +
               '<div class="row"><button class="b small" data-x="sellDoc" title="1C da hozir ochiq turgan Реализация hujjatini (dastur yaratmagan bo‘lsa ham) markirovka kodlari bilan E-POS orqali sotish">📄 Ochiq 1C hujjatini E-POS orqali sotish</button></div>' +
               '<div class="row"><button class="b small" data-x="reset" title="Jarayonni to‘xtatadi, joriy chekni tozalaydi va keyingi «Avto boshlash» da inventarizatsiyani qaytadan yangilaydi. Ishlatilgan kodlar va xato bazasi saqlanadi">⟲ Boshiga qaytarish va inventarizatsiyani yangilash</button></div>' +
               '<div class="ish-st" id="ishAutoStatus"></div>';
@@ -169,13 +169,13 @@ public sealed class MarkedAuto : IDisposable
 
     /// <summary>Panel hozir chek teryaptimi (Подбор bosqichi): shu paytda «To'xtatish» chekni yopib o'tkazadi.</summary>
     bool collecting;
-    /// <summary>«To'xtatish» bosilgan: joriy tovar tugagach chek terilgani bilan yopiladi (yana bosilsa — darhol to'xtaydi).</summary>
+    /// <summary>«To'xtatish» bosilgan: joriy tovar tugagach chek terilgani bilan yopiladi (yana bosilsa ham — yakunlanishi kutiladi).</summary>
     bool finishing;
 
     /// <summary>
     /// «■ To'xtatish»: chek terilayotgan bo'lsa va kamida bitta tovar o'tkazilgan bo'lsa — joriy tovar tugagach chek shu yerda
-    /// yopiladi va (belgi yoqilgan bo'lsa) provesti qilinadi, qolgan summa keyingi chekka qoladi. Boshqa bosqichda yoki
-    /// ikkinchi bosishda — darhol to'xtaydi (panel pauzaga olinadi, chek keyin davom ettirilishi mumkin).
+    /// yopiladi va (belgi yoqilgan bo'lsa) provesti qilinadi, qolgan summa keyingi chekka qoladi; ikkinchi bosish buni bekor
+    /// qilmaydi. Boshqa bosqichda (hali tovar terilmagan) — to'xtaydi (panel pauzaga olinadi, keyin davom ettirish mumkin).
     /// </summary>
     /// <summary>Paneldagi «✕»: panelni yashiradi (jarayon ketayotgan bo'lsa avval to'xtatiladi). Qayta ochish — «Markirovkali chek» tugmasi.</summary>
     async Task CloseAsync()
@@ -183,25 +183,33 @@ public sealed class MarkedAuto : IDisposable
         if (Running)
         {
             if (MessageBox.Show(oneC.FindForm(), "Jarayon ketmoqda. To'xtatilsinmi?", AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            await StopAsync();
+            await StopAsync(hard: true);
         }
         oneC.HideSidePanel();
     }
 
-    async Task StopAsync()
+    /// <param name="hard">Darhol to'xtatish (panel yopilayotganda): chek yopilmaydi, keyin davom ettirish mumkin.</param>
+    async Task StopAsync(bool hard = false)
     {
         if (!Running) return;
+        // «To'xtatish» chekni yakunlaydi: ikkinchi bosish ham chekni tashlab ketmaydi — yakunlanishi kutiladi
+        // (darhol, chekni yopmasdan to'xtatish kerak bo'lsa — «⏸ Pauza»; u shu joyidan davom etadi)
+        if (finishing && !hard)
+        {
+            Status("Chek yakunlanmoqda — joriy tovar tugashini kuting (provesti qilinadi). Darhol to'xtatish uchun «⏸ Pauza» ni bosing.", "warn", report: false);
+            return;
+        }
         try
         {
             var s = await PanelStateAsync(CancellationToken.None);
             var start = Str(s, "start");
-            if (!finishing && collecting && start is "Pauza" or "Davom" && int.TryParse(Str(s, "placed"), out var placed) && placed > 0)
+            if (!hard && !finishing && collecting && start is "Pauza" or "Davom" && int.TryParse(Str(s, "placed"), out var placed) && placed > 0)
             {
                 finishing = true;
                 if (paused) { paused = false; gate?.Resume(); }
                 await PanelClickAsync("finish", CancellationToken.None);
                 Status("To'xtatilmoqda: joriy tovar tugagach chek shu yerda yopiladi" + (prefs.Post ? " va provesti qilinadi" : "") +
-                       "; terilmagan summa «Maqsad summa» ga yoziladi. (Hoziroq, chekni yopmasdan to‘xtatish uchun «■ To‘xtatish» ni yana bosing.)", "warn", report: false);
+                       "; terilmagan summa «Maqsad summa» ga yoziladi. (Chekni yopmasdan to'xtatish kerak bo'lsa — «⏸ Pauza».)", "warn", report: false);
                 return;
             }
             if (start == "Pauza") await PanelClickAsync("start", CancellationToken.None); // panel ham to'xtaydi (pauza)
@@ -255,7 +263,7 @@ public sealed class MarkedAuto : IDisposable
             " return { start: b('start')?.textContent?.trim() || '', startDisabled: !!b('start')?.disabled," +
             " capture: b('capture')?.textContent?.trim() || '', source: q('[data-el=\"source\"]')?.textContent?.trim() || ''," +
             " full: q('[data-el=\"fullSource\"]')?.textContent?.trim() || '', placed: q('[data-el=\"placedKinds\"]')?.textContent?.trim() || ''," +
-            " doneTotal: q('[data-el=\"doneTotal\"]')?.textContent?.trim() || '', doneLocal: q('[data-el=\"doneLocal\"]')?.textContent?.trim() || '', message: q('[data-el=\"message\"]')?.textContent?.trim() || '' }; })()", ct);
+            " inflight: q('[data-el=\"inflight\"]')?.textContent?.trim() || '', doneTotal: q('[data-el=\"doneTotal\"]')?.textContent?.trim() || '', doneLocal: q('[data-el=\"doneLocal\"]')?.textContent?.trim() || '', message: q('[data-el=\"message\"]')?.textContent?.trim() || '' }; })()", ct);
         using var doc = JsonDocument.Parse(raw);
         return doc.RootElement.Clone();
     }
@@ -562,6 +570,9 @@ public sealed class MarkedAuto : IDisposable
             // «To'xtatish» chekni erta yopsa, qolgan summa uchun yangi chek shu yerning o'zida boshlanadi
             // (qolgan summa navbatga keyingi chek bo'lib qo'shiladi; undan keyingi cheklar o'z summasi bilan qoladi)
             var goals = targets.ToList();
+            var emptyRetries = 0;
+            var dropRetries = 0;
+            string? stuckWhy = null;
             for (var k = 0; k < goals.Count; k++)
             {
                 var goal = goals[k];
@@ -579,6 +590,9 @@ public sealed class MarkedAuto : IDisposable
                 // Panel jarayoni tugashini kutamiz: «Yangi chekni boshlash» — tayyor; «Davom» — to'xtab qoldi
                 var stoppedSince = (DateTime?)null;
                 var reactivated = false;
+                var closedEarly = false;
+                for (var finishTry = 0; ; finishTry++)
+                {
                 await WaitAsync(async () =>
                 {
                     var ps = await PanelStateAsync(ct);
@@ -592,11 +606,67 @@ public sealed class MarkedAuto : IDisposable
                         await PanelClickAsync("start", ct);
                         return false;
                     }
-                    if (s == "Davom" && !paused) { stoppedSince ??= DateTime.UtcNow; if (DateTime.UtcNow - stoppedSince > TimeSpan.FromSeconds(15)) throw new OneCException($"{k + 1}-chek to'xtab qoldi — panel jurnalini ko'ring, «Davom» bilan davom ettirib, keyin «▶ Avto boshlash» ni qayta bosing."); }
+                    if (s == "Davom" && !paused)
+                    {
+                        stoppedSince ??= DateTime.UtcNow;
+                        if (DateTime.UtcNow - stoppedSince > TimeSpan.FromSeconds(15)) { stuckWhy = Str(ps, "message"); return true; }
+                    }
                     else stoppedSince = null;
                     return false;
                 }, TimeSpan.FromHours(2), $"{k + 1}-chek yig'ilishi", ct);
+                // To'xtab qolgan chekda tovar terilgan bo'lsa — u bekor qilinmaydi: terilgani bilan yakunlanib provesti qilinadi
+                // (noaniq o'tkazish bo'lsa avval 1C hujjatidan tekshirilib tasdiqlanadi). Bir marta urinib ko'riladi.
+                if (stuckWhy is null || finishTry > 0 || !await FinishStuckAsync(k, stuckWhy, runner, ct)) break;
+                stuckWhy = null;
+                stoppedSince = null;
+                closedEarly = true;
+                }
                 collecting = false;
+                // Chek to'xtab qoldi (1C xatosi, tovar topilmadi…): chek bekor qilinadi — panel terilganlarni qaytaradi, hujjat
+                // saqlanmasdan yopiladi — va shu summa uchun yangi chek qolgan tovarlardan boshlanadi (muammo tashlab ketiladi)
+                if (stuckWhy is not null)
+                {
+                    var why = stuckWhy.Length > 0 ? stuckWhy : "sabab panel jurnalida";
+                    stuckWhy = null;
+                    if (++dropRetries > 2)
+                        throw new OneCException($"{k + 1}-chek ketma-ket 3 marta to'xtab qoldi ({why}) — panel jurnalini ko'ring. {done} ta chek tayyor.");
+                    Status($"{k + 1}-chek to'xtab qoldi ({why}) — chek bekor qilinib, keyingi tovarlardan yangisi boshlanmoqda…", "warn");
+                    await PanelClickAsync("dropReceipt", ct);
+                    await WaitAsync(async () => Str(await PanelStateAsync(ct), "start") is not ("Davom" or "Pauza" or ""), TimeSpan.FromMinutes(2), "chekni bekor qilish", ct);
+                    await runner.DiscardCurrentAsync();
+                    if (finishing)
+                    {
+                        // «To'xtatish» bosilgan edi: yangi chek boshlanmaydi
+                        restore = goals.Skip(k).Sum();
+                        stopped = true;
+                        break;
+                    }
+                    k--;
+                    continue;
+                }
+                dropRetries = 0;
+                // Chekka birorta tovar tushmagan (barcha markirovkalar xato chiqqan): bo'sh hujjatni 1C provesti qilmaydi
+                // («Не введено ни одной строки…») — hujjat saqlanmasdan yopiladi va ish to'xtaydi
+                if (Str(await PanelStateAsync(ct), "placed") == "0")
+                {
+                    await runner.DiscardCurrentAsync();
+                    // Xato kodlar endi xato bazasida — panel keyingi rejada ularni hisobga olmaydi: shu chek bir marta qayta quriladi
+                    if (++emptyRetries <= 1)
+                    {
+                        Status($"{k + 1}-chekka birorta tovar tushmadi (markirovkalar xato chiqdi) — bo'sh hujjat yopildi, chek qayta rejalanmoqda…", "warn");
+                        k--;
+                        continue;
+                    }
+                    throw new OneCException($"{k + 1}-chekka birorta tovar tushmadi — markirovkalar xato chiqdi yoki yetmadi (panelda «Xato markirovkalar» ni ko'ring). Bo'sh hujjat saqlanmasdan yopildi; {done} ta chek tayyor.");
+                }
+                emptyRetries = 0;
+                // Muammo sabab erta yopilgan chek: maqsadning terilmagan qismi keyingi chekka qo'shiladi (jami summa saqlanadi)
+                if (closedEarly && !finishing && await ClosedTotalAsync(runner, ct) is { } early && early > 0 && goal - early > 0)
+                {
+                    var left = Math.Round(goal - early);
+                    if (k + 1 < goals.Count) goals[k + 1] += left; else goals.Add(left);
+                    Status($"{k + 1}-chek terilgani bilan yopildi ({early:N0} so'm) — qolgan {left:N0} so'm keyingi chekka qo'shildi.", "warn");
+                }
                 // «To'xtatish» bilan erta yopilgan chek: 1C dagi jami (QQS bilan) — qolgan summa keyingi chekka qoladi
                 // (jami 1C hujjatining o'zidan o'qiladi; o'qilmasa — panel hisoblagan 1C jami)
                 if (finishing && await ClosedTotalAsync(runner, ct) is { } closed && closed > 0)
@@ -647,6 +717,42 @@ public sealed class MarkedAuto : IDisposable
             try { await PanelSetTargetAsync(restore > 0 ? restore : sum.Value, CancellationToken.None); } catch { /* panel yopilgan */ }
             Push();
         }
+    }
+
+    /// <summary>
+    /// To'xtab qolgan chekni terilgan tovarlari bilan yakunlashga urinadi: noaniq o'tkazish bo'lsa 1C hujjatidagi miqdor bo'yicha
+    /// tasdiqlanadi (aniqlab bo'lmasa — false), so'ng panelda «Chekni shu yerda yakunlash» bosiladi. Terilgan tovar yo'q — false.
+    /// </summary>
+    async Task<bool> FinishStuckAsync(int k, string why, UnmarkedRunner runner, CancellationToken ct)
+    {
+        var st = await PanelStateAsync(ct);
+        var flight = Str(st, "inflight");
+        if (flight.Length > 0)
+        {
+            try
+            {
+                using var j = JsonDocument.Parse(flight);
+                var name = j.RootElement.GetProperty("name").GetString() ?? "";
+                var placed = j.RootElement.GetProperty("placed").GetDecimal();
+                var confirmed = j.RootElement.GetProperty("confirmed").GetDecimal();
+                var have = (await runner.ReadDocQuantitiesAsync()).GetValueOrDefault(GoodsKind.Key(name));
+                var action = have >= confirmed ? "confirmAdded" : have <= placed ? "confirmNotAdded" : null;
+                if (action is null) { Status($"{k + 1}-chek: «{name}» hujjatda {have} ta — o'tkazilgani aniqlanmadi.", "warn"); return false; }
+                Status($"{k + 1}-chek: «{name}» 1C hujjatida {have} ta — o'tkazish {(action == "confirmAdded" ? "bo'lgan" : "bo'lmagan")} deb tasdiqlandi.", "warn");
+                await PanelClickAsync(action, ct);
+                await Task.Delay(1000, ct);
+                st = await PanelStateAsync(ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                Log.Write("MarkedAuto noaniq o'tkazish: " + e.Message);
+                return false;
+            }
+        }
+        if (!int.TryParse(Str(st, "placed"), out var kinds) || kinds == 0) return false;
+        Status($"{k + 1}-chek to'xtab qoldi ({(why.Length > 0 ? why : "sabab panel jurnalida")}) — terilgan {kinds} xil tovar bilan yakunlanib provesti qilinadi…", "warn");
+        await PanelClickAsync("finish", ct);
+        return true;
     }
 
     /// <summary>

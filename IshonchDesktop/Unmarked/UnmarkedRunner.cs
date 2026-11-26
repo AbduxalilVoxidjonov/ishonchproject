@@ -128,6 +128,12 @@ public sealed class UnmarkedRunner
     /// <summary>Har chekning maqsad summasi (umumiy summa har xil bo'lib taqsimlangan), bir marta hisoblanadi.</summary>
     List<decimal>? targets;
 
+    /// <summary>
+    /// Markirovkali tovarmi (berilsa): bunday tovar markirovkasiz chekka olinmaydi — bitta chekda faqat bir turdagi tovar.
+    /// </summary>
+    public Func<string, bool>? IsMarked { get; set; }
+    HashSet<int> markedRows = new();
+
     void PlanFrom(int from)
     {
         targets ??= Planner.SplitTotal(opt.Target * opt.Count, opt.Count, opt.Variation, new Random());
@@ -141,7 +147,7 @@ public sealed class UnmarkedRunner
             for (var step = 0; step < full.Count && idx.Count < Math.Max(1, opt.Lines); step++)
             {
                 var i = (start + step) % full.Count;
-                if (left[i] >= Step(i)) idx.Add(i);
+                if (left[i] >= Step(i) && !markedRows.Contains(i)) idx.Add(i);
             }
             idx.Sort(); // jadval tartibida (o'chirish shunga tayanadi)
             // Planner butun sonlar bilan ishlaydi: gramm tovarlar 0,01 g «qadam»larda beriladi (qoldiq ×100, narx ÷100)
@@ -216,6 +222,11 @@ public sealed class UnmarkedRunner
                     {
                         // Bir marta: hamma tovarlar o'qiladi va hamma cheklar rejasi tuziladi
                         full = await ReadAllAsync();
+                        markedRows = IsMarked is { } isMarked
+                            ? Enumerable.Range(0, full.Count).Where(i => isMarked(full[i].Name)).ToHashSet() : new();
+                        if (markedRows.Count > 0)
+                            log($"{markedRows.Count} xil markirovkali tovar markirovkasiz chekka olinmaydi: " +
+                                string.Join(", ", markedRows.Take(5).Select(i => full[i].Name)) + (markedRows.Count > 5 ? " …" : ""), "info");
                         PlanFrom(0);
                         var qty = plans.Sum(p => p.Plan.Lines.Sum(l => l.Qty));
                         log($"Reja: {plans.Count} ta chek ({string.Join("; ", plans.Select(p => Fmt(p.Plan.Total)))}), jami {qty:N0} dona, ≈{Fmt(plans.Sum(p => p.Plan.Total))}", "info");
@@ -846,19 +857,30 @@ public sealed class UnmarkedRunner
 
     async Task PickFromComboAsync(string dropButtonSuffix, string valueSuffix, string text)
     {
-        if ((await d.ValueAsync(valueSuffix))?.Trim() == text) return;
-        await d.ClickSuffixAsync(dropButtonSuffix, text + " ro'yxati");
-        var item = await d.WaitAsync(async () =>
+        // Bazalarda band matni katta-kichik harfi bilan farq qiladi («Без НДС» / «без НДС») — taqqoslash harfga qaramaydi
+        bool Same(string? v) => string.Equals(v?.Trim(), text, StringComparison.OrdinalIgnoreCase);
+        if (Same(await d.ValueAsync(valueSuffix))) return;
+        async Task<Pt?> FindItem()
         {
             var e = await d.EvalAsync("window.__ish.listItems()");
-            if (e.ValueKind != JsonValueKind.Array) return (Pt?)null;
+            if (e.ValueKind != JsonValueKind.Array) return null;
             foreach (var li in e.EnumerateArray())
-                if (li.GetProperty("t").GetString() == text)
+                if (string.Equals(li.GetProperty("t").GetString(), text, StringComparison.OrdinalIgnoreCase))
                     return new Pt(li.GetProperty("x").GetDouble(), li.GetProperty("y").GetDouble());
             return null;
-        }, 8000, $"«{text}» bandi");
+        }
+        // 1C ro'yxat tugmasini birinchi bosishda ba'zan ochmaydi (sekin yoki kichik oynada bosish yutiladi): ro'yxat
+        // ~3 soniyada chiqmasa tugma qayta bosiladi (3 martagacha), keyin odatdagidek kutiladi
+        Pt? found = null;
+        for (var attempt = 0; attempt < 3 && found is null; attempt++)
+        {
+            if (attempt > 0) await d.DelayAsync(300); // Escape bosilmaydi: «Изменить» oynasini yopib yuborishi mumkin
+            await d.ClickSuffixAsync(dropButtonSuffix, text + " ro'yxati");
+            for (var until = d.Now + 3000; d.Now < until && found is null;) { await d.DelayAsync(250); found = await FindItem(); }
+        }
+        var item = found ?? await d.WaitAsync(FindItem, 8000, $"«{text}» bandi");
         await d.ClickAsync(item);
-        await d.WaitTrueAsync(async () => (await d.ValueAsync(valueSuffix))?.Trim() == text, 8000, $"«{text}» tanlanishi");
+        await d.WaitTrueAsync(async () => Same(await d.ValueAsync(valueSuffix)), 8000, $"«{text}» tanlanishi");
         await d.DelayAsync(200);
     }
 
@@ -886,7 +908,7 @@ public sealed class UnmarkedRunner
             ? string.Join("|", g.Rows.Select(r => string.Join("/", r.Cells.Values.Select(c => c.Text)))) : "");
         var already = false;
         if (vatTarget is not null && await d.GridAsync("Товары") is { Rows.Count: > 0 } vg && vg.ColIndex("% НДС") is { } vc)
-            already = vg.Rows.All(r => r.Cells.TryGetValue(vc, out var c) && c.Text.Trim() == vatTarget);
+            already = vg.Rows.All(r => r.Cells.TryGetValue(vc, out var c) && string.Equals(c.Text.Trim(), vatTarget, StringComparison.OrdinalIgnoreCase));
         var before = await Sig();
         var msgs = (await d.MessagesAsync()).Count;
         await d.ClickSuffixAsync("_Выполнить", "Выполнить");
@@ -1110,8 +1132,9 @@ public sealed class UnmarkedRunner
             }
             hint = top;
             var visible = win.TakeWhile(r => r.Name.Length > 0).Count();
-            // Kerakli qator ekranda (oxirgi, yarim ko'rinadigan qatordan tashqari) — bosamiz
-            if (target >= top && target < top + Math.Max(1, visible - 1))
+            // Kerakli qator ekranda (oxirgi, yarim ko'rinadigan qatordan tashqari) — bosamiz. Jadvalning eng oxirgi qatori
+            // ekrandagi oxirgi qator bo'lsa ham bosiladi: jadval boshqa aylanmaydi, aks holda unga hech qachon yetib bo'lmasdi
+            if (target >= top && (target < top + Math.Max(1, visible - 1) || (target == table.Count - 1 && target < top + visible)))
             {
                 var row = g.Rows[target - top];
                 var cell = (column is null ? null : g.Cell(row, column)) ?? g.VisibleCell(row, "Всего", "НДС", "% НДС", "Сумма") ?? g.Cell(row, "Номенклатура");
@@ -1364,6 +1387,7 @@ public sealed class UnmarkedRunner
         var before = (await d.MessagesAsync()).Count;
         await d.ClickSuffixAsync("_ФормаПровестиИЗакрыть", "Провести и закрыть");
         var end = d.Now + 120000;
+        var usedWarnings = 0;
         while (d.Now < end)
         {
             await d.DelayAsync(200);
@@ -1373,6 +1397,19 @@ public sealed class UnmarkedRunner
                 if (text.Contains("пустым количеством", StringComparison.OrdinalIgnoreCase) && await d.ModalButtonAsync("Да") is { } yes)
                 {
                     await d.ClickAsync(yes);
+                    continue;
+                }
+                // «Эти коды уже использовались ранее» — 1C ogohlantirishi (faqat OK): kodlar oldingi Реализация da bor (u E-POS dan
+                // sotilmagan). Foydalanuvchi qarori: OK bosiladi va «Провести и закрыть» qayta bosiladi (ko'pi bilan 3 marta)
+                if (text.Contains("уже использовались", StringComparison.OrdinalIgnoreCase)
+                    && (await d.ModalButtonAsync("ОК") ?? await d.ModalButtonAsync("OK")) is { } okUsed)
+                {
+                    await d.ClickAsync(okUsed);
+                    if (++usedWarnings > 3) throw new OneCException("1C «Эти коды уже использовались ранее» deb provesti qilmayapti: " + text);
+                    log("1C: «Эти коды уже использовались ранее» — OK bosildi, «Провести и закрыть» qayta bosilmoqda.", "warn");
+                    await d.DelayAsync(700);
+                    if (await d.ModalTextAsync() is null && await d.HasAsync("_ФормаПровестиИЗакрыть"))
+                        await d.ClickSuffixAsync("_ФормаПровестиИЗакрыть", "Провести и закрыть");
                     continue;
                 }
                 if (text.Contains("Не удалось", StringComparison.OrdinalIgnoreCase) || text.Contains("Ошибка", StringComparison.OrdinalIgnoreCase))
@@ -1434,6 +1471,9 @@ public sealed class UnmarkedRunner
             return false;
         }
     }
+
+    /// <summary>Ochiq (bo'sh qolgan) hujjatni saqlamasdan yopadi.</summary>
+    public Task DiscardCurrentAsync() => DiscardDocumentAsync();
 
     /// <summary>Provesti bo'lmagan hujjatni saqlamasdan yopadi.</summary>
     async Task DiscardDocumentAsync()
@@ -1521,6 +1561,28 @@ public sealed class UnmarkedRunner
         }
         catch (Exception ex) { log("Hujjat qatorlarini o'qib bo'lmadi (E-POS narxi reja bo'yicha): " + ex.Message, "warn"); }
         return list;
+    }
+
+    /// <summary>
+    /// Ochiq hujjatning tovarlar jadvali: nom → jami miqdor (kodlar oynasi ochilmaydi; jadval boshidan oxirigacha aylantiriladi).
+    /// Noaniq o'tkazishni (tovar hujjatga tushdimi) aniqlash uchun.
+    /// </summary>
+    public async Task<Dictionary<string, decimal>> ReadDocQuantitiesAsync()
+    {
+        await ScrollGoodsToTopAsync();
+        var seen = new HashSet<string>();
+        var qty = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        for (var step = 0; step < 500; step++)
+        {
+            foreach (var l in await ReadDocLinesAsync())
+            {
+                if (l.N.Length == 0 || !seen.Add(l.N)) continue;
+                var key = Marking.GoodsKind.Key(l.Name);
+                qty[key] = qty.GetValueOrDefault(key) + l.Qty;
+            }
+            if (await d.GridAsync("Товары") is not { Rows.Count: > 0 } view || !await d.ScrollRowsAsync("Товары", view, 3)) break;
+        }
+        return qty;
     }
 
     /// <summary>
@@ -1617,21 +1679,36 @@ public sealed class UnmarkedRunner
         var opened = false;
         for (var attempt = 0; attempt < 3 && !opened; attempt++)
         {
-            if (await d.PosAsync(linkExpr) is not { } at) throw new OneCException($"{row + 1}-qatorning «маркирован» havolasi topilmadi");
+            if (await d.PosAsync(linkExpr) is not { } at) throw new OneCException($"{(n.Length > 0 ? n : (row + 1).ToString())}-qatorning «маркирован» havolasi topilmadi");
             await d.ClickAsync(at);
             for (var until = d.Now + 3000; d.Now < until && !opened;) { await d.DelayAsync(300); opened = await d.HasAsync(CodesGrid); }
         }
-        if (!opened) throw new OneCException($"{row + 1}-qatorning markirovka kodlari oynasi ochilmadi");
+        var label = n.Length > 0 ? n : (row + 1).ToString(); // hujjatdagi qator raqami (N), bo'lmasa ko'rinish tartibi
+        if (!opened) throw new OneCException($"{label}-qatorning markirovka kodlari oynasi ochilmadi");
         await d.DelayAsync(500);
+        // Oynada uchta jadval: «Потребительская», «Групповая», «Транспортная упаковка» (chapdan o'ngga). Kodlar odatda
+        // iste'mol qadog'ida, lekin ba'zan 1C ga guruh/transport ustuniga kiritilgan bo'ladi — bo'sh bo'lmagan birinchisi o'qiladi
+        const string pickJs =
+            "(() => { const vis = x => x.getBoundingClientRect().width > 0;" +
+            " const c = [...document.querySelectorAll('div.grid[id$=\"" + CodesGrid + "\"]')].filter(vis)[0]; if (!c) return null;" +
+            " const pre = c.id.split('_')[0] + '_';" +
+            " const has = g => [...g.querySelectorAll('.gridBody .gridLine')].some(l => l.textContent.trim().length > 0);" +
+            " const all = [...document.querySelectorAll('div.grid')].filter(g => g.id.startsWith(pre) && vis(g))" +
+            ".sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);" +
+            " const pick = has(c) ? c : (all.find(has) || c); return { id: pick.id, i: all.indexOf(pick), n: all.length }; })()";
+        var picked = await d.EvalAsync(pickJs);
+        var gridId = picked.ValueKind == JsonValueKind.Object ? picked.GetProperty("id").GetString() ?? "" : "";
+        var column = picked.ValueKind == JsonValueKind.Object ? picked.GetProperty("i").GetInt32() : 0;
+        if (column > 0) log($"{label}-qator: kodlar «{(column == 1 ? "Групповая" : "Транспортная")} упаковка» ustunidan olindi (iste'mol qadog'i bo'sh)", "info");
         // 1C jadvali faqat ko'rinib turgan qatorlarni chizadi (oynada ~8 ta): jadval g'ildirak bilan aylantirilib, kodlar
         // takrorlanmasdan yig'iladi — kerakli son (miqdor) to'lguncha yoki jadval boshqa aylanmaguncha
-        const string readJs =
-            "(() => { const g = [...document.querySelectorAll('div.grid[id$=\"" + CodesGrid + "\"]')].find(x => x.getBoundingClientRect().width > 0);" +
-            " if (!g || /Групп|Трансп/.test(g.id)) return []; return [...g.querySelectorAll('.gridBody .gridLine')]" +
+        var readJs =
+            "(() => { const g = document.getElementById(" + JsonSerializer.Serialize(gridId) + ");" +
+            " if (!g) return []; return [...g.querySelectorAll('.gridBody .gridLine')]" +
             ".map(l => [...l.querySelectorAll('.gridBox')].map(b => b.textContent.trim()).filter(Boolean).join('')).filter(Boolean); })()";
         var codes = new List<string>();
         var seen = new HashSet<string>();
-        var gridName = CodesGrid.TrimStart('_');
+        var gridName = gridId.Length > 0 && gridId.Contains('_') ? gridId[(gridId.IndexOf('_') + 1)..] : CodesGrid.TrimStart('_');
         for (var step = 0; step < 300; step++)
         {
             var e = await d.EvalAsync(readJs);
@@ -1651,7 +1728,7 @@ public sealed class UnmarkedRunner
             }
         }
         if (expected > 0 && codes.Count < expected)
-            log($"{row + 1}-qator: miqdor {expected}, lekin 1C oynasida {codes.Count} ta kod topildi", "warn");
+            log($"{label}-qator: miqdor {expected}, lekin 1C oynasida {codes.Count} ta kod topildi", "warn");
         // Yopish: Esc (o'zgartirilmagan oyna yopiladi); yopilmasa — oynaning «Закрыть» tugmasi
         await d.KeyAsync("Escape");
         for (var until = d.Now + 5000; d.Now < until && await d.HasAsync(CodesGrid);) await d.DelayAsync(300);
@@ -1704,12 +1781,22 @@ public sealed class UnmarkedRunner
             if (tab is not null) await d.ClickAsync(tab.Pos);
             else
             {
-                // Bo'lim menyusidagi band id bo'yicha (cmd_…_txt) olinadi: ochiq hujjatdagi «Номенклатура» ustun sarlavhasi bosilmasin
-                if (await d.PosSectionAsync("Справочники") is { } sec) await d.ClickAsync(sec);
-                var item = await d.WaitAsync(() => d.PosAsync(Center(
-                    "[...document.querySelectorAll('[id^=\"cmd_\"][id$=\"_txt\"]')].find(e => e.textContent.trim() === " + Js(NomenclatureTitle) + " && e.getBoundingClientRect().width > 0)")),
-                    15000, "«Справочники» → «Номенклатура»");
-                await d.ClickAsync(item);
+                // Bo'lim menyusidagi band id bo'yicha (cmd_…_txt) olinadi: ochiq hujjatdagi «Номенклатура» ustun sarlavhasi bosilmasin.
+                // 1C bo'lim menyusini birinchi bosishda ko'pincha ochmaydi (ayniqsa kichik oynada): 4 soniyada chiqmasa bo'lim
+                // qayta bosiladi (4 martagacha). Baribir ochilmasa — qidiruv to'xtatiladi (panel IKPU ni kod bo'yicha oladi),
+                // uzoq kutib, ochilmagan menyu o'rniga boshqa joylar bosilmaydi
+                var itemExpr = Center(
+                    "[...document.querySelectorAll('[id^=\"cmd_\"][id$=\"_txt\"]')].find(e => e.textContent.trim() === " + Js(NomenclatureTitle) + " && e.getBoundingClientRect().width > 0)");
+                Pt? item = null;
+                for (var attempt = 0; attempt < 4 && item is null; attempt++)
+                {
+                    if (attempt > 0) await d.DelayAsync(300); // Escape bosilmaydi: ochiq Реализация hujjatini yopib yuborishi mumkin
+                    if (await d.PosSectionAsync("Справочники") is not { } sec) throw new OneCException("«Справочники» bo'limi topilmadi");
+                    await d.ClickAsync(sec);
+                    for (var until = d.Now + 4000; d.Now < until && item is null;) { await d.DelayAsync(300); item = await d.PosAsync(itemExpr); }
+                }
+                if (item is null) throw new OneCException("«Справочники» bo'limi ochilmadi");
+                await d.ClickAsync(item.Value);
             }
             await d.WaitTrueAsync(() => d.HasAsync("СписокСтрокаПоиска_i0"), 20000, "Номенклатура ro'yxati");
 

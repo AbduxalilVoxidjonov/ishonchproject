@@ -558,6 +558,37 @@ Console.WriteLine("1C oynasini moslash");
     Check(p2.Height >= 680 && p2.Width >= 1360 && Math.Abs(p2.Height * p2.Scale - 500) < 2, "past oyna (1600×500): balandlik ham yetarli");
     var p3 = IshonchDesktop.Unmarked.OneCRoom.Plan(760, 420)!.Value;    // masshtab 200% kabi
     Check(p3.Width >= 1360 && p3.Height >= 680 && p3.Scale < 0.6, "katta masshtab (760×420): kichraytiriladi");
+    // Yon panel ochiq — qotirilgan rejim: har qanday oynada 1C 1360 kenglikda (kattaroq oynada esa o'z kengligida, kattalashtirilmaydi)
+    var f1 = IshonchDesktop.Unmarked.OneCRoom.PlanFixed(1100, 700)!.Value;
+    Check(f1.Width == 1360 && Math.Abs(f1.Width * f1.Scale - 1100) < 2 && Math.Abs(f1.Height * f1.Scale - 700) < 2, "qotirilgan: tor oyna 1360 kenglikda sig'diriladi");
+    var f2 = IshonchDesktop.Unmarked.OneCRoom.PlanFixed(880, 560)!.Value;   // xuddi shu oyna, foydalanuvchi masshtabi 125%
+    Check(f2.Width == 1360 && f2.Scale < f1.Scale, "qotirilgan: foydalanuvchi masshtabi o'zgarsa ham 1C kengligi o'zgarmaydi");
+    var f3 = IshonchDesktop.Unmarked.OneCRoom.PlanFixed(1700, 900)!.Value;
+    Check(f3.Scale == 1.0 && f3.Width == 1700, "qotirilgan: keng oyna kattalashtirilmaydi");
+}
+// ---- Tovar turi: markirovkali / markirovkasiz ----
+Console.WriteLine("Tovar turi (markirovkali / markirovkasiz)");
+{
+    var GK = typeof(IshonchDesktop.Marking.GoodsKind);
+    Check(!IshonchDesktop.Marking.GoodsKind.LooksMarked("74917 СМАРТФОН POCO X8 Pro Max EU 12GB+256GB Black"), "smartfon — markirovkasiz (IMEI)");
+    Check(IshonchDesktop.Marking.GoodsKind.LooksMarked("Плоскопанельный  телевизор.  Марка - SHIVAKI"), "televizor — markirovkali");
+    Check(IshonchDesktop.Marking.GoodsKind.LooksMarked("Изделие X", "08528001001016023"), "IKPU 0852… — markirovkali");
+    Check(!IshonchDesktop.Marking.GoodsKind.LooksMarked("iPhone 17 Pro Max 1TB Silver"), "iPhone — markirovkasiz");
+    Check(!IshonchDesktop.Marking.GoodsKind.LooksMarked("Мобильный телефон, HONOR X8d 8GB+128GB", "08517130001000000"), "Honor (IKPU 08517) — markirovkasiz");
+    Check(IshonchDesktop.Marking.GoodsKind.LooksMarked("Кондиционер Artel ARTSIZ1AW12BE"), "konditsioner — markirovkali");
+    Check(!IshonchDesktop.Marking.GoodsKind.LooksMarked("Газланган сув Suu 1,5 л"), "suv — markirovkasiz");
+    Check(!IshonchDesktop.Marking.GoodsKind.LooksMarked("Блокнот переплетный А5", "04820100001000000"), "bloknot — markirovkasiz");
+    Check(IshonchDesktop.Marking.GoodsKind.Key("  Шкаф  КУПЕ ") == "шкаф купе", "kalit: bo'shliq va harf panel bilan bir xil");
+    Check(GK is not null, "GoodsKind mavjud");
+    IshonchDesktop.Marking.GoodsKind.FilePath = Path.Combine(Path.GetTempPath(), $"goods-kind-test-{Guid.NewGuid():N}.json");
+    var gb = new IshonchDesktop.Models.BaseEntry { Inn = "123", Db = "demo" };
+    using (var pj = System.Text.Json.JsonDocument.Parse("""{"mk1c_demo":{"goodsKind":{"стул офисный":"u","кабель usb":"m"}}}"""))
+        IshonchDesktop.Marking.GoodsKind.AddFromPanelState(pj.RootElement, gb);
+    Check(!IshonchDesktop.Marking.GoodsKind.IsMarked(gb, "Стул  офисный"), "Подбор da markirovkasiz deb o'rganilgan stul — markirovkasiz chekka olinadi");
+    Check(IshonchDesktop.Marking.GoodsKind.IsMarked(gb, "Кабель USB"), "Подбор da kodlari chiqqan tovar — markirovkali");
+    Check(IshonchDesktop.Marking.GoodsKind.IsMarked(gb, "Диван угловой"), "o'rganilmagan divan — taxmin bo'yicha markirovkali");
+    Check(!IshonchDesktop.Marking.GoodsKind.IsMarked(new IshonchDesktop.Models.BaseEntry { Inn = "9", Db = "x" }, "Кабель USB"), "boshqa baza o'rganganini ishlatmaydi");
+    try { File.Delete(IshonchDesktop.Marking.GoodsKind.FilePath); } catch { }
 }
 // ---- CRM shartnoma: summa va maqsad (Didox JSON'idan) ----
 Console.WriteLine("CRM shartnoma summasi va maqsadi");

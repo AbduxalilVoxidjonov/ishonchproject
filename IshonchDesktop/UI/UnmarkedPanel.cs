@@ -1,4 +1,5 @@
 using System.Globalization;
+using IshonchDesktop.Marking;
 using IshonchDesktop.Epos;
 using IshonchDesktop.Models;
 using IshonchDesktop.Unmarked;
@@ -362,7 +363,11 @@ public sealed class UnmarkedPanel : UserControl
         {
             if (prefs.RefreshInventory && prefs.Warehouse.Length == 0)
                 Log("Inventarizatsiyani yangilash uchun sklad nomini kiriting (hozir yangilanmaydi).", "warn");
-            runner = resume ? resumable! : new UnmarkedRunner(tab.Core!, options, Log, cts.Token);
+            runner = resume ? resumable! : new UnmarkedRunner(tab.Core!, options, Log, cts.Token)
+            {
+                // Bitta chekda faqat markirovkasiz tovar: markirovkali (o'rganilgan yoki IKPU/nom bo'yicha) tovar olinmaydi
+                IsMarked = baseEntry is { } be ? name => GoodsKind.IsMarked(be, name) : name => GoodsKind.LooksMarked(name),
+            };
             resumable = null;
             runner.Gate.Changed += OnPauseChanged;
             var r = await runner.RunAsync(cts.Token);

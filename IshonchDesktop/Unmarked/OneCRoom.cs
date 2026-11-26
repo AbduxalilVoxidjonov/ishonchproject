@@ -24,6 +24,7 @@ public static class OneCRoom
     {
         public bool Active;
         public int Held;
+        public bool Fixed;
         public DateTime LastUse;
         public string Applied = "";
         public Func<(double W, double H)?>? RealSize;
@@ -50,6 +51,33 @@ public static class OneCRoom
         var s = States.GetOrCreateValue(core);
         s.Held = Math.Max(0, s.Held + (on ? 1 : -1));
         s.LastUse = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Yon panel ochiq: 1C sahifasi doim bir xil kenglikda (<see cref="MinWidth"/> CSS piksel) chizilib, oynaga sig'diriladi —
+    /// har kompyuterda (ekran, DPI, foydalanuvchi masshtabi qanday bo'lmasin) 1C bir xil joylashadi va panel yopilguncha qotib turadi.
+    /// </summary>
+    public static async Task FixAsync(CoreWebView2 core, bool on)
+    {
+        var s = States.GetOrCreateValue(core);
+        if (s.Fixed == on) return;
+        s.Fixed = on;
+        Hold(core, on);
+        s.Applied = "";
+        if (on) await EnsureAsync(core);
+        else if (s.Held == 0) await ReleaseAsync(core);
+        else await EnsureAsync(core);
+    }
+
+    /// <summary>
+    /// Qotirilgan rejim uchun emulyatsiya: kenglik doim <see cref="MinWidth"/>, koeffitsiyent = haqiqiy kenglik / MinWidth
+    /// (0.4–1.0, kattalashtirilmaydi); balandlik oynani to'liq egallaydi (kamida <see cref="MinHeight"/>). Juda past oynada balandlik bo'yicha kichraytiriladi.
+    /// </summary>
+    public static (int Width, int Height, double Scale)? PlanFixed(double w, double h)
+    {
+        if (w <= 0 || h <= 0) return null;
+        var scale = Math.Round(Math.Clamp(Math.Min(w / MinWidth, h / MinHeight), 0.4, 1.0), 4);
+        return (Math.Max(MinWidth, (int)Math.Floor(w / scale)), Math.Max(MinHeight, (int)Math.Floor(h / scale)), scale);
     }
 
     /// <summary>Oyna o'lchami / masshtab o'zgardi: moslash yoqilgan bo'lsa qayta hisoblanadi.</summary>
@@ -97,7 +125,7 @@ public static class OneCRoom
                 if (s.Active) return; // emulyatsiya ostida sahifa o'lchami haqiqiy emas
                 real = (double.Parse(parts[0], CultureInfo.InvariantCulture), double.Parse(parts[1], CultureInfo.InvariantCulture));
             }
-            var plan = Plan(real.Value.W, real.Value.H);
+            var plan = s.Fixed ? PlanFixed(real.Value.W, real.Value.H) : Plan(real.Value.W, real.Value.H);
             if (plan is null)
             {
                 if (s.Active) await ReleaseAsync(core);
@@ -117,7 +145,7 @@ public static class OneCRoom
                 if (double.TryParse(now, NumberStyles.Float, CultureInfo.InvariantCulture, out var iw) && Math.Abs(iw - tw) <= 2) break;
                 await Task.Delay(50);
             }
-            Log.Write($"1C oynasi kichik ({real.Value.W:0}×{real.Value.H:0}): sahifa {tw}×{th} chizilib {scale:0.00} ga kichraytirildi");
+            if (!s.Fixed) Log.Write($"1C oynasi kichik ({real.Value.W:0}×{real.Value.H:0}): sahifa {tw}×{th} chizilib {scale:0.00} ga kichraytirildi");
             if (s.Timer is null)
             {
                 s.Timer = new System.Windows.Forms.Timer { Interval = 2000 };

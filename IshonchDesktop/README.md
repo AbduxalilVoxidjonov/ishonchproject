@@ -255,3 +255,16 @@ Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv
 - **Markirovkasiz sotish — kichik oynada inventarizatsiyani topadi**: «Добавить из документа» dagi tur ro'yxati sahifa-sahifa aylantiriladi (pastiga yetsa tepaga qaytadi); inventarizatsiyalar ro'yxatida kerakli sklad ekranda ko'rinmasa ro'yxat surib qidiriladi.
 - **Markirovkali chek — natsenka qo'yilmaydi**: «Процент наценки» oynasiga kirilmaydi, paneldagi «Natsenka, %» katagi olib tashlandi; hujjat provesti qilinib ochiq qoladi, kirim natsenkasini foydalanuvchi o'zi qo'yadi.
 - **Markirovkali chek paneli sarlavhasida «✕»**: panelni yopadi (jarayon ketayotgan bo'lsa avval to'xtatish so'raladi).
+## 0.13.0
+
+- **Markirovkali avto chek — ketma-ket terish**: tovarlar inventarizatsiya tartibida olinadi, chek maqsad summaga yetganda (yoki biroz oshganda) to'xtaydi; oxirgi tovardan faqat kerakli miqdor olinadi (48 mln + 3 mln = 51 mln). Keyingi chek oldingisi to'xtagan joydan davom etadi; kodlar yetmasa chek maqsadga yetguncha keyingi tovarlar qo'shiladi.
+- **Reja sotib bo'lmaydigan donalarni hisobga olmaydi**: xato bazasidagi (soliq.uz da sotilgan, boshqa STIR, boshqa IKPU) kodlar qoldiqdan ayriladi.
+- **Bitta chekda faqat bir turdagi tovar**: markirovkali chek Подбор da kodi chiqmagan tovarni «markirovkasiz» deb eslab qoladi va keyingi rejalarga kiritmaydi; markirovkasiz chek markirovkali tovarni (o'rganilgani yoki IKPU/nom bo'yicha: maishiy texnika, televizor, kompyuter, mebel) olmaydi. Telefonlar markirovkasiz.
+- **To'xtab qolgan chek**: tovar terilgan bo'lsa — terilgani bilan yakunlanib provesti qilinadi (noaniq o'tkazish 1C hujjatidan tekshirib tasdiqlanadi), qolgan summa keyingi chekka qo'shiladi; terilmagan bo'lsa — bekor qilinadi (kodlar qaytariladi, hujjat saqlanmasdan yopiladi) va yangisi boshlanadi. Bo'sh chek provesti qilinmaydi. Panelda «⏭ Chekni bekor qilish».
+- **«■ To'xtatish» chekni yakunlaydi** (ikkinchi bosish ham chekni tashlab ketmaydi); «⏸ Pauza» shu joyidan davom etadi.
+- **1C «Эти коды уже использовались ранее»**: OK bosilib «Провести и закрыть» qayta bosiladi va keyingi chekka o'tiladi.
+- **Yon panel ochiq bo'lsa 1C bir xil o'lchamda**: sahifa 1360 kenglikda chizilib oynaga sig'diriladi (masshtab qotadi) — hamma kompyuterda bir xil ishlaydi.
+- **E-POS sotish oynasi qayta chizildi**: kartochkalar, Excel'dagidek jadval — bitta katakni Ctrl+C bilan nusxalash, o'ng tugma menyusi (qator, markirovka kodlari). 1C dagi IKPU markirovkaga mos kelmasa my.soliq.uz dagi IKPU olinadi.
+- **Hujjat kodlari**: «Потребительская упаковка» bo'sh bo'lsa kodlar «Групповая»/«Транспортная упаковка» ustunidan o'qiladi; ogohlantirishlarda haqiqiy qator raqami (N).
+- **Markirovkasiz sotish**: jadvalning eng oxirgi qatoriga o'tib bo'lmasligi tuzatildi; «Без НДС» katta-kichik harfga qaramay topiladi, ro'yxat ochilmasa tugma qayta bosiladi.
+- **IKPU qidiruvi**: «Справочники» bo'limi ochilmasa uzoq kutmaydi (4 urinish), panel IKPU ni kod bo'yicha oladi.

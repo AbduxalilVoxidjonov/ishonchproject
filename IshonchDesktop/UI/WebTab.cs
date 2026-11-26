@@ -232,7 +232,11 @@ public sealed class WebTab : UserControl
         ShowSidePanel(width, key);
     }
 
-    public void HideSidePanel() => split.Panel2Collapsed = true;
+    public void HideSidePanel()
+    {
+        split.Panel2Collapsed = true;
+        if (view.CoreWebView2 is { } core) _ = Unmarked.OneCRoom.FixAsync(core, false);
+    }
 
     /// <summary>Panel kengligi oyna kengligiga mos: 1/3 ga yaqin, lekin 340-560 px (DPI ga moslanadi) oralig'ida.</summary>
     public void ShowSidePanel(int width, string key = "marking")
@@ -255,6 +259,8 @@ public sealed class WebTab : UserControl
                 split.SplitterDistance = Math.Max(LogicalToDeviceUnits(200), split.Width - wanted - split.SplitterWidth);
             }
             catch { /* o'lcham hali yo'q */ }
+            // Panel ochiq ekan 1C sahifasi bir xil kenglikda chizilib oynaga sig'diriladi (qotiriladi)
+            if (view.CoreWebView2 is { } core) _ = Unmarked.OneCRoom.FixAsync(core, true);
         });
     }
 

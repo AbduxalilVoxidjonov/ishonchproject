@@ -38,14 +38,25 @@ public sealed class CommunicatorTab : UserControl
     readonly Button checkBtn = new() { Text = "Kodlarni tekshirish", AutoSize = true };
     readonly CheckBox confirmReal = new() { Text = "Bu HAQIQIY fiskal chek yaratishini tushunaman", AutoSize = true, ForeColor = Color.Firebrick };
     readonly Button sellBtn = new() { Text = "Sotish (fiskal chek)", AutoSize = true };
-    readonly Label summary = new() { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(0, 6, 0, 0), Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
+    readonly Label summary = new() { AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 4, 0, 4), Font = new Font("Segoe UI Semibold", 10.5f), ForeColor = Color.FromArgb(15, 23, 42) };
+    // Excel kabi: alohida katak (yoki bir nechtasi) tanlanadi va Ctrl+C bilan nusxalanadi
     readonly DataGridView grid = new()
     {
-        Dock = DockStyle.Fill, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, RowHeadersVisible = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = SystemColors.Window,
+        Dock = DockStyle.Fill, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AllowUserToResizeRows = false,
+        SelectionMode = DataGridViewSelectionMode.CellSelect, MultiSelect = true,
+        RowHeadersVisible = true, RowHeadersWidth = 44, RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
+        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = Color.White, BorderStyle = BorderStyle.None,
+        CellBorderStyle = DataGridViewCellBorderStyle.Single, GridColor = Color.FromArgb(218, 224, 232),
+        EnableHeadersVisualStyles = false, ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+        ColumnHeadersHeight = 34, ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+        RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single, ClipboardCopyMode = DataGridViewClipboardCopyMode.Disable,
     };
-    readonly TextBox logBox = new() { Dock = DockStyle.Bottom, Height = 120, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
+    readonly TextBox logBox = new()
+    {
+        Dock = DockStyle.Bottom, Height = 110, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+        BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, Font = new Font("Consolas", 9f),
+    };
+    readonly ContextMenuStrip gridMenu = new();
 
     const int ColName = 0, ColQty = 1, ColCodes = 2, ColMarks = 3, ColIkpu = 4, ColPack = 5,
         ColNetPrice = 6, ColNetSum = 7, ColVatRate = 8, ColVatSum = 9, ColTotal = 10, ColState = 11;
@@ -61,16 +72,17 @@ public sealed class CommunicatorTab : UserControl
         client = new UzposClient(epos.Url);
         urlBox.Text = epos.Url;
         Dock = DockStyle.Fill;
-        Padding = new Padding(12);
-        Font = new Font("Segoe UI", 9.5f);
+        Padding = new Padding(14);
+        Font = PanelStyle.Base;
+        BackColor = PanelStyle.Back;
 
         portBox.Items.AddRange(new object[] { "3448", "3449", "3450" });
         portBox.SelectedIndex = 0;
 
         // Narx ustunlari 1C hujjatidagi kabi: Narx va Summa — QQS'siz, keyin % QQS, QQS summasi va Jami (QQS bilan = «Всего»)
-        foreach (var (title, weight, ro) in new[] { ("1C tovari", 20, true), ("Dona", 5, true), ("Kod", 4, true),
-                     ("Markirovkalar", 16, false), ("IKPU (MXIK)", 13, false), ("Qadoq", 6, false),
-                     ("Narx", 11, true), ("Summa", 12, true), ("QQS %", 6, true), ("QQS", 11, true), ("Jami", 12, true), ("Holat", 15, true) })
+        foreach (var (title, weight, ro) in new[] { ("1C tovari", 17, true), ("Dona", 5, true), ("Kod", 4, true),
+                     ("Markirovkalar", 16, false), ("IKPU (MXIK)", 14, false), ("Qadoq", 7, false),
+                     ("Narx", 11, true), ("Summa", 12, true), ("QQS %", 6, true), ("QQS", 11, true), ("Jami", 12, true), ("Holat", 13, true) })
         {
             // «Markirovkalar» — ochiladigan ro'yxat: shu qatorda sotilayotgan har bir dona uchun uning kodi
             DataGridViewColumn col = title == "Markirovkalar"
@@ -82,29 +94,83 @@ public sealed class CommunicatorTab : UserControl
         }
         foreach (var col in new[] { ColQty, ColCodes, ColNetPrice, ColNetSum, ColVatRate, ColVatSum, ColTotal })
             grid.Columns[col].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+        grid.Columns[ColTotal].DefaultCellStyle.Font = PanelStyle.Bold;
+        grid.Columns[ColState].DefaultCellStyle.WrapMode = DataGridViewTriState.True;
         grid.DataError += (_, e) => e.ThrowException = false; // ro'yxatdagi matn o'zgarsa ham xato oynasi chiqmasin
         grid.EditingControlShowing += (_, e) =>
         {
             if (e.Control is ComboBox box) box.DropDownWidth = Math.Max(box.Width, 520);
         };
+        StyleGrid();
 
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
-        top.Controls.AddRange(new Control[] { status, new Label { Text = "Fiskal port:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, portBox, refreshBtn });
+        // Har bir qism — oq karta: 1) E-POS ulanishi, 2) amallar, 3) jadval, 4) jami va sotish, 5) jurnal
+        Label Text0(string t, Color? color = null) => new() { Text = t, AutoSize = true, Margin = new Padding(0, 7, 6, 0), ForeColor = color ?? PanelStyle.Muted };
+        var conn = Card();
+        var connTitle = new Label { Text = "E-POS Communicator", AutoSize = true, Font = PanelStyle.Title, ForeColor = Color.FromArgb(15, 23, 42), Margin = new Padding(0, 4, 14, 0) };
+        status.Padding = Padding.Empty; status.Margin = new Padding(0, 7, 14, 0); status.Font = PanelStyle.Bold;
+        portBox.Margin = new Padding(0, 3, 8, 0);
+        PanelStyle.Secondary(refreshBtn).Margin = new Padding(0, 1, 0, 0);
         // Har baza o'z Communicator iga (1C dagi «Интеграции с системами параметры» kabi) va o'z fiskal moduliga ulanadi
-        var eposRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
-        eposRow.Controls.AddRange(new Control[] { new Label { Text = $"{baseEntry.Db} uchun Communicator:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, urlBox, bindLabel, unbindBtn });
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
-        actions.Controls.AddRange(new Control[] { loadBtn, ikpuBtn, checkBtn });
-        var pay = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, WrapContents = true, Padding = new Padding(0, 6, 0, 6) };
-        pay.Controls.AddRange(new Control[] { confirmReal, sellBtn });
+        var urlCaption = Text0($"{baseEntry.Db} uchun manzil:");
+        urlBox.Margin = new Padding(0, 4, 8, 0);
+        bindLabel.Padding = Padding.Empty; bindLabel.Margin = new Padding(0, 7, 8, 0);
+        PanelStyle.Secondary(unbindBtn).Margin = new Padding(0, 1, 0, 0);
+        conn.Controls.AddRange(new Control[] { connTitle, status, Text0("Fiskal port:"), portBox, refreshBtn, urlCaption, urlBox, bindLabel, unbindBtn });
+        conn.SetFlowBreak(refreshBtn, true);
 
-        Controls.Add(grid);
-        Controls.Add(summary);
-        Controls.Add(pay);
+        var actions = Card();
+        foreach (var b in new[] { loadBtn, ikpuBtn, checkBtn }) { PanelStyle.Secondary(b).Margin = new Padding(0, 0, 8, 0); b.Padding = new Padding(8, 3, 8, 3); }
+        var hint = Text0("Katakni bosing va Ctrl+C — nusxa (bir nechta katak: Shift / Ctrl bilan, o‘ng tugma — menyu). IKPU va Qadoqni ikki marta bosib o‘zgartirsa bo‘ladi.");
+        hint.Margin = new Padding(6, 8, 0, 0);
+        actions.Controls.AddRange(new Control[] { loadBtn, ikpuBtn, checkBtn, hint });
+
+        var gridHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = PanelStyle.Border };
+        gridHost.Controls.Add(grid);
+
+        // Pastki qator: chap tomonda jami, o'ngda tasdiq va «Sotish»
+        var footer = new TableLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, ColumnCount = 2, RowCount = 1, BackColor = PanelStyle.Card, Padding = new Padding(12, 8, 12, 8) };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.Paint += (_, e) => { using var pen = new Pen(PanelStyle.Border); e.Graphics.DrawRectangle(pen, 0, 0, footer.Width - 1, footer.Height - 1); };
+        var pay = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Right, BackColor = PanelStyle.Card, Margin = Padding.Empty };
+        confirmReal.Margin = new Padding(0, 9, 12, 0);
+        PanelStyle.Primary(sellBtn).Padding = new Padding(16, 6, 16, 6);
+        sellBtn.Margin = Padding.Empty;
+        pay.Controls.AddRange(new Control[] { confirmReal, sellBtn });
+        footer.Controls.Add(summary, 0, 0);
+        footer.Controls.Add(pay, 1, 0);
+
+        var logCaption = new Label { Text = "Jurnal", Dock = DockStyle.Bottom, Height = 24, ForeColor = PanelStyle.Muted, Font = PanelStyle.Bold, TextAlign = ContentAlignment.BottomLeft };
+        Panel Gap() => new() { Height = 10, Dock = DockStyle.Top };
+        Panel GapB() => new() { Height = 10, Dock = DockStyle.Bottom };
+
+        // Dock tartibi: oxirgi qo'shilgan — eng chetda
+        Controls.Add(gridHost);
+        Controls.Add(GapB());
+        Controls.Add(footer);
+        Controls.Add(logCaption);
         Controls.Add(logBox);
+        Controls.Add(Gap());
         Controls.Add(actions);
-        Controls.Add(eposRow);
-        Controls.Add(top);
+        Controls.Add(Gap());
+        Controls.Add(conn);
+
+        // Nusxalash: Ctrl+C va o'ng tugma menyusi
+        gridMenu.Items.Add("Nusxalash", null, (_, _) => CopySelection()).ToolTipText = "Ctrl+C";
+        gridMenu.Items.Add("Qatorni to‘liq nusxalash", null, (_, _) => CopyRows());
+        gridMenu.Items.Add("Qatordagi barcha markirovka kodlari", null, (_, _) => CopyCodes());
+        grid.ContextMenuStrip = gridMenu;
+        grid.KeyDown += (_, e) =>
+        {
+            if (e.Control && e.KeyCode is Keys.C or Keys.Insert && !grid.IsCurrentCellInEditMode) { CopySelection(); e.Handled = true; }
+        };
+        // O'ng tugma bosilgan katak tanlanmagan bo'lsa — o'sha tanlanadi (menyu shu katakka tegishli bo'lsin)
+        grid.CellMouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.ColumnIndex < 0 || grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Selected) return;
+            grid.ClearSelection();
+            grid.CurrentCell = grid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+        };
 
         refreshBtn.Click += async (_, _) => await RefreshStatusAsync();
         urlBox.Leave += async (_, _) => await ChangeUrlAsync();
@@ -292,11 +358,27 @@ public sealed class CommunicatorTab : UserControl
             var shown = MarkItems(l);
             marks.Items.AddRange(shown.Cast<object>().ToArray());
             marks.Value = shown.Count > 0 ? shown[0] : null;
-            grid.Rows[i].DefaultCellStyle.ForeColor = problem is null ? SystemColors.ControlText : Color.Firebrick;
+            var row = grid.Rows[i];
+            if (problem is not null)
+            {
+                // Tayyor bo'lmagan qator — och qizil fon, qizil matn
+                row.DefaultCellStyle.BackColor = Color.FromArgb(254, 242, 242);
+                row.DefaultCellStyle.ForeColor = Color.FromArgb(185, 28, 28);
+                row.DefaultCellStyle.SelectionForeColor = Color.FromArgb(185, 28, 28);
+            }
+            else
+            {
+                var st = row.Cells[ColState].Style;
+                st.ForeColor = st.SelectionForeColor = Color.FromArgb(21, 128, 61);
+                st.Font = PanelStyle.Bold;
+            }
         }
         var total = lines.Sum(l => l.Total);
-        summary.Text = lines.Count == 0 ? ""
-            : $"Summa: {lines.Sum(l => l.NetSum):N2}   QQS: {lines.Sum(l => l.VatSum):N2}   Chek jami: {total:N2} so'm (1C dagi «Всего» bilan bir xil)";
+        var bad = lines.Count(l => l.Problem() is not null);
+        summary.Text = lines.Count == 0 ? "Tovarlar yuklanmagan"
+            : $"Summa: {lines.Sum(l => l.NetSum):N2}    QQS: {lines.Sum(l => l.VatSum):N2}    Chek jami: {total:N2} so'm" +
+              (bad > 0 ? $"    •  {bad} ta qator tayyor emas" : "");
+        summary.ForeColor = bad > 0 ? Color.FromArgb(185, 28, 28) : Color.FromArgb(15, 23, 42);
         UpdateButtons();
     }
 
@@ -364,13 +446,19 @@ public sealed class CommunicatorTab : UserControl
                         if (found.Mxik.Length == 17) l.CodeMxik[code] = found.Mxik;
                         if (found.Barcode.Length > 0) l.Barcode ??= found.Barcode;
                     }
-                    if (l.ClassCode.Length != 17)
+                    // Markirovka kodlarining my.soliq.uz dagi IKPU si — haqiqiysi. 1C dagi IKPU kodlarniki bilan mos bo'lsa o'zi qoladi;
+                    // mos bo'lmasa (1C da eski IKPU) yoki yo'q bo'lsa — kodlarning ko'pchiligi turgan IKPU olinadi (teng bo'lsa 1C dagisi afzal)
+                    var common = l.Source.Codes.Where(l.CodeMxik.ContainsKey).Select(c => l.CodeMxik[c]).Where(m => m.Length == 17)
+                        .GroupBy(m => m).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key == l.ClassCode).FirstOrDefault()?.Key;
+                    if (common is not null && common != l.ClassCode)
                     {
-                        // 1C dagi IKPU noma'lum: kodlarning ko'pchiligi qaysi MXIK da bo'lsa — shu
-                        var common = l.CodeMxik.Values.GroupBy(m => m).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key;
-                        if (common is not null) { l.ClassCode = common; Log($"{l.Name}: IKPU {common} (kodlar bo'yicha, soliq.uz)."); }
-                        else Log($"{l.Name}: IKPU topilmadi. Qo'lda kiriting.");
+                        Log(l.ClassCode.Length == 17
+                            ? $"{l.Name}: 1C dagi IKPU {l.ClassCode} markirovkaga mos emas — my.soliq.uz dagi {common} olindi."
+                            : $"{l.Name}: IKPU {common} (kodlar bo'yicha, soliq.uz).");
+                        l.ClassCode = common;
+                        l.PackageCode = ""; // qadoq IKPU ga bog'liq — yangisi quyida olinadi
                     }
+                    else if (l.ClassCode.Length != 17) Log($"{l.Name}: IKPU topilmadi. Qo'lda kiriting.");
                     foreach (var bad in l.WrongIkpuCodes())
                         Log($"✗ {l.Name}: kod {Mask(bad)} boshqa IKPU da ({l.CodeMxik[bad]}, tovarniki {l.ClassCode}) — sotib bo'lmaydi.");
                 }
@@ -584,6 +672,101 @@ public sealed class CommunicatorTab : UserControl
     // ---- yordamchilar -----------------------------------------------------------------------------
 
     static string Mask(string code) => code.Length <= 10 ? code : code[..6] + "…" + code[^4..];
+
+    /// <summary>Oq, ingichka chegarali karta (ichidagilar qatorma-qator joylashadi).</summary>
+    static FlowLayoutPanel Card()
+    {
+        var p = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = PanelStyle.Card, Padding = new Padding(12, 8, 12, 10) };
+        p.Paint += (_, e) => { using var pen = new Pen(PanelStyle.Border); e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1); };
+        return p;
+    }
+
+    /// <summary>Jadval ko'rinishi Excel ga o'xshash: sarlavha, qator raqamlari, katak chegaralari, och ko'k tanlov.</summary>
+    void StyleGrid()
+    {
+        var head = Color.FromArgb(241, 245, 249);
+        var text = Color.FromArgb(15, 23, 42);
+        grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = head, ForeColor = Color.FromArgb(51, 65, 85), Font = PanelStyle.Bold, SelectionBackColor = head,
+            SelectionForeColor = Color.FromArgb(51, 65, 85), Alignment = DataGridViewContentAlignment.MiddleLeft, Padding = new Padding(4, 0, 4, 0),
+            WrapMode = DataGridViewTriState.True,
+        };
+        grid.RowHeadersDefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = head, ForeColor = PanelStyle.Muted, SelectionBackColor = Color.FromArgb(203, 213, 225), SelectionForeColor = text,
+            Alignment = DataGridViewContentAlignment.MiddleCenter, Font = PanelStyle.Base,
+        };
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        grid.DefaultCellStyle.SelectionForeColor = text;
+        grid.DefaultCellStyle.ForeColor = text;
+        grid.DefaultCellStyle.Padding = new Padding(3, 0, 3, 0);
+        grid.RowTemplate.Height = 30;
+        grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 251, 253);
+        // Qator raqami (Excel dagi kabi): sarlavhadagi standart ▶ belgisi chizilmaydi, o'rniga raqam
+        grid.CellPainting += (_, e) =>
+        {
+            if (e.ColumnIndex != -1 || e.RowIndex < 0 || e.Graphics is null) return;
+            e.PaintBackground(e.ClipBounds, false);
+            e.Handled = true;
+        };
+        grid.RowPostPaint += (_, e) =>
+        {
+            var r = new Rectangle(e.RowBounds.Left, e.RowBounds.Top, grid.RowHeadersWidth, e.RowBounds.Height);
+            TextRenderer.DrawText(e.Graphics, (e.RowIndex + 1).ToString(), PanelStyle.Base, r, PanelStyle.Muted,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        };
+    }
+
+    /// <summary>Katakdagi qiymat nusxa uchun: «Markirovkalar» da — faqat kodning o'zi (tartib raqami va MXIK izohisiz).</summary>
+    string CellText(int row, int col)
+    {
+        var v = Convert.ToString(grid.Rows[row].Cells[col].FormattedValue) ?? "";
+        if (col == ColMarks && row < lines.Count && System.Text.RegularExpressions.Regex.Match(v, @"^(\d+)\.\s") is { Success: true } m
+            && int.TryParse(m.Groups[1].Value, out var k) && k >= 1 && k <= lines[row].Source.Codes.Count)
+            return lines[row].Source.Codes[k - 1];
+        return v;
+    }
+
+    static void ToClipboard(string text)
+    {
+        if (text.Length == 0) return;
+        try { Clipboard.SetText(text); } catch (System.Runtime.InteropServices.ExternalException) { /* buferni boshqa dastur band qilgan */ }
+    }
+
+    /// <summary>Tanlangan kataklar — Excel ga qo'yiladigan shaklda (ustunlar Tab, qatorlar yangi satr bilan).</summary>
+    void CopySelection()
+    {
+        var cells = grid.SelectedCells.Cast<DataGridViewCell>().Where(c => c.RowIndex >= 0 && c.ColumnIndex >= 0).ToList();
+        if (cells.Count == 0 && grid.CurrentCell is { } cur) cells.Add(cur);
+        if (cells.Count == 0) return;
+        var cols = cells.Select(c => c.ColumnIndex).Distinct().OrderBy(c => grid.Columns[c].DisplayIndex).ToList();
+        var rows = cells.Select(c => c.RowIndex).Distinct().OrderBy(r => r);
+        var picked = cells.Select(c => (c.RowIndex, c.ColumnIndex)).ToHashSet();
+        ToClipboard(string.Join(Environment.NewLine, rows.Select(r => string.Join("\t", cols.Select(c => picked.Contains((r, c)) ? CellText(r, c) : "")))));
+    }
+
+    /// <summary>Tanlangan qatorlar to'liq (hamma ustunlar).</summary>
+    void CopyRows()
+    {
+        var rows = grid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.RowIndex).Where(r => r >= 0).Distinct().OrderBy(r => r).ToList();
+        if (rows.Count == 0) return;
+        var cols = grid.Columns.Cast<DataGridViewColumn>().OrderBy(c => c.DisplayIndex).Select(c => c.Index).ToList();
+        ToClipboard(string.Join(Environment.NewLine, rows.Select(r => string.Join("\t", cols.Select(c => CellText(r, c))))));
+    }
+
+    /// <summary>Tanlangan qatorlarda sotiladigan hamma markirovka kodlari — har biri alohida satrda.</summary>
+    void CopyCodes()
+    {
+        var rows = grid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.RowIndex).Where(r => r >= 0 && r < lines.Count).Distinct().OrderBy(r => r);
+        var codes = rows.SelectMany(r =>
+        {
+            var l = lines[r];
+            return l.Source.Codes.Take((int)Math.Min(l.Source.Codes.Count, Math.Ceiling(l.Source.Quantity)));
+        }).ToList();
+        ToClipboard(string.Join(Environment.NewLine, codes));
+        if (codes.Count > 0) Log($"{codes.Count} ta markirovka kodi nusxalandi.");
+    }
 
     void SetBusy(bool busy)
     {

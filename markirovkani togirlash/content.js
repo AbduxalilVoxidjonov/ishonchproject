@@ -91,6 +91,7 @@
     badCodes: [], // marking codes skipped in this receipt: { name, rows, position, code, reason, time }
     seenCodes: {}, // every marking code met in Подбор: code → { name, rows, position }
     usedCodes: {}, // marking codes transferred to a receipt: code → { name, receiptId, time }
+    goodsKind: {}, // product kind learned in Подбор: normalized name → 'm' (marked, has codes) | 'u' (unmarked, no codes)
     badDb: {}, // codes soliq.uz definitively refused (sold / another STIR), kept across receipts: code → { name, product, reason, stir, time, seen }
     pendingCodes: [], // codes given 1 for the item being transferred, not yet confirmed
     receiptId: null, // tells this receipt's codes from earlier receipts' ones
@@ -348,6 +349,48 @@
     // save() refuses once disposed, so the clean state is written directly
     await chrome.storage.local.set({ [STORE_KEY]: JSON.parse(JSON.stringify(state)) });
     chrome.runtime.sendMessage({ type: 'restartContent' }).catch(() => {});
+  }
+
+  /**
+   * To'xtab qolgan chekni bekor qilish (Ishonch avtomatikasi shu bilan keyingi chekka o'tadi): ish to'xtatiladi, «Подбор» yopiladi,
+   * shu chekka terilgan miqdor qoldiqqa, kodlari esa ishlatilmagan holatga qaytariladi — 1C hujjati saqlanmasdan yopiladi
+   * (uni Ishonch yopadi). Ketma-ket terish joyi (seqNext) saqlanadi: keyingi chek muammoli tovarlardan keyin boshlanadi.
+   * Xato bazasi saqlanadi. Hujjat allaqachon provesti qilingan bo'lsa (narx bosqichi) — bekor qilinmaydi.
+   */
+  async function dropReceipt() {
+    if (state.status !== 'paused' || state.phase === 'complete') return log('Bekor qilish faqat to‘xtab qolgan chek uchun.', 'warn');
+    if (activeTask === 'run') {
+      state.status = 'stopped';
+      save();
+      for (let i = 0; i < 400 && activeTask; i++) await sleep(250);
+      if (activeTask) return log('Chekni bekor qilib bo‘lmadi: joriy amal tugamadi. «⛔ To‘liq to‘xtatish» ni bosing.', 'error');
+    } else if (activeTask) return log('Chekni hozir bekor qilib bo‘lmaydi: joriy amal bajarilmoqda.', 'error');
+    if (podborCheckbox()) { try { await closePodbor(); } catch { /* hujjat baribir saqlanmasdan yopiladi */ } }
+    rollbackReceipt();
+    resetReceiptState();
+    log('⏭ Chek bekor qilindi: terilgan tovarlar qoldiqqa, kodlari ishlatilmaganlarga qaytarildi. 1C hujjati saqlanmasdan yopiladi, keyingi chek qolgan tovarlardan boshlanadi.', 'warn');
+    await save();
+    render();
+  }
+
+  /** Joriy chekka terilganlarni qaytaradi (hujjat saqlanmasdan yopiladigan bo'lsa): qoldiq, «ishlatilgan» kodlar, noaniq o'tkazish. */
+  function rollbackReceipt() {
+    for (const i of state.items) {
+      const back = i.deducted || 0;
+      if (back > 0) {
+        i.stock = Math.round((i.stock + back) * 10000) / 10000;
+        i.totalUsed = Math.round(((i.totalUsed || 0) - back) * 10000) / 10000;
+      }
+      i.placed = 0;
+      i.deducted = 0;
+      if (i.status !== 'skip') i.status = 'pending';
+    }
+    for (const [code, info] of Object.entries(state.usedCodes || {})) if (info?.receiptId === state.receiptId) delete state.usedCodes[code];
+    state.inFlight = null;
+    state.documentNeedsAck = false;
+    state.pendingCodes = [];
+    state.current = null;
+    state.receiptId = null;
   }
 
   async function clearUnstarted() {
@@ -684,6 +727,7 @@
     state.items = [...byName.values()].map(({ amount, ...i }) => globalThis.ReceiptLedger.normalizeItem({ ...i, qty: i.stock, price: i.stock ? amount / i.stock : 0 }));
     if (state.items.some(i => i.rowNumbers.length > 1)) log('Bir xil nomlar birlashtirildi: narx miqdor bo‘yicha o‘rtacha hisoblangan.', 'warn');
     state.plan = null;
+    state.seqNext = 0; // ketma-ket terish yangi inventarizatsiyaning boshidan
     state.index = 0;
     state.document = null;
     state.source = { title, warehouse: document.getElementById(`${formPrefix(grid)}_Склад_i0`)?.value?.trim() || '', rowCount: rows.size, requestedLimit: bounds ? bounds.to : null, requestedFrom: bounds && bounds.from > 1 ? bounds.from : null, totalRowCount: rowCount, capturedAt: new Date().toLocaleString('ru-RU') };
@@ -701,6 +745,61 @@
 
   const hasProgress = () => state.items.some((i) => i.placed > 0);
 
+  /**
+   * Sotsa bo'ladigan qoldiq: 1C qoldig'idan shu tovarning xato bazasidagi (soliq.uz da sotilgan, boshqa STIR da, boshqa IKPU)
+   * kodlari ayriladi — 1C ularni hali qoldiqda ko'rsatadi, lekin chekka olib bo'lmaydi. Aks holda reja sotib bo'lmaydigan
+   * dona bilan tuziladi va chek kam (yoki butunlay bo'sh) chiqadi.
+   */
+  function badCountsByName() {
+    const counts = new Map();
+    const stir = String(state.stir || '').replace(/\D/g, ''); // = stirDigits() (testlarda ham ishlashi uchun shu yerda)
+    for (const info of Object.values(state.badDb && typeof state.badDb === 'object' ? state.badDb : {})) {
+      if (!info || (info.stir ?? '') !== stir) continue;
+      const key = norm(String(info.name || '').normalize('NFKC'));
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }
+
+  /** Tovar turi kaliti (nom bo'yicha; Ishonch dasturi ham shu kalit bilan o'qiydi). */
+  const kindKey = (name) => norm(String(name || '').normalize('NFKC'));
+
+  /**
+   * Подбор (markirovka rejimida) tovar turini aytadi: kodlari chiqsa — markirovkali ('m'), umuman chiqmasa — markirovkasiz ('u').
+   * Doimiy saqlanadi: markirovkali chek rejasiga markirovkasiz tovar kiritilmaydi, Ishonch dasturidagi markirovkasiz chek esa
+   * markirovkali tovarni olmaydi (bitta chekda faqat bir turdagi tovar).
+   */
+  function learnKind(item, kind) {
+    if (!state.goodsKind || typeof state.goodsKind !== 'object' || Array.isArray(state.goodsKind)) state.goodsKind = {};
+    const key = kindKey(item.name);
+    if (!key || state.goodsKind[key] === kind) return;
+    state.goodsKind[key] = kind;
+    if (kind === 'u') log(`${item.name}: Подбор da markirovka kodi yo‘q — markirovkasiz tovar deb eslab qolindi (markirovkali chekka olinmaydi).`, 'warn');
+    const keys = Object.keys(state.goodsKind);
+    for (const old of keys.slice(0, Math.max(0, keys.length - 20000))) delete state.goodsKind[old];
+  }
+
+  function sellableItems({ quiet = false } = {}) {
+    const bad = badCountsByName();
+    let excluded = 0;
+    let unmarked = 0;
+    const items = state.items.map((i) => {
+      if (state.goodsKind?.[kindKey(i.name)] === 'u') {
+        unmarked++;
+        return { ...i, stock: 0 };
+      }
+      const n = bad.get(norm(String(i.name || '').normalize('NFKC'))) || 0;
+      if (!n || !Number.isFinite(i.stock)) return i;
+      const stock = Math.max(0, i.stock - n);
+      excluded += i.stock - stock;
+      return { ...i, stock };
+    });
+    if (quiet) return items;
+    if (unmarked > 0) log(`Rejaga ${unmarked} xil markirovkasiz tovar kiritilmadi (bitta chekda faqat markirovkali tovar).`, 'info');
+    if (excluded > 0) log(`Rejada xato bazasidagi ${excluded} dona hisobga olinmadi (soliq.uz da sotib bo‘lmaydigan kodlar).`, 'info');
+    return items;
+  }
+
   function applyPlan(target) {
     if (state.inFlight) return log('Avval o‘tkazish natijasini tasdiqlang.', 'error');
     if (!state.items.length) return log('Avval Инвентаризация hujjatida «Olish» ni bosing.', 'error');
@@ -711,8 +810,11 @@
     if (!state.items.some((i) => validPrice(i))) return log('Инвентаризация jadvalida «Цена» topilmadi — qayta «Olish» qiling.', 'error');
     const perItem = parsePerItem(state.perItemLimit);
     if (perItem === null) return log('Bir tovardan: musbat butun son kiriting yoki hammasini olish uchun bo‘sh qoldiring.', 'error');
+    // Dasturda (Ishonch): ketma-ket terish — inventarizatsiya tartibida, oldingi chek to'xtagan joydan boshlab,
+    // chek maqsad summaga yetguncha (yoki oshguncha) tovar olinadi; keyingi chek qolgan tovardan davom etadi
+    if (typeof IS_DESKTOP !== 'undefined' && IS_DESKTOP) return applySequentialPlan(target, perItem);
     let result;
-    try { result = globalThis.ReceiptPair.plan(state.items, target, percentValue(), capOf(perItem)); }
+    try { result = globalThis.ReceiptPair.plan(sellableItems(), target, percentValue(), capOf(perItem)); }
     catch (e) { receiptReady = false; return log(e.message, 'error'); }
     const { qty, total } = result;
     receiptReady = false;
@@ -736,6 +838,81 @@
     }
   }
 
+  /**
+   * Ketma-ket olish: `from` dan boshlab (oxiriga yetsa — boshidan) sotsa bo'ladigan tovarlar har biridan `cap` tagacha
+   * olinadi, `have` + olinganlar `target` ga yetguncha. Tanlanmagan tovarlarga tegilmaydi. { picks: [[index, qty]], total, next }
+   */
+  function sequentialPicks(target, cap, from, have = 0, eligible = () => true) {
+    const items = sellableItems({ quiet: true });
+    const n = items.length;
+    const picks = [];
+    let total = have;
+    let next = from;
+    for (let step = 0; step < n && total < target; step++) {
+      const i = (from + step) % n;
+      const it = items[i];
+      if (!eligible(state.items[i]) || !validPrice(it) || !(Math.floor(it.stock) >= 1)) continue;
+      // Har tovardan `cap` tagacha, lekin maqsadga yetish uchun keraklisidan ko'p emas (oxirgi tovar butun qoldig'i bilan
+      // olinib chek maqsaddan juda oshib ketmasin: 48 mln + 3 mln = 51 mln, 48 mln + 70 mln emas)
+      const unit = globalThis.ReceiptMath.lineTotals({ ...state.items[i], qty: 1 }, percentValue()).total;
+      if (!Number.isFinite(unit) || !(unit > 0)) continue;
+      const q = Math.max(1, Math.min(cap, Math.floor(it.stock), Math.ceil(round2(target - total) / unit)));
+      const line = globalThis.ReceiptMath.lineTotals({ ...state.items[i], qty: q }, percentValue()).total;
+      if (!Number.isFinite(line) || !(line > 0)) continue;
+      picks.push([i, q]);
+      total = round2(total + line);
+      next = (i + 1) % n;
+    }
+    return { picks, total, next };
+  }
+
+  function applySequentialPlan(target, perItem) {
+    sellableItems(); // jurnalga: qaysi tovarlar rejaga kirmaydi
+    const from = Number.isInteger(state.seqNext) && state.seqNext >= 0 && state.seqNext < state.items.length ? state.seqNext : 0;
+    const { picks, total, next } = sequentialPicks(target, capOf(perItem), from);
+    if (!picks.length) return log('Sotish uchun narxi va qoldig‘i bor tovar qolmadi.', 'error');
+    const chosen = new Map(picks);
+    state.items.forEach((i, n) => {
+      i.qty = chosen.get(n) || 0;
+      i.status = i.qty > 0 ? 'pending' : 'skip';
+      i.note = '';
+    });
+    state.seqNext = next;
+    state.index = 0;
+    state.plan = { target, total, perItem, sequential: true };
+    prepareReceipt();
+    const units = picks.reduce((a, [, q]) => a + q, 0);
+    log(`Reja (ketma-ket, ${from + 1}-tovardan): ${picks.length} xil tovar, ${units} dona, jami ${fmtSum(total)} (maqsad ${fmtSum(target)}, farq ${total - target >= 0 ? '+' : ''}${fmtSum(round2(total - target))}).`, 'ok');
+    if (total < target) log(`Diqqat: qolgan tovarlar jami ${fmtSum(total)} — maqsaddan kam.`, 'warn');
+  }
+
+  /**
+   * Ketma-ket rejada chek kam yig'ilsa (kodlar yetmadi, tovar tashlab ketildi): maqsadga yetguncha keyingi tovarlar qo'shiladi.
+   * Erta yakunlangan chekka qo'shilmaydi. Qo'shilgan bo'lsa true (sikl yangi tovarlar bilan davom etadi).
+   */
+  function topUpSequential() {
+    if (!state.plan?.sequential || state.inFlight) return false;
+    const target = state.plan.target;
+    // Terilgani + hali terilishi kutilayotgani (navbatdagi tovarlar)
+    const due = (i) => i.status === 'pending' || (i.status === 'xato' && i.placed < i.qty);
+    const units = (i) => (due(i) ? i.qty : i.placed || 0);
+    const have = round2(state.items.reduce((a, i) => a + (units(i) > 0 ? globalThis.ReceiptMath.lineTotals({ ...i, qty: units(i) }, percentValue()).total : 0), 0));
+    if (!(have < target)) return false;
+    const from = Number.isInteger(state.seqNext) && state.seqNext < state.items.length ? state.seqNext : 0;
+    const { picks, next } = sequentialPicks(target, capOf(state.plan.perItem), from, have,
+      (i) => i.status === 'skip' && !(i.qty > 0) && !(i.placed > 0) && i.note !== EARLY_NOTE);
+    if (!picks.length) return false;
+    for (const [n, q] of picks) {
+      const item = state.items[n];
+      globalThis.ReceiptLedger.prepare(item, q);
+      item.status = 'pending';
+      item.note = '';
+    }
+    state.seqNext = next;
+    log(`Chek maqsadga yetmadi (${fmtSum(have)} / ${fmtSum(target)}) — yana ${picks.length} xil tovar qo‘shildi.`, 'warn');
+    return true;
+  }
+
   function applyAllPlan() {
     if (state.inFlight) return log('Avval o‘tkazish natijasini tasdiqlang.', 'error');
     if (!state.items.length) return log('Avval Инвентаризация hujjatida «Olish» ni bosing.', 'error');
@@ -746,8 +923,9 @@
     const perItem = parsePerItem(state.perItemLimit);
     if (perItem === null) return log('Bir tovardan: musbat butun son kiriting yoki hammasini olish uchun bo‘sh qoldiring.', 'error');
 
-    state.items.forEach((item) => {
-      const qty = validPrice(item) ? Math.min(capOf(perItem), Math.floor(item.stock)) : 0;
+    const sellable = sellableItems();
+    state.items.forEach((item, n) => {
+      const qty = validPrice(item) ? Math.min(capOf(perItem), Math.floor(sellable[n].stock)) : 0;
       item.qty = qty;
       item.status = qty > 0 ? 'pending' : 'skip';
       item.note = qty ? '' : (!validPrice(item) ? 'Narxi yo‘q yoki noto‘g‘ri.' : 'Qoldiq yo‘q.');
@@ -1153,7 +1331,8 @@
     if (!colCode || !colQty) throw new Error('«Код маркировки» yoki «Количество» ustuni topilmadi');
 
     const first = rowsOfItem(grid, cols, item)[0];
-    if (!first) return 0;
+    if (!first) { learnKind(item, 'u'); return 0; }
+    learnKind(item, 'm');
 
     // Focus the first row, then walk right/left to the "Количество" column
     const firstCell = [...first.querySelectorAll('.gridBox')].find((b) => {
@@ -1834,7 +2013,9 @@
     render();
     let skipsInRow = 0;
     let batchOff = false; // guruhlab terishda xato bo'lsa shu chek oxirigacha bittadan teriladi
+    let endedEarly = false;
     try {
+      for (;;) {
       while (state.index < state.items.length) {
         await checkpoint();
         if (finishEarly) {
@@ -1848,6 +2029,7 @@
             }
             state.index = state.items.length;
             state.current = null;
+            endedEarly = true;
             log(`Chek shu yerda yakunlanmoqda: ${state.items.filter((i) => i.placed > 0).length} xil tovar terildi, ${left} xil tovar keyingi chekka qoldi.`, 'warn');
             save();
             render();
@@ -1926,6 +2108,15 @@
         render();
 
       }
+      // Ketma-ket rejada chek maqsadga yetmagan bo'lsa — keyingi tovarlar qo'shilib terish davom etadi
+      if (!endedEarly && state.plan?.sequential && !state.inFlight && state.index >= state.items.length && topUpSequential()) {
+        state.index = 0;
+        await save();
+        render();
+        continue;
+      }
+      break;
+      }
       if (state.inFlight || state.index < state.items.length) return;
       state.phase = 'pricing';
       await save();
@@ -1934,11 +2125,16 @@
       // Markup through 1C «Заполнить цены (себестоимость + %)» (fallback: «Сумма» = «Сумма списания» + markup); the total is 1C's own
       const lineTotal = (i) => (i.placed > 0 ? globalThis.ReceiptMath.lineTotals({ ...i, qty: i.placed }, 0).total : 0);
       const localTotal = round2(state.items.reduce((sum, i) => sum + (Number.isFinite(lineTotal(i)) ? lineTotal(i) : 0), 0));
+      // Hujjatga birorta tovar tushmagan (masalan, barcha markirovkalar xato chiqqan): bo'sh hujjat provesti qilinmaydi —
+      // 1C «Не введено ни одной строки…» deb rad etadi va jarayon «Провести» ni kutib qolardi
+      const nothingPlaced = !state.items.some((i) => i.placed > 0);
+      if (nothingPlaced) log('Chekka birorta tovar tushmadi (markirovkalar xato yoki yetmadi) — bo‘sh hujjat o‘tkazilmadi.', 'error');
       // Avval «Провести» (1C tannarxni hisoblaydi), keyin «Заполнить цены (себестоимость + %)» bilan natsenka
-      const postedPrefix = IS_DESKTOP ? await postKeepOpen(pricePrefix) : pricePrefix;
+      const postedPrefix = IS_DESKTOP && !nothingPlaced ? await postKeepOpen(pricePrefix) : pricePrefix;
       // Dasturda (Ishonch) natsenka qo'yilmaydi: «Процент наценки» oynasiga kirilmaydi — kirim natsenkasini foydalanuvchi o'zi qo'yadi
       let oneCTotal = 0;
-      if (IS_DESKTOP) {
+      if (nothingPlaced) { /* natsenka ham qo'yilmaydi */ }
+      else if (IS_DESKTOP) {
         const donePrefix = followReceiptDocument(postedPrefix);
         if (state.document?.prefix === donePrefix) state.document = documentIdentity(donePrefix);
         log('Natsenka qo‘yilmadi (kirim natsenkasini o‘zingiz qo‘yasiz).', 'info');
@@ -2275,7 +2471,7 @@
           <div class="row"><button class="b" data-a="capture" title="Ochiq inventarizatsiyadan tovarlarni o‘qish">Olish</button><button class="b primary" data-a="start">Boshlash</button></div>
           <div class="row"><button class="b" data-a="all">Barcha mahsulotlarni qo‘shish</button></div>
           <div class="row"><button class="b small" data-a="clear" title="Joriy chekni tozalash">Tozalash</button><button class="b small" data-a="clearWarehouse" title="O‘qilgan ombor ma’lumotlarini tozalash">Omborni tozalash</button><button class="b small" data-a="abort" title="Qotib qolgan amalni tugatadi va joriy chekni nolga qaytaradi (ombor qoldig‘i saqlanadi)">⛔ To‘liq to‘xtatish</button></div>
-          <div class="row"><button class="b small" data-a="finish" title="Joriy tovar tugagach chek shu yerda yopiladi: terilgani shu chekda qoladi, qolgan tovarlar keyingi chekka o‘tadi">✂ Chekni shu yerda yakunlash</button><span data-el="placedKinds" hidden></span><span data-el="doneTotal" hidden></span><span data-el="doneLocal" hidden></span></div>
+          <div class="row"><button class="b small" data-a="dropReceipt" hidden title="To‘xtab qolgan chek bekor qilinadi: terilgan miqdor va kodlar qaytariladi, 1C hujjatini saqlamasdan yopasiz; keyingi chek muammoli tovardan keyingi tovardan boshlanadi">⏭ Chekni bekor qilish</button><button class="b small" data-a="finish" title="Joriy tovar tugagach chek shu yerda yopiladi: terilgani shu chekda qoladi, qolgan tovarlar keyingi chekka o‘tadi">✂ Chekni shu yerda yakunlash</button><span data-el="placedKinds" hidden></span><span data-el="doneTotal" hidden></span><span data-el="inflight" hidden></span><span data-el="doneLocal" hidden></span></div>
         </section>
 
         <div class="badbox" data-el="badBox" hidden><details open><summary data-el="badTitle">Xato markirovkalar</summary><div class="bad" data-el="bad"></div><div class="row"><button class="b small" data-a="clearBadDb" title="Doimiy xato markirovkalar bazasini bo‘shatadi: kodlar qayta soliq.uz da tekshiriladi">Xato bazasini tozalash</button></div></details></div>
@@ -2388,8 +2584,12 @@
     const doneUnits = state.items.reduce((a, i) => a + Math.min(i.placed, i.qty), 0);
     el('bar').style.width = totalUnits ? `${(doneUnits / totalUnits) * 100}%` : '0';
     el('placedKinds').textContent = String(state.items.filter((i) => i.placed > 0).length);
+    // Ishonch avtomatikasi uchun: noaniq o'tkazish — qaysi tovar va tasdiqlansa hujjatda nechta bo'lishi kerak
+    const fl = state.inFlight && !Array.isArray(state.inFlight.batch) ? state.items[state.inFlight.index] : null;
+    el('inflight').textContent = fl ? JSON.stringify({ name: fl.name, placed: fl.placed || 0, confirmed: state.inFlight.confirmedPlaced }) : '';
     el('doneTotal').textContent = state.status === 'done' && state.pricingResult?.total > 0 && !state.pricingResult.local ? String(state.pricingResult.total) : '';
     el('doneLocal').textContent = state.status === 'done' && state.pricingResult?.total > 0 && state.pricingResult.local ? String(state.pricingResult.total) : '';
+    btn('dropReceipt').hidden = !(IS_DESKTOP && state.status === 'paused' && state.phase !== 'complete');
     btn('finish').disabled = finishEarly || state.status === 'done' || state.phase === 'pricing' || capturing || !!state.inFlight || !hasProgress();
     const statusText = { idle: 'Tayyor', running: 'Ishlamoqda…', paused: 'Pauza', stopped: 'To‘xtatilgan', done: 'Tugadi' }[state.status];
     // While paused, show exactly what is being held
@@ -2487,6 +2687,9 @@
         break;
       case 'clearWarehouse':
         await clearWarehouse();
+        break;
+      case 'dropReceipt':
+        await dropReceipt().catch((err) => log(`Xato: ${err.message || err}`, 'error'));
         break;
       case 'abort':
         await abortAll().catch((err) => log(`Xato: ${err.message || err}`, 'error'));
