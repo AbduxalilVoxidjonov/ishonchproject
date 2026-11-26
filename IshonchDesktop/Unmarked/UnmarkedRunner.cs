@@ -233,7 +233,15 @@ public sealed class UnmarkedRunner
                     }
                     var (idx, plan) = plans[k];
                     table = full.ToList();
-                    await KeepOnlyAsync(idx);
+                    try { await KeepOnlyAsync(idx); }
+                    catch (OneCException e) when (attempt < MaxAttempts)
+                    {
+                        // Qatorlarni tanlashda 1C adashdi (bosish yutildi, qator ortib qoldi…): hujjat saqlanmasdan yopilib, chek qaytadan quriladi
+                        log($"Qatorlarni tanlash bo'lmadi ({e.Message}) — hujjat yopilib, chek qaytadan quriladi", "warn");
+                        await CancelEditFormAsync();
+                        await DiscardDocumentAsync();
+                        continue;
+                    }
                     Took("tanlash");
                     var kept = idx.Select(i => full[i]).ToList();
                     await WriteQuantitiesAsync(kept, plan);
@@ -610,10 +618,31 @@ public sealed class UnmarkedRunner
 
         // Odatda ro'yxat sana bo'yicha o'sib boradi: eng yangisi oxirida. Teskari tartiblangan bo'lsa yoki oxirida
         // bu sklad bo'lmasa — boshiga qaraladi.
+        // Oyna kichik bo'lsa ekranda bir necha qator ko'rinadi — boshi/oxirida bu sklad bo'lmasligi mumkin: sahifa-sahifa suriladi.
+        async Task<(OneCDriver.GridRow Row, DateTime Date, string Num)?> Scan(int dir)
+        {
+            for (var page = 0; page < 80; page++)
+            {
+                var v = await d.GridAsync("Список");
+                if (v is null || v.Rows.Count == 0) return null;
+                if (!await d.ScrollRowsAsync("Список", v, dir * Math.Max(1, v.Rows.Count - 1))) return null; // chetiga yetildi
+                OneCDriver.GridView? nv = null;
+                for (var w = 0; w < 6 && nv is not { Rows.Count: > 0 }; w++)
+                {
+                    if (w > 0) await d.DelayAsync(300);
+                    nv = await d.GridAsync("Список");
+                }
+                if (nv is { Rows.Count: > 0 } && LatestKey(nv, warehouse) is { } k) return k;
+            }
+            return null;
+        }
+
         var bottom = await At("End");
         if (bottom is not null && !descending) return bottom.Value.Row;
+        if (bottom is null && !descending && await Scan(-1) is { } up) return up.Row;
         var top = await At("Home");
         if (top is not null) return top.Value.Row;
+        if (await Scan(1) is { } down) return down.Row;
         return bottom is null ? null : (await At("End"))?.Row;
     }
 
@@ -715,7 +744,13 @@ public sealed class UnmarkedRunner
         await d.WaitTrueAsync(async () => await d.HasAsync("_ValueList"), 20000, "«Выбор типа данных» oynasi");
         var prefix = await d.PrefixAsync("_ValueList");
 
-        // Ro'yxatda «Инвентаризация товаров» ko'rinmaguncha pastga aylantiramiz
+        // Ro'yxatda «Инвентаризация товаров» ko'rinmaguncha aylantiramiz. Oyna kichik bo'lsa ekranda 2-3 qator bo'ladi, shuning uchun
+        // har safar bir sahifa (ko'rinib turgan qatorlar sonicha) suriladi; pastiga yetilsa tepaga qarab davom etadi.
+        // Ro'yxat bitta g'ildirak hodisasida necha qator surilishi noma'lum: sahifa sakrab o'tib ketsa qadam kichraytiriladi.
+        string ListSig(JsonElement r) => r.ValueKind == JsonValueKind.Array ? string.Join("|", r.EnumerateArray().Select(x => x.GetProperty("t").GetString())) : "";
+        var dir = 1;
+        var div = 2;
+        var turned = false;
         for (var i = 0; ; i++)
         {
             var rows = await d.EvalAsync($"window.__ish.valueListRows({OneCDriver.Q(prefix + "_ValueList")})");
@@ -726,10 +761,36 @@ public sealed class UnmarkedRunner
                 await d.ClickAsync(new Pt(found.GetProperty("x").GetDouble(), found.GetProperty("y").GetDouble()));
                 break;
             }
-            if (i > 40 || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
+            if (i > 150 || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
                 throw new OneCException($"«{InventoryType}» turi ro'yxatda topilmadi");
-            var last = rows.EnumerateArray().Last();
-            await d.WheelAsync(new Pt(last.GetProperty("x").GetDouble(), last.GetProperty("y").GetDouble()), 100);
+            var before = ListSig(rows);
+            var items = rows.EnumerateArray().ToList();
+            var at = items[items.Count / 2];
+            var pt = new Pt(at.GetProperty("x").GetDouble(), at.GetProperty("y").GetDouble());
+            var events = Math.Max(1, items.Count / div);
+            for (var j = 0; j < events; j++) await d.WheelAsync(pt, dir * 100);
+            // Ro'yxat o'zgarguncha (ko'pi bilan ~1,5 s) kutamiz
+            JsonElement now = rows;
+            var until = d.Now + 1500;
+            while (d.Now < until && ListSig(now) == before)
+            {
+                await d.DelayAsync(100);
+                now = await d.EvalAsync($"window.__ish.valueListRows({OneCDriver.Q(prefix + "_ValueList")})");
+            }
+            if (ListSig(now) == before)
+            {
+                // Aylanmadi — chetiga yetildi: bir marta teskari yo'nalishda tepasigacha ko'riladi
+                if (turned) throw new OneCException($"«{InventoryType}» turi ro'yxatda topilmadi");
+                turned = true;
+                dir = -dir;
+            }
+            else if (now.ValueKind == JsonValueKind.Array && !now.EnumerateArray().Select(x => x.GetProperty("t").GetString()).Intersect(items.Select(x => x.GetProperty("t").GetString())).Any())
+            {
+                // Sahifa oraliqdagi qatorlarni sakrab o'tdi: orqaga qaytib, kichikroq qadam bilan
+                for (var j = 0; j < events; j++) await d.WheelAsync(pt, -dir * 100);
+                await d.DelayAsync(300);
+                div = Math.Min(div * 2, 16);
+            }
         }
         await d.DelayAsync(100);
         await d.ClickSuffixAsync("_OK", "OK");
@@ -1122,11 +1183,26 @@ public sealed class UnmarkedRunner
             await DeleteSelectionAsync("tepadagi ortiqcha qatorlarni o'chirish");
             table.RemoveRange(0, first);
         }
-        // Tekshiruv: jadvalda aynan rejadagi qatorlar
-        await FocusFirstRowAsync();
-        var rows = await ReadTopAsync(keep.Count + 1);
-        if (rows.Count != keep.Count || !rows.Zip(keep).All(p => SameItem(p.First, full![p.Second])))
-            throw new OneCException($"Qatorlarni qoldirish natijasi kutilganidek emas (jadvalda {rows.Count} ta, kerak {keep.Count})");
+        // Tekshiruv: jadvalda aynan rejadagi qatorlar. Ortiqcha qator qolgan bo'lsa — haqiqiy jadval o'qilib, ortiqchasi o'chiriladi.
+        var want = keep.Select(i => full![i]).ToList();
+        for (var fix = 0; ; fix++)
+        {
+            table = want.ToList();
+            await FocusFirstRowAsync();
+            var rows = await ReadDownAsync(int.MaxValue);
+            var m = 0;
+            while (m < rows.Count && m < want.Count && SameItem(rows[m], want[m])) m++;
+            if (m == want.Count && rows.Count == want.Count) return;
+            if (fix >= 3 || rows.Count <= want.Count) // kam yoki adashgan — tuzatib bo'lmaydi, chek qaytadan quriladi
+                throw new OneCException($"Qatorlarni qoldirish natijasi kutilganidek emas (jadvalda {rows.Count} ta, kerak {want.Count})");
+            log($"Jadvalda {rows.Count - want.Count} ta ortiqcha qator qolgan — o'chirilmoqda", "warn");
+            table = rows.ToList();
+            await FocusFirstRowAsync();
+            await MoveToRowAsync(m);
+            if (m >= want.Count) await d.KeyAsync("End", 2 | 8); // oxirgi kerakli qatordan keyingi hammasi
+            await d.DelayAsync(250);
+            await DeleteSelectionAsync($"ortiqcha qatorni o'chirish ({m + 1}-qator)");
+        }
     }
 
     /// <summary>Tepadan `max` tagacha qatorni o'qiydi.</summary>

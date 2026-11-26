@@ -1936,7 +1936,13 @@
       const localTotal = round2(state.items.reduce((sum, i) => sum + (Number.isFinite(lineTotal(i)) ? lineTotal(i) : 0), 0));
       // Avval «Провести» (1C tannarxni hisoblaydi), keyin «Заполнить цены (себестоимость + %)» bilan natsenka
       const postedPrefix = IS_DESKTOP ? await postKeepOpen(pricePrefix) : pricePrefix;
-      const oneCTotal = await applyMarkup(postedPrefix, await markupPercent());
+      // Dasturda (Ishonch) natsenka qo'yilmaydi: «Процент наценки» oynasiga kirilmaydi — kirim natsenkasini foydalanuvchi o'zi qo'yadi
+      let oneCTotal = 0;
+      if (IS_DESKTOP) {
+        const donePrefix = followReceiptDocument(postedPrefix);
+        if (state.document?.prefix === donePrefix) state.document = documentIdentity(donePrefix);
+        log('Natsenka qo‘yilmadi (kirim natsenkasini o‘zingiz qo‘yasiz).', 'info');
+      } else oneCTotal = await applyMarkup(postedPrefix, await markupPercent());
       state.pricingResult = { total: oneCTotal > 0 ? round2(oneCTotal) : localTotal, local: !(oneCTotal > 0) };
       const plannedItems = state.items.filter(i => i.qty > 0 && (i.status !== 'skip' || i.placed > 0));
       const placedItems = state.items.filter(i => i.placed > 0);

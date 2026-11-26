@@ -77,6 +77,17 @@ public sealed class MarkedAuto : IDisposable
             if (st) { st.textContent = s.status || ''; st.className = 'ish-st ' + (s.level || ''); }
           };
           const build = () => {
+            // Sarlavhadagi «✕» — panelni yopadi (1C hujjati ochiq qoladi)
+            const head = document.querySelector('#app .head');
+            if (head && !head.querySelector('.ish-x')) {
+              const x = document.createElement('button');
+              x.className = 'ish-x'; x.textContent = '✕'; x.title = 'Panelni yopish';
+              x.style.cssText = 'flex:0 0 auto;margin-left:10px;width:26px;height:26px;border:0;border-radius:6px;background:rgba(255,255,255,.18);color:#fff;font-size:14px;line-height:1;cursor:pointer';
+              x.onmouseenter = () => { x.style.background = 'rgba(255,255,255,.35)'; };
+              x.onmouseleave = () => { x.style.background = 'rgba(255,255,255,.18)'; };
+              x.onclick = () => send('close');
+              head.appendChild(x);
+            }
             const target = document.querySelector('#app [data-el="target"]');
             if (!target || document.getElementById('ishAuto')) return;
             const row = target.closest('.row'); if (!row) return;
@@ -90,7 +101,6 @@ public sealed class MarkedAuto : IDisposable
             box.innerHTML = (inSlots ? '' : '<div class="ish-h">⚡ Avtomatik cheklar</div>') +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Inventarizatsiya sanasi va vaqti</span><input class="inp" data-x="inv" type="datetime-local" step="1"></label></div>' +
               '<div class="row"><label class="field" style="flex:1 1 100%"><span>Sklad (1C dagi nomi)</span><input class="inp" data-x="wh" type="text" placeholder="masalan: МАРКИРОВАН (EPOS)"></label></div>' +
-              '<div class="row"><label class="field" style="flex:1 1 100%"><span>Natsenka, % (1C «Заполнить → Заполнить цены (себестоимость + %)» bilan qo‘yiladi)</span><input class="inp" data-x="markup" type="number" min="0" max="1000" step="0.01" value="0"></label></div>' +
               '<div class="row"><label style="align-self:flex-end;padding-bottom:6px"><input type="checkbox" data-x="post"> Provesti qilish</label></div>' +
               (inSlots ? '' : '<div class="muted">Umumiy summa — pastdagi «Maqsad summa» maydoniga (hamma cheklar uchun).</div>');
             const act = document.createElement('div');
@@ -124,7 +134,6 @@ public sealed class MarkedAuto : IDisposable
             box.querySelector('[data-x="wh"]').onchange = () => send('save');
             cnt.querySelector('[data-x="count"]').onchange = () => send('save');
             box.querySelector('[data-x="post"]').onchange = () => send('save');
-            box.querySelector('[data-x="markup"]').onchange = () => send('save');
             const s = window.__ishAutoState; if (s) window.__ishAutoApply({ ...s, init: true });
           };
           setInterval(build, 500);
@@ -144,6 +153,7 @@ public sealed class MarkedAuto : IDisposable
     {
         var action = m.TryGetProperty("action", out var a) ? a.GetString() : "";
         if (action == "stop") { _ = StopAsync(); return; }
+        if (action == "close") { _ = CloseAsync(); return; }
         if (action == "reset") { _ = ResetAsync(); return; }
         if (action == "pause") { _ = TogglePauseAsync(); return; }
         if (action == "sellDoc") { if (!Running) _ = SellOpenDocumentAsync(); return; }
@@ -167,6 +177,17 @@ public sealed class MarkedAuto : IDisposable
     /// yopiladi va (belgi yoqilgan bo'lsa) provesti qilinadi, qolgan summa keyingi chekka qoladi. Boshqa bosqichda yoki
     /// ikkinchi bosishda — darhol to'xtaydi (panel pauzaga olinadi, chek keyin davom ettirilishi mumkin).
     /// </summary>
+    /// <summary>Paneldagi «✕»: panelni yashiradi (jarayon ketayotgan bo'lsa avval to'xtatiladi). Qayta ochish — «Markirovkali chek» tugmasi.</summary>
+    async Task CloseAsync()
+    {
+        if (Running)
+        {
+            if (MessageBox.Show(oneC.FindForm(), "Jarayon ketmoqda. To'xtatilsinmi?", AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            await StopAsync();
+        }
+        oneC.HideSidePanel();
+    }
+
     async Task StopAsync()
     {
         if (!Running) return;
@@ -465,7 +486,7 @@ public sealed class MarkedAuto : IDisposable
             return;
         }
         var targets = Planner.SplitTotal(sum.Value, n, 0.25m, new Random());
-        var msg = $"Markirovkali chek: {sum:N0} so'm ({n} ta chek" + (n > 1 ? ", summa cheklarga bo'linadi" : "") + $"), sklad «{prefs.Warehouse}», natsenka {prefs.Markup:0.##}%.\n" +
+        var msg = $"Markirovkali chek: {sum:N0} so'm ({n} ta chek" + (n > 1 ? ", summa cheklarga bo'linadi" : "") + $"), sklad «{prefs.Warehouse}». Natsenkani o'zingiz qo'yasiz.\n" +
                   (prefs.Post ? "Cheklar PROVESTI QILINADI.\n" : "Cheklar faqat yoziladi («Записать») — «Провести и закрыть» bosilmaydi.\n") + "\nBoshlansinmi?";
         if (MessageBox.Show(owner, msg, AppInfo.DisplayName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
@@ -549,7 +570,7 @@ public sealed class MarkedAuto : IDisposable
                 await runner.CreateMarkedDocumentAsync();
                 // Panel tovarlarni inventarizatsiya narxi (QQS'siz, natsenkasiz) bo'yicha tanlaydi; 1C da «Сумма» ga natsenka
                 // qo'shiladi va QQS ustiga («НДС сверху») — chek jami maqsadga teng chiqishi uchun panelga ikkalasisiz summa beriladi
-                await PanelSetTargetAsync(Math.Round(goal / (1 + VatRate / 100m) / (1 + prefs.Markup / 100m)), ct);
+                await PanelSetTargetAsync(Math.Round(goal / (1 + VatRate / 100m)), ct); // natsenkani foydalanuvchi o'zi qo'yadi — dastur hisobga olmaydi
                 await Task.Delay(800, ct);
                 Status($"{k + 1}-chek: Подбор (≈{goal:N0} so'm)…");
                 await StartPanelAsync(k, ct);
@@ -641,7 +662,7 @@ public sealed class MarkedAuto : IDisposable
         }
         var s = await PanelStateAsync(ct);
         if (Parse(Str(s, "doneTotal")) is > 0 and var fromPanel) return fromPanel;
-        return Parse(Str(s, "doneLocal")) is > 0 and var local ? Math.Round(local * (1 + prefs.Markup / 100m) * (1 + VatRate / 100m)) : null;
+        return Parse(Str(s, "doneLocal")) is > 0 and var local ? Math.Round(local * (1 + VatRate / 100m)) : null;
     }
 
     static string RestNote(decimal? closed, decimal? rest) => closed is null ? "" :

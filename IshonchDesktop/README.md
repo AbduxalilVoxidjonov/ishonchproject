@@ -249,3 +249,9 @@ Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv
 - **Didox ID katagi**: yashil qatorda «Didox ID (ixtiyoriy)» katagi — ID (yoki didox.uz havolasi) yozilib tugma yoki Enter bosilsa, aynan o'sha shartnoma olinadi.
 - **To'ldirish tezlashdi**: matn maydonlari va fayl bir zumda, sanalar va MFO kutish vaqtlari qisqartirilgan (≈1 soniya).
 - Sahifada nima bo'layotgani jurnalga yoziladi («CRM sahifa: …») — boshqa xodimda xato bo'lsa sababini topish uchun.
+## 0.12.0
+
+- **Markirovkasiz sotish — qatorlarni tanlash o'zini tuzatadi**: chekda ortiqcha qator qolsa (masalan «jadvalda 21 ta, kerak 20»), jadval qayta o'qilib ortiqchasi o'chiriladi; qatorga o'tib bo'lmasa yoki tuzatib bo'lmasa, hujjat saqlanmasdan yopilib chek qaytadan quriladi (3 martagacha) — jarayon to'xtab qolmaydi.
+- **Markirovkasiz sotish — kichik oynada inventarizatsiyani topadi**: «Добавить из документа» dagi tur ro'yxati sahifa-sahifa aylantiriladi (pastiga yetsa tepaga qaytadi); inventarizatsiyalar ro'yxatida kerakli sklad ekranda ko'rinmasa ro'yxat surib qidiriladi.
+- **Markirovkali chek — natsenka qo'yilmaydi**: «Процент наценки» oynasiga kirilmaydi, paneldagi «Natsenka, %» katagi olib tashlandi; hujjat provesti qilinib ochiq qoladi, kirim natsenkasini foydalanuvchi o'zi qo'yadi.
+- **Markirovkali chek paneli sarlavhasida «✕»**: panelni yopadi (jarayon ketayotgan bo'lsa avval to'xtatish so'raladi).
