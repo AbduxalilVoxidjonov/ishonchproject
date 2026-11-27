@@ -28,6 +28,12 @@ public sealed class StateStore : IDisposable
         timer = new System.Threading.Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
+    /// <summary>
+    /// Shu sessiyaning (1C tabi/dastur ochilgandan beri) birinchi o'qishida panelga «mk1c_fresh» = true beriladi — panel oldingi
+    /// chekni unutadi. Sahifa qayta yuklansa (shu sessiyaning o'zida) qayta berilmaydi.
+    /// </summary>
+    bool fresh = true;
+
     public JsonObject Get(JsonElement keys)
     {
         var result = new JsonObject();
@@ -39,7 +45,10 @@ public sealed class StateStore : IDisposable
         };
         lock (gate)
             foreach (var n in names)
+            {
+                if (n == "mk1c_fresh") { if (fresh) { result[n] = true; fresh = false; } continue; }
                 if (Allowed(n) && data[n] is { } v) result[n] = v.DeepClone();
+            }
         return result;
     }
 

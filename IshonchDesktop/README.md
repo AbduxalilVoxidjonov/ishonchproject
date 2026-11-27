@@ -268,3 +268,15 @@ Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv
 - **Hujjat kodlari**: «Потребительская упаковка» bo'sh bo'lsa kodlar «Групповая»/«Транспортная упаковка» ustunidan o'qiladi; ogohlantirishlarda haqiqiy qator raqami (N).
 - **Markirovkasiz sotish**: jadvalning eng oxirgi qatoriga o'tib bo'lmasligi tuzatildi; «Без НДС» katta-kichik harfga qaramay topiladi, ro'yxat ochilmasa tugma qayta bosiladi.
 - **IKPU qidiruvi**: «Справочники» bo'limi ochilmasa uzoq kutmaydi (4 urinish), panel IKPU ni kod bo'yicha oladi.
+## 0.14.0
+
+- **Brauzerdagidek ko'rinish**: Chrome'dagidek tablar (yumaloq, ✕, «+» — Bosh sahifa, belgilar: 1C / soliq / Main Ishonch), o'rta tugma — yopish, g'ildirak — tablar orasida; manzil qatori yumaloq, orqaga / oldinga / yangilash tugmalari, masshtab o'ngda.
+- **Klaviatura**: Ctrl+Tab / Ctrl+PageDown — keyingi tab, Ctrl+Shift+Tab / Ctrl+PageUp — oldingi, Ctrl+1…8 — tab raqami, Ctrl+9 — oxirgisi, Ctrl+W / Ctrl+F4 — yopish, Ctrl+T — Bosh sahifa, Ctrl+L / F6 — manzil qatori.
+- **1C ga yangi kirilganda panel toza boshlanadi**: oldingi chek, reja va jurnal unutiladi; provesti qilinmagan chek qaytariladi (tovar qoldiqqa, kodlar ishlatilmaganga). Ombor, ishlatilgan kodlar va xato bazasi saqlanadi.
+- **Yon panel yonida 1C ni moslash**: tab hali tayyor bo'lmasa ham qo'llanadi, panel ochiq ekan qayta tekshiriladi.
+- **Markirovka kodlari**: chakana sotilmagan kod egasi boshqa STIR bo'lsa ham olinadi; 1C dagi IKPU bilan solishtirilmaydi (E-POS da my.soliq.uz bo'yicha to'g'rilanadi) — faqat bitta chek qatoridagi kodlar bir MXIK da; «topilmadi» bo'lsa sahifa qidiruvi bilan qayta tekshiriladi va doimiy xato bazasiga yozilmaydi; 1C nomenklaturasidan IKPU qidiruvi ishlatilmaydi.
+- **Markirovkali chek tezroq**: tovarning kodlari soliq.uz da oldindan, parallel tekshiriladi (tovar boshiga ~18 s → ~12 s).
+- **my.soliq.uz seansi tugasa**: kodlar tashlab ketilmaydi — panel pauza qilib qayta kirishni so'raydi, avto chek «Davom» ni kutadi.
+- **To'xtab qolgan chek**: tovar terilgan bo'lsa terilgani bilan yakunlanib provesti qilinadi (noaniq o'tkazish 1C hujjatidan tekshiriladi), qolgan summa keyingi chekka qo'shiladi.
+- **Markirovkasiz sotish**: jadval oxiridagi yarim ko'rinadigan qator o'qiladi, oxirgi qatorga Ctrl+End bilan o'tiladi, sichqoncha bilan o'tib bo'lmasa ↓ bilan; miqdor yozishda qator tartib bo'yicha topiladi; natsenka foizi 1C qabul qilmasa qayta yoziladi; xato bo'lsa chek qaytadan quriladi.
+- **Markirovkasiz — inventarizatsiya tez tanlanadi**: shu ishda tanlangan hujjat (sana va raqami bilan) keyingi cheklarda qidirmasdan olinadi.

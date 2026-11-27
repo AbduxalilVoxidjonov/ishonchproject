@@ -1262,9 +1262,12 @@ test('definitive soliq.uz refusals are kept in a permanent bad-code database and
   // the Подбор loop asks the database first, stores only a definitive refusal and survives Tozalash
   const loop=source.slice(source.indexOf('      const knownBad = knownBadCode(code);'),source.indexOf('      if (atLeastOne(cellText(f.line, colQty)))'));
   assert.ok(loop.indexOf('knownBadCode(code)')<loop.indexOf('await checkMarkingCode(code)'));
-  // definitive only: sold, or not found in soliq.uz at all (a temporary failure is not stored)
-  assert.match(loop,/const permanent = sold \|\| !!checked\.notFound;/);
-  assert.match(loop,/if \(permanent\) rememberBadDb\(item, code, sold \? reason : 'markirovka topilmadi', checked\)/);
+  // definitive only: sold. «Not found» is not stored (the soliq.uz API sees only the logged-in firm's cabinet)
+  assert.match(loop,/const permanent = sold;/);
+  assert.match(loop,/if \(permanent\) rememberBadDb\(item, code, reason, checked\)/);
+  // an older «markirovka topilmadi» entry is ignored and the code is asked again
+  ctx.state.stir='307813525';ctx.state.badDb={OLD:{name:'X',reason:'markirovka topilmadi',stir:'307813525'}};
+  assert.equal(vm.runInContext("knownBadCode('OLD')",ctx),null);
   assert.doesNotMatch(source.slice(source.indexOf('  function resetReceiptState'),source.indexOf('  async function clearUnstarted')),/badDb/);
   assert.match(source,/badDb: \{\}/);assert.match(source,/data-a="clearBadDb"/);
 });
@@ -1282,15 +1285,23 @@ test('used marking codes survive more than 20000 transfers and a saved-state rel
   assert.deepEqual(restored.pendingCodes, []);
 });
 
-test('a code whose MXIK differs from the product IKPU is skipped before 1 is written, and the next code is taken', () => {
+test('a code whose MXIK differs from the codes already on this receipt line is skipped (not stored), the next is taken; 1C IKPU is not compared', () => {
   const fill = source.slice(source.indexOf('  async function fillQuantities('), source.indexOf('  /** The × button'));
-  const check = fill.indexOf('codeIkpu !== itemIkpu');
+  const check = fill.indexOf('codeIkpu !== lineIkpu');
+  assert.ok(check > 0, 'MXIK is compared with this receipt line');
   assert.ok(check > fill.indexOf("if (checked.verdict !== 'available')"), 'IKPU is compared after the soliq.uz verdict');
   assert.ok(check < fill.indexOf("await cdp({ type: 'text', text: '1' })"), 'IKPU is compared before 1 is typed');
+  assert.doesNotMatch(fill, /codeIkpu !== itemIkpu/);
+  assert.doesNotMatch(fill, /needIkpu: true/); // the slow 1C nomenclature lookup is no longer triggered
   const branch = fill.slice(check, fill.indexOf('continue;', check));
-  assert.match(branch, /rememberBadDb\(item, code, reason, checked\)/);
+  assert.doesNotMatch(branch, /rememberBadDb/);
   assert.match(branch, /text: '0'/); // a 1 typed before a pause is taken back
   assert.match(branch, /ArrowDown/);
+  // line IKPU: the first MXIK of this item's codes on this receipt (pending or already transferred)
+  const ctx = vm.createContext({ state: { receiptId: 5, pendingCodes: [], codeIkpu: { a: '111', b: '222' }, usedCodes: { a: { receiptId: 4, name: 'X' }, b: { receiptId: 5, name: 'X' } } } });
+  vm.runInContext(source.slice(source.indexOf('  function lineIkpuOf('), source.indexOf('  /** Подбор button of the visible')), ctx);
+  assert.equal(vm.runInContext("lineIkpuOf({ name: 'X' })", ctx), '222');
+  assert.equal(vm.runInContext("lineIkpuOf({ name: 'Y' })", ctx), '');
 });
 
 test('product IKPU is learned from the 1C document and a wrong guess is reported', () => {
@@ -1366,17 +1377,6 @@ test('a swallowed «Подбор» click is repeated, never while a Подбор
   assert.match(fn, /screenReport\(\)/); // the final error says what the screen showed
 });
 
-
-test('the nomenclature lookup runs only when the codes of one product disagree on the MXIK; the product is then taken again', () => {
-  const item = source.slice(source.indexOf('  async function processItem('), source.indexOf('  function markCodesUsed('));
-  assert.doesNotMatch(item.slice(0, item.indexOf('await openPodbor()')), /ikpuLookup/); // no lookup before the first Подбор
-  assert.match(item, /if \(!e\?\.needIkpu\) throw e;/);
-  assert.ok(item.indexOf('await closePodbor();') < item.indexOf('await lookupIkpu(item);'), 'Подбор is closed before the lookup');
-  assert.ok(item.indexOf('await lookupIkpu(item);') < item.lastIndexOf('placed = await fillQuantities(item, need);'), 'the product is taken again after it');
-  const fill = source.slice(source.indexOf('  async function fillQuantities('), source.indexOf('  /** The × button'));
-  assert.match(fill, /!state\.ikpuByName\?\.\[norm\(item\.name\)\] && canLookupIkpu\(item\)/);
-  assert.ok(fill.indexOf('needIkpu: true') < fill.indexOf('const reason = `boshqa IKPU'), 'a mixed-IKPU code is not recorded as bad before 1C is asked');
-});
 
 test('IKPU lookup: one try per product, switched off after two failures in a row, reset by a success', () => {
   const fn = source.slice(source.indexOf('  const ikpuLookedUp = new Set();'), source.indexOf('  async function processItem('));

@@ -65,7 +65,7 @@
       return { text: norm(e.textContent), selected: e.classList.contains('select'), pos: center(e), close: c ? center(c) : null };
     }),
     // Jadval: ustun nomlari va to'liq ko'rinib turgan qatorlar (id yoki eng yuqori formadagi "_nom" oxiri bo'yicha)
-    grid: (id, bySuffixName) => {
+    grid: (id, bySuffixName, partial) => {
       const g = bySuffixName ? bySuffix("_" + id) : document.getElementById(id);
       if (!g) return null;
       const lines = [...g.querySelectorAll('.gridLine')];
@@ -78,7 +78,8 @@
       const rows = [];
       for (const l of lines.slice(1)) {
         const r = l.getBoundingClientRect();
-        if (r.height <= 0 || r.top < top || r.bottom > bottom + 2) continue; // qisman ko'rinadiganlar o'tkazib yuboriladi
+        // qisman ko'rinadiganlar o'tkazib yuboriladi (partial — jadval oxirida yarim ko'rinadigan qator ham olinadi)
+        if (r.height <= 0 || (partial ? (r.bottom <= top + 2 || r.top >= bottom + 12) : (r.top < top || r.bottom > bottom + 2))) continue;
         const cells = {};
         for (const b of l.querySelectorAll('.gridBox')) {
           const br = b.getBoundingClientRect();

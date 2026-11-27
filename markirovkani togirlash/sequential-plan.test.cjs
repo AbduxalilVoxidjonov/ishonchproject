@@ -92,3 +92,21 @@ test('bekor qilingan chek: terilgani qoldiqqa, shu chek kodlari ishlatilmaganlar
   assert.deepEqual(Object.keys(ctx.state.usedCodes), ['old']);
   assert.equal(ctx.state.inFlight, null);
 });
+
+test('yangi 1C sessiyasi: provesti qilinmagan chek qaytariladi, provesti qilingani saqlanadi, jurnal tozalanadi', () => {
+  const src = source.slice(source.indexOf('  function freshSession()'), source.indexOf('  async function clearUnstarted()'));
+  const run = (state) => {
+    const calls = [];
+    const ctx = vm.createContext({ state, hasProgress: () => state.items.some(i => i.placed > 0),
+      rollbackReceipt: () => calls.push('rollback'), resetReceiptState: () => { calls.push('reset'); state.plan = null; } });
+    vm.runInContext(src + '; freshSession();', ctx);
+    return calls;
+  };
+  const unfinished = { status: 'paused', phase: 'transfer', items: [{ placed: 2 }], plan: { target: 1 }, log: [{ text: 'eski' }] };
+  assert.deepEqual(run(unfinished), ['rollback', 'reset']);
+  assert.equal(unfinished.log.length, 1); assert.match(unfinished.log[0].text, /Yangi 1C sessiyasi/);
+  const done = { status: 'done', phase: 'complete', items: [{ placed: 2 }], plan: { target: 1 }, log: [] };
+  assert.deepEqual(run(done), ['reset']);
+  const empty = { status: 'idle', phase: 'transfer', items: [], plan: null, log: [] };
+  assert.deepEqual(run(empty), []);
+});

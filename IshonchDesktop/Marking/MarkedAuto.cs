@@ -591,6 +591,7 @@ public sealed class MarkedAuto : IDisposable
                 var stoppedSince = (DateTime?)null;
                 var reactivated = false;
                 var closedEarly = false;
+                var soliqAsked = false;
                 for (var finishTry = 0; ; finishTry++)
                 {
                 await WaitAsync(async () =>
@@ -606,6 +607,15 @@ public sealed class MarkedAuto : IDisposable
                         await PanelClickAsync("start", ct);
                         return false;
                     }
+                    // my.soliq.uz seansi tugagan: chek yopilmaydi — foydalanuvchi qayta kirib «Davom» ni bosguncha kutiladi
+                    if (s == "Davom" && !paused && Str(ps, "message").Contains("my.soliq.uz"))
+                    {
+                        if (!soliqAsked) Status($"{k + 1}-chek: my.soliq.uz seansi tugagan — qayta kiring, keyin panelda «Davom» ni bosing (chek kutib turadi).", "warn");
+                        soliqAsked = true;
+                        stoppedSince = null;
+                        return false;
+                    }
+                    soliqAsked = false;
                     if (s == "Davom" && !paused)
                     {
                         stoppedSince ??= DateTime.UtcNow;

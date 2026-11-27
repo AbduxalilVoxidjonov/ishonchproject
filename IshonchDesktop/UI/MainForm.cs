@@ -10,17 +10,13 @@ namespace IshonchDesktop.UI;
 /// </summary>
 public sealed class MainForm : Form
 {
-    int CloseSize => LogicalToDeviceUnits(14);
-
     readonly BaseStore store = new();
     /// <summary>Haqiqiy chiqish (tray menyusidagi «Chiqish»): ✕ dagi kabi tray'ga yashirilmaydi.</summary>
     public bool ExitRequested { get; set; }
     readonly Settings settings = Settings.Load();
-    readonly TabControl tabs = new()
-    {
-        Dock = DockStyle.Fill, DrawMode = TabDrawMode.OwnerDrawFixed,
-        SizeMode = TabSizeMode.Fixed, ItemSize = new Size(190, 30), Padding = new Point(14, 4),
-    };
+    // Sahifalar shu yerda, sarlavhalarni (Chrome'dagidek tablar) BrowserTabStrip chizadi
+    readonly HeaderlessTabControl tabs = new() { Dock = DockStyle.Fill };
+    readonly BrowserTabStrip strip;
     readonly HomeControl home;
 
     public MainForm()
@@ -37,13 +33,15 @@ public sealed class MainForm : Form
         home = new HomeControl(store);
         home.ApplyZoom(settings.GetZoom("home"));
         home.ZoomChanged += z => ZoomStore.Set("home", z);
-        ApplyTabMetrics();
-        DpiChanged += (_, _) => ApplyTabMetrics();
-
         var homePage = new TabPage("Bosh sahifa") { Padding = new Padding(0) };
         homePage.Controls.Add(home);
         tabs.TabPages.Add(homePage);
+        strip = new BrowserTabStrip(tabs);
+        strip.CloseRequested += CloseTab;
+        strip.NewTabRequested += () => tabs.SelectedIndex = 0;
+        BackColor = BrowserTabStrip.StripBack;
         Controls.Add(tabs);
+        Controls.Add(strip);
         // Pastda: ulangan fiskal modul va uning holati
         Controls.Add(new FiscalStatusBar());
 
@@ -68,8 +66,6 @@ public sealed class MainForm : Form
         BuildMenu();
         UpdateInstaller.CleanupOld(Environment.ProcessPath ?? "");
 
-        tabs.DrawItem += DrawTab;
-        tabs.MouseDown += TabMouseDown;
         FormClosing += (_, e) =>
         {
             SaveOpenTabs(); SaveWindow(); settings.Save();
@@ -296,13 +292,6 @@ public sealed class MainForm : Form
 
     // ---- oyna o'lchami va DPI ---------------------------------------------------------------
 
-    /// <summary>Tab sarlavhalari DPI ga moslanadi (125%, 150% ekranlarda ham o'qiladigan bo'lsin).</summary>
-    void ApplyTabMetrics()
-    {
-        tabs.ItemSize = new Size(LogicalToDeviceUnits(190), LogicalToDeviceUnits(30));
-        tabs.Invalidate();
-    }
-
     /// <summary>
     /// Oyna oxirgi o'lcham/joyda ochiladi; hozirgi ekranlarda ko'rinmasa (masalan monitor ajratilgan)
     /// yoki birinchi ishga tushishda ekran ish maydonining 90% ida o'rtada ochiladi.
@@ -454,7 +443,8 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(page);
         if (select) tabs.SelectedTab = page;
 
-        web.TitleChanged += w => { if (key != CrmKey) page.Text = Short(w.Title); tabs.Invalidate(); };
+        page.ToolTipText = web.Title;
+        web.TitleChanged += w => { if (key != CrmKey) page.Text = Short(w.Title); page.ToolTipText = w.Title; strip.Invalidate(); };
         web.OpenRequested += (w, url) =>
         {
             // Yangi oyna so'ralsa — o'sha profil bilan yangi tab (login saqlanadi)
@@ -463,7 +453,7 @@ public sealed class MainForm : Form
             childPage.Controls.Add(child);
             tabs.TabPages.Add(childPage);
             tabs.SelectedTab = childPage;
-            child.TitleChanged += c => { childPage.Text = Short(c.Title); tabs.Invalidate(); };
+            child.TitleChanged += c => { childPage.Text = Short(c.Title); childPage.ToolTipText = c.Title; strip.Invalidate(); };
             child.OpenRequested += (_, u) => child.Navigate(u);
             _ = child.InitAsync();
         };
@@ -471,41 +461,9 @@ public sealed class MainForm : Form
         return web;
     }
 
-    static string Short(string s) => s.Length > 24 ? s[..23] + "…" : s;
+    static string Short(string s) => s.Length > 40 ? s[..39] + "…" : s;
 
-    // ---- tab sarlavhasi va yopish tugmasi ------------------------------------------------
-
-    Rectangle CloseRect(Rectangle tab) =>
-        new(tab.Right - CloseSize - 8, tab.Top + (tab.Height - CloseSize) / 2, CloseSize, CloseSize);
-
-    void DrawTab(object? sender, DrawItemEventArgs e)
-    {
-        var page = tabs.TabPages[e.Index];
-        var rect = tabs.GetTabRect(e.Index);
-        var selected = e.Index == tabs.SelectedIndex;
-        using (var back = new SolidBrush(selected ? SystemColors.Window : SystemColors.ControlLight))
-            e.Graphics.FillRectangle(back, rect);
-        var textRect = new Rectangle(rect.X + 8, rect.Y, rect.Width - (e.Index == 0 ? 16 : CloseSize + 22), rect.Height);
-        TextRenderer.DrawText(e.Graphics, page.Text, Font, textRect, SystemColors.ControlText,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.Left);
-        if (e.Index == 0) return; // Bosh sahifa yopilmaydi
-        var c = CloseRect(rect);
-        using var pen = new Pen(SystemColors.GrayText, 1.6f);
-        e.Graphics.DrawLine(pen, c.Left + 3, c.Top + 3, c.Right - 3, c.Bottom - 3);
-        e.Graphics.DrawLine(pen, c.Right - 3, c.Top + 3, c.Left + 3, c.Bottom - 3);
-    }
-
-    void TabMouseDown(object? sender, MouseEventArgs e)
-    {
-        for (var i = 1; i < tabs.TabPages.Count; i++)
-        {
-            var rect = tabs.GetTabRect(i);
-            if (!rect.Contains(e.Location)) continue;
-            if (e.Button == MouseButtons.Middle || (e.Button == MouseButtons.Left && CloseRect(rect).Contains(e.Location)))
-                CloseTab(i);
-            return;
-        }
-    }
+    // ---- tablarni yopish va klaviatura ------------------------------------------------------
 
     void CloseTab(int index)
     {
@@ -516,19 +474,41 @@ public sealed class MainForm : Form
         tabs.SelectedIndex = Math.Min(index, tabs.TabPages.Count - 1);
     }
 
+    /// <summary>
+    /// Brauzerdagidek tugmalar: Ctrl+Tab / Ctrl+PageDown — keyingi tab, Ctrl+Shift+Tab / Ctrl+PageUp — oldingi, Ctrl+1…8 — shu
+    /// raqamli tab, Ctrl+9 — oxirgi, Ctrl+W / Ctrl+F4 — yopish, Ctrl+T — Bosh sahifa, Ctrl+L / F6 — manzil qatori, F5 — yangilash.
+    /// (WebView2 ichida bosilganda ham ishlaydi: boshqaruvchi tezkor tugmalarni oynaga uzatadi.)
+    /// </summary>
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        var n = tabs.TabPages.Count;
+        if ((keyData & Keys.Modifiers) == Keys.Control && (keyData & Keys.KeyCode) is >= Keys.D1 and <= Keys.D9)
+        {
+            var k = (keyData & Keys.KeyCode) - Keys.D1;
+            tabs.SelectedIndex = k == 8 ? n - 1 : Math.Min(k, n - 1);
+            return true;
+        }
         switch (keyData)
         {
             case Keys.Control | Keys.W:
+            case Keys.Control | Keys.F4:
                 CloseTab(tabs.SelectedIndex);
                 return true;
             case Keys.Control | Keys.Tab:
-                tabs.SelectedIndex = (tabs.SelectedIndex + 1) % tabs.TabPages.Count;
+            case Keys.Control | Keys.PageDown:
+                tabs.SelectedIndex = (tabs.SelectedIndex + 1) % n;
                 return true;
             case Keys.Control | Keys.Shift | Keys.Tab:
-                tabs.SelectedIndex = (tabs.SelectedIndex - 1 + tabs.TabPages.Count) % tabs.TabPages.Count;
+            case Keys.Control | Keys.PageUp:
+                tabs.SelectedIndex = (tabs.SelectedIndex - 1 + n) % n;
                 return true;
+            case Keys.Control | Keys.T:
+                tabs.SelectedIndex = 0;
+                return true;
+            case Keys.Control | Keys.L:
+            case Keys.F6:
+                if (tabs.SelectedTab?.Controls.OfType<WebTab>().FirstOrDefault() is { } wt) { wt.FocusAddress(); return true; }
+                break;
             // Bosh sahifa masshtabi (veb tablarda WebView2 ning o'z masshtabi ishlaydi)
             case Keys.Control | Keys.Oemplus:
             case Keys.Control | Keys.Add:

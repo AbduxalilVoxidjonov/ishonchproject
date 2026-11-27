@@ -252,10 +252,10 @@ public sealed class OneCDriver
             ColIndex(column) is { } ci && row.Cells.TryGetValue(ci, out var c) ? c : null;
     }
 
-    public async Task<GridView?> GridAsync(string gridSuffix)
+    public async Task<GridView?> GridAsync(string gridSuffix, bool partial = false)
     {
         // Jadval elementi id si "formN_<nom>"; eng yuqori formadagisi olinadi (bitta so'rov bilan)
-        var e = await EvalAsync($"window.__ish.grid({Q(gridSuffix)},true)");
+        var e = await EvalAsync($"window.__ish.grid({Q(gridSuffix)},true,{(partial ? "true" : "false")})");
         if (e.ValueKind != JsonValueKind.Object) return null;
         var head = e.GetProperty("head").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString() ?? "");
         var rows = e.GetProperty("rows").EnumerateArray().Select(r => new GridRow(r.GetProperty("y").GetDouble(), r.TryGetProperty("sel", out var sel) && sel.ValueKind == JsonValueKind.True,

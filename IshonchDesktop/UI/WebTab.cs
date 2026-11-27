@@ -19,13 +19,14 @@ public sealed class WebTab : UserControl
     {
         Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Panel2Collapsed = true, SplitterWidth = 5,
     };
-    readonly TextBox address = new() { Dock = DockStyle.Fill };
-    readonly Button back = new() { Text = "◀", Width = 36, Dock = DockStyle.Left };
-    readonly Button forward = new() { Text = "▶", Width = 36, Dock = DockStyle.Left };
-    readonly Button reload = new() { Text = "⟳", Width = 36, Dock = DockStyle.Left };
-    readonly Button zoomPlus = new() { Text = "+", Width = 32, Dock = DockStyle.Right };
-    readonly Button zoomReset = new() { Text = "100%", Width = 56, Dock = DockStyle.Right };
-    readonly Button zoomMinus = new() { Text = "−", Width = 32, Dock = DockStyle.Right };
+    // Brauzerdagidek: dumaloq tugmalar (Segoe MDL2 Assets belgilari) va yumaloq manzil maydoni
+    readonly TextBox address = new() { BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10f) };
+    readonly NavButton back = new("\uE72B", "Orqaga (Alt+←)");
+    readonly NavButton forward = new("\uE72A", "Oldinga (Alt+→)");
+    readonly NavButton reload = new("\uE72C", "Yangilash (F5)");
+    readonly NavButton zoomPlus = new("\uE710", "Kattalashtirish (Ctrl +)");
+    readonly NavButton zoomReset = new("100%", "Asl masshtab (Ctrl 0)", text: true);
+    readonly NavButton zoomMinus = new("\uE738", "Kichraytirish (Ctrl −)");
 
     // Brauzerdagi kabi qadamlar
     static readonly double[] ZoomSteps = { 0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0 };
@@ -61,22 +62,29 @@ public sealed class WebTab : UserControl
         startUrl = url;
         Dock = DockStyle.Fill;
 
-        var bar = new Panel { Dock = DockStyle.Top, Height = LogicalToDeviceUnits(32), Padding = new Padding(4, 3, 4, 3) };
+        var bar = new Panel { Dock = DockStyle.Top, Height = LogicalToDeviceUnits(42), Padding = new Padding(LogicalToDeviceUnits(6), LogicalToDeviceUnits(5), LogicalToDeviceUnits(8), LogicalToDeviceUnits(5)), BackColor = BrowserTabStrip.ActiveBack };
+        bar.Paint += (_, e) => { using var pen = new Pen(Color.FromArgb(218, 224, 232)); e.Graphics.DrawLine(pen, 0, bar.Height - 1, bar.Width, bar.Height - 1); };
+        var pill = new AddressPill(address) { Dock = DockStyle.Fill };
         // Dock tartibi: oxirgi qo'shilgan birinchi joylashadi
-        bar.Controls.Add(address);
+        zoomMinus.Dock = zoomReset.Dock = zoomPlus.Dock = DockStyle.Right;
+        bar.Controls.Add(pill);
+        bar.Controls.Add(Gap(6, DockStyle.Right));
         bar.Controls.Add(zoomMinus);
         bar.Controls.Add(zoomReset);
         bar.Controls.Add(zoomPlus);
+        bar.Controls.Add(Gap(8, DockStyle.Left));
         // my.soliq.uz tabida: bir bosishda «Markirovka kodini tekshirish» bo'limiga o'tadi
         if (profileKey == "soliq" || profileKey.StartsWith("soliq-"))
         {
-            var check = new Button { Text = "Markirovkani tekshirish", Width = LogicalToDeviceUnits(170), Dock = DockStyle.Left };
+            var check = PanelStyle.Secondary(new Button { Text = "Markirovkani tekshirish", Width = LogicalToDeviceUnits(170), Dock = DockStyle.Left });
             check.Click += (_, _) => Navigate("https://my.soliq.uz/remotes-services/markirovka/product_markirovka");
             bar.Controls.Add(check);
+            bar.Controls.Add(Gap(8, DockStyle.Left));
         }
         bar.Controls.Add(reload);
         bar.Controls.Add(forward);
         bar.Controls.Add(back);
+        zoomReset.Width = LogicalToDeviceUnits(52);
         split.Panel1.Controls.Add(view);
         Controls.Add(split);
         Controls.Add(bar);
@@ -89,10 +97,24 @@ public sealed class WebTab : UserControl
         zoomReset.Click += (_, _) => SetZoom(1.0);
         address.KeyDown += (_, e) =>
         {
+            if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; address.Text = view.CoreWebView2?.Source ?? address.Text; view.Focus(); return; }
             if (e.KeyCode != Keys.Enter) return;
             e.SuppressKeyPress = true;
             Navigate(address.Text.Trim());
+            view.Focus();
         };
+        // Brauzerdagidek: manzil maydoniga kirilganda hammasi belgilanadi
+        address.Enter += (_, _) => BeginInvoke(address.SelectAll);
+        back.Enabled = forward.Enabled = false;
+    }
+
+    Control Gap(int width, DockStyle dock) => new Panel { Width = LogicalToDeviceUnits(width), Dock = dock, BackColor = Color.Transparent };
+
+    /// <summary>Manzil qatoriga o'tadi (Ctrl+L / F6), matn belgilanadi.</summary>
+    public void FocusAddress()
+    {
+        address.Focus();
+        address.SelectAll();
     }
 
     public static Task<CoreWebView2Environment> GetEnvironmentAsync(string key)
@@ -194,7 +216,7 @@ public sealed class WebTab : UserControl
 
     // ---- masshtab -------------------------------------------------------------------------
 
-    void UpdateZoomLabel() => zoomReset.Text = Math.Round(view.ZoomFactor * 100) + "%";
+    void UpdateZoomLabel() { zoomReset.Text = Math.Round(view.ZoomFactor * 100) + "%"; zoomReset.Invalidate(); }
 
     public void SetZoom(double z) => view.ZoomFactor = Math.Clamp(z, 0.25, 5.0);
 
@@ -232,9 +254,35 @@ public sealed class WebTab : UserControl
         ShowSidePanel(width, key);
     }
 
+    System.Windows.Forms.Timer? fixTimer;
+
+    async Task FixWhenReadyAsync()
+    {
+        try
+        {
+            await Ready;
+            if (IsDisposed || split.Panel2Collapsed || view.CoreWebView2 is not { } core) return;
+            await Unmarked.OneCRoom.FixAsync(core, true);
+            // 1C sahifasi hali yuklanmagan bo'lsa (kirish oynasi) moslash qo'llanmay qoladi — panel ochiq ekan har 3 soniyada
+            // tekshiriladi (qo'llangan bo'lsa hech narsa qilmaydi)
+            if (fixTimer is null)
+            {
+                fixTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+                fixTimer.Tick += async (_, _) =>
+                {
+                    if (IsDisposed || split.Panel2Collapsed || view.CoreWebView2 is not { } c) return;
+                    await Unmarked.OneCRoom.EnsureAsync(c);
+                };
+            }
+            fixTimer.Start();
+        }
+        catch (Exception e) { Log.Error("1C oynasini moslash (panel)", e); }
+    }
+
     public void HideSidePanel()
     {
         split.Panel2Collapsed = true;
+        fixTimer?.Stop();
         if (view.CoreWebView2 is { } core) _ = Unmarked.OneCRoom.FixAsync(core, false);
     }
 
@@ -259,8 +307,9 @@ public sealed class WebTab : UserControl
                 split.SplitterDistance = Math.Max(LogicalToDeviceUnits(200), split.Width - wanted - split.SplitterWidth);
             }
             catch { /* o'lcham hali yo'q */ }
-            // Panel ochiq ekan 1C sahifasi bir xil kenglikda chizilib oynaga sig'diriladi (qotiriladi)
-            if (view.CoreWebView2 is { } core) _ = Unmarked.OneCRoom.FixAsync(core, true);
+            // Panel ochiq ekan 1C sahifasi bir xil kenglikda chizilib oynaga sig'diriladi (qotiriladi). Tab hali tayyor
+            // bo'lmasa (panel dastur ochilishi bilan ochilgan) — tayyor bo'lgach qo'llanadi
+            _ = FixWhenReadyAsync();
         });
     }
 
@@ -269,8 +318,101 @@ public sealed class WebTab : UserControl
         if (disposing)
         {
             Marking?.Dispose();
+            fixTimer?.Dispose();
             view.Dispose();
         }
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>Brauzerdagidek dumaloq tugma: belgi (Segoe MDL2 Assets) yoki qisqa matn, ustiga kelinganda kulrang doira.</summary>
+sealed class NavButton : Control
+{
+    readonly bool text;
+    bool hover, down;
+    readonly ToolTip tip = new();
+
+    public NavButton(string glyph, string hint, bool text = false)
+    {
+        this.text = text;
+        Text = glyph;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Color.Transparent;
+        Dock = DockStyle.Left;
+        Width = LogicalToDeviceUnits(34);
+        Cursor = Cursors.Hand;
+        Font = text ? new Font("Segoe UI", 8.5f) : new Font("Segoe MDL2 Assets", 10.5f);
+        tip.SetToolTip(this, hint);
+        EnabledChanged += (_, _) => Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var d = Math.Min(Height, LogicalToDeviceUnits(32));
+        var r = text ? new Rectangle(1, (Height - d) / 2, Width - 2, d) : new Rectangle((Width - d) / 2, (Height - d) / 2, d, d);
+        if (Enabled && (hover || down))
+        {
+            using var b = new SolidBrush(down ? Color.FromArgb(203, 213, 225) : Color.FromArgb(226, 232, 240));
+            if (text) { using var p = Rounded(r, d / 2); g.FillPath(b, p); } else g.FillEllipse(b, r);
+        }
+        TextRenderer.DrawText(g, Text, Font, r, Enabled ? Color.FromArgb(51, 65, 85) : Color.FromArgb(176, 186, 200),
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+    }
+
+    internal static System.Drawing.Drawing2D.GraphicsPath Rounded(Rectangle r, int radius)
+    {
+        var p = new System.Drawing.Drawing2D.GraphicsPath();
+        var dd = Math.Max(1, radius * 2);
+        p.AddArc(r.Left, r.Top, dd, dd, 180, 90);
+        p.AddArc(r.Right - dd, r.Top, dd, dd, 270, 90);
+        p.AddArc(r.Right - dd, r.Bottom - dd, dd, dd, 0, 90);
+        p.AddArc(r.Left, r.Bottom - dd, dd, dd, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover = true; Invalidate(); }
+    protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover = down = false; Invalidate(); }
+    protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); down = true; Invalidate(); }
+    protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); down = false; Invalidate(); }
+    protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
+}
+
+/// <summary>Yumaloq (pill) manzil maydoni: ichida chegarasiz TextBox; fokusda ko'k chegara.</summary>
+sealed class AddressPill : Panel
+{
+    readonly TextBox box;
+
+    public AddressPill(TextBox box)
+    {
+        this.box = box;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Color.Transparent;
+        box.BackColor = Color.FromArgb(237, 241, 246);
+        box.ForeColor = Color.FromArgb(30, 41, 59);
+        Controls.Add(box);
+        box.GotFocus += (_, _) => { box.BackColor = Color.White; Invalidate(); };
+        box.LostFocus += (_, _) => { box.BackColor = Color.FromArgb(237, 241, 246); Invalidate(); };
+        Click += (_, _) => box.Focus();
+    }
+
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        base.OnLayout(levent);
+        var pad = LogicalToDeviceUnits(14);
+        box.SetBounds(pad, (Height - box.PreferredHeight) / 2 + 1, Math.Max(10, Width - pad * 2), box.PreferredHeight);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var r = new Rectangle(0, 0, Width - 1, Height - 1);
+        using var path = NavButton.Rounded(r, r.Height / 2);
+        using var b = new SolidBrush(box.BackColor);
+        g.FillPath(b, path);
+        if (box.Focused) { using var pen = new Pen(Color.FromArgb(37, 99, 235), 1.6f); g.DrawPath(pen, path); }
     }
 }

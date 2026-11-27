@@ -24,15 +24,14 @@ public static class SoliqBridge
     static string Clean(string? s) => Regex.Replace(s ?? "", @"[\x00-\x1f\x1d\s]", "");
     static string Digits(string? s) => Regex.Replace(s ?? "", @"\D", "");
 
-    // Faqat ulgurji holatdagi (va STIR bizniki bo'lgan) kod sotishga yaroqli
+    // Kod hali chakana sotilmagan bo'lsa — olinadi (egasi boshqa STIR bo'lsa ham, foydalanuvchi qarori);
+    // chakana sotilgani tashlanadi
     static string VerdictOf(JsonElement? last, string stir)
     {
         if (last is not { ValueKind: JsonValueKind.Object } l) return "unknown";
-        var lastStir = l.TryGetProperty("stir", out var s) ? s.GetString() : "";
         var op = l.TryGetProperty("operation", out var o) ? o.GetString() ?? "" : "";
-        if (stir.Length > 0 && Digits(lastStir) != stir) return "sold";
-        if (Regex.IsMatch(op, "ulgurji|улгуржи|оптов", RegexOptions.IgnoreCase)) return "available";
         if (Regex.IsMatch(op, "chakana|чакана|розн", RegexOptions.IgnoreCase)) return "sold";
+        if (Regex.IsMatch(op, "ulgurji|улгуржи|оптов", RegexOptions.IgnoreCase)) return "available";
         return "unknown";
     }
 
@@ -136,6 +135,9 @@ public static class SoliqBridge
 
             // «Ushbu markirovka kodi topilmadi» (yoki «не найден») — holat kodidan qat'i nazar: kod darhol tashlanadi,
             // sekin sahifa qidiruviga o'tilmaydi
+            // Seans tugagan bo'lsa API «topilmadi» ga o'xshash xato qaytarishi mumkin — sahifa yo'liga o'tiladi (u kirishni tekshiradi)
+            if (Regex.IsMatch(body, "token|unauthori|авториз|avtoriz|session|сесси|sessiya|expired|истек|login", RegexOptions.IgnoreCase))
+                return null;
             if (NotFoundText(body))
                 return new { ok = true, verdict = "unknown", reason = "markirovka topilmadi", notFound = true };
 
@@ -188,10 +190,12 @@ public static class SoliqBridge
             // Eng ishonchlisi — kodning hozirgi holati va egasi: muomalada (INTRODUCED) va egasi biz bo'lsa — sotsa bo'ladi
             var owner = Digits(S(data, "ownerTin"));
             var cisStatus = S(data, "cisStatus");
+            // Kod muomaladan chiqarilgan (chakana sotilgan) yoki oxirgi operatsiyasi chakana savdo bo'lsa — tashlanadi;
+            // muomalada (INTRODUCED) bo'lsa egasi boshqa STIR bo'lsa ham olinadi (hali chakana sotilmagan)
             string verdict;
-            if (ours.Length > 0 && owner.Length > 0 && owner != ours) verdict = "sold";
+            var retail = Regex.IsMatch(last["operation"], "chakana|чакана|розн", RegexOptions.IgnoreCase);
+            if (Regex.IsMatch(cisStatus, "WITHDRAW|RETIRE|OUT|SOLD", RegexOptions.IgnoreCase) || retail) verdict = "sold";
             else if (cisStatus.Equals("INTRODUCED", StringComparison.OrdinalIgnoreCase)) verdict = "available";
-            else if (Regex.IsMatch(cisStatus, "WITHDRAW|RETIRE|OUT|SOLD", RegexOptions.IgnoreCase)) verdict = "sold";
             else
             {
                 verdict = VerdictOf(lastEl, ours);
@@ -235,6 +239,11 @@ public static class SoliqBridge
         return new ProductInfo("", "", "", reason);
     }
 
+    static bool IsLoginPage(WebTab tab) => (tab.Core?.Source ?? "").Contains("/login", StringComparison.OrdinalIgnoreCase);
+
+    static bool IsNotFound(object result) =>
+        JsonSerializer.SerializeToElement(result) is var e && e.TryGetProperty("notFound", out var nf) && nf.ValueKind == JsonValueKind.True;
+
     public static async Task<object> CheckAsync(Func<Task<WebTab>> getTab, string? code, string? stir, string? defaultStir = null)
     {
         var value = Clean(code);
@@ -246,7 +255,9 @@ public static class SoliqBridge
         try
         {
             var fast = await FastCheckAsync(getTab, value, ours);
-            if (fast is not null) return fast;
+            // API «topilmadi» desa — sahifadagi qidiruv bilan qayta tekshiriladi: API kirilgan firma kabineti orqali ishlaydi
+            // (boshqa firma bilan kirilganda o'zgalarning kodini ko'rmaydi), sahifa esa saytdagidek har qanday kodni topadi
+            if (fast is not null && !IsNotFound(fast)) return fast;
         }
         catch (Exception ex)
         {
@@ -267,6 +278,8 @@ public static class SoliqBridge
                 await tab.WaitNavigatedAsync();
                 await Task.Delay(1500);
             }
+            // Seans tugagan: my.soliq.uz kirish sahifasiga qaytargan — kodlar tekshirilmaydi, foydalanuvchi qayta kirishi kerak
+            if (IsLoginPage(tab)) return new { ok = true, verdict = "unknown", reason = NotLoggedInMessage, notLoggedIn = true };
 
             for (var i = 0; i < 40; i++)
             {
@@ -283,6 +296,7 @@ public static class SoliqBridge
                     && history.TryGetProperty("steps", out var steps) && steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0;
                 if (!historyOk)
                 {
+                    if (IsLoginPage(tab)) return new { ok = true, verdict = "unknown", reason = NotLoggedInMessage, notLoggedIn = true };
                     var reason = result.TryGetProperty("reason", out var rs) ? rs.GetString() : null;
                     return new { ok = true, verdict = "unknown", reason = string.IsNullOrEmpty(reason) ? "markirovka topilmadi" : reason, notFound = string.IsNullOrEmpty(reason) || reason == "markirovka topilmadi" };
                 }

@@ -43,6 +43,8 @@
   // The Ishonch desktop app (not the Chrome extension) can sell through E-POS: its bridge has this runtime id
   const IS_DESKTOP = (() => { try { return chrome.runtime?.id === 'ishonch-desktop'; } catch { return false; } })();
   const STORE_KEY = 'mk1c_state';
+  // Ishonch dasturi: 1C ga yangi kirilganda (tab yoki dastur qayta ochilganda) bir marta true — oldingi chek unutiladi
+  const FRESH_KEY = 'mk1c_fresh';
   const timerSleep = (ms) => new Promise((resolve) => {
     assertAlive();
     const id = setTimeout(() => { timers.delete(id); resolve(); }, ms);
@@ -391,6 +393,28 @@
     state.pendingCodes = [];
     state.current = null;
     state.receiptId = null;
+  }
+
+  /**
+   * 1C ga yangi kirildi (oldingi sessiya tugagan): oldingi chek, reja va jurnal tozalanadi — panel yangidan boshlanadi.
+   * Ombor qoldig'i, ishlatilgan kodlar, xato bazasi, tovar turlari va ketma-ket terish joyi saqlanadi. Provesti qilinmagan
+   * chek (1C da hujjati sessiya bilan birga yo'qolgan) qaytariladi: terilgani qoldiqqa, kodlari ishlatilmaganlarga.
+   */
+  function freshSession() {
+    const busy = hasProgress() || !!state.inFlight || !!state.plan || !!state.document || (state.log || []).length > 0;
+    if (!busy) return;
+    const posted = state.status === 'done' || state.phase === 'pricing' || state.phase === 'complete';
+    try {
+      if (!posted) rollbackReceipt();
+      resetReceiptState();
+    } catch {
+      Object.assign(state, { status: 'idle', phase: 'transfer', index: 0, plan: null, document: null, legacyModeBlocked: false, log: [] });
+    }
+    state.inFlight = null;
+    state.documentNeedsAck = false;
+    state.clock = null;
+    state.log = [{ time: new Date().toLocaleTimeString('ru-RU'), level: 'info',
+      text: 'Yangi 1C sessiyasi: oldingi chek va jurnal tozalandi. Ombor qoldig‘i, ishlatilgan kodlar va xato bazasi saqlandi.' }];
   }
 
   async function clearUnstarted() {
@@ -754,7 +778,8 @@
     const counts = new Map();
     const stir = String(state.stir || '').replace(/\D/g, ''); // = stirDigits() (testlarda ham ishlashi uchun shu yerda)
     for (const info of Object.values(state.badDb && typeof state.badDb === 'object' ? state.badDb : {})) {
-      if (!info || (info.stir ?? '') !== stir) continue;
+      const why = String(info?.reason || '');
+      if (!info || (info.stir ?? '') !== stir || /topilmadi|boshqa IKPU/.test(why) || (/boshqa STIR/.test(why) && !/чакана|chakana|розн/i.test(why))) continue;
       const key = norm(String(info.name || '').normalize('NFKC'));
       counts.set(key, (counts.get(key) || 0) + 1);
     }
@@ -1105,7 +1130,25 @@
   /** The stored refusal for a code, valid only for the STIR it was made for (a different STIR asks soliq.uz again). */
   function knownBadCode(code) {
     const known = state.badDb && typeof state.badDb === 'object' ? state.badDb[code] : null;
+    // Eski versiyalar «markirovka topilmadi» ni ham doimiy yozgan — ular hisobga olinmaydi (soliq.uz da qayta tekshiriladi)
+    if (known && /topilmadi|boshqa IKPU/.test(String(known.reason || ''))) return null;
+    // «boshqa STIR da (…, Улгуржи савдо)» — hali chakana sotilmagan: endi olinadi (qayta tekshiriladi)
+    if (known && /boshqa STIR/.test(String(known.reason || '')) && !/чакана|chakana|розн/i.test(String(known.reason || ''))) return null;
     return known && (known.stir ?? '') === stirDigits() ? known : null;
+  }
+
+  /** soliq.uz ketma-ket tekshira olmagan kodlar soni: chegaraga yetsa ish pauza qilinadi (seans tugagan bo'lishi mumkin). */
+  let soliqUnknownInRow = 0;
+  const SOLIQ_UNKNOWN_LIMIT = 6;
+  const soliqPausedFor = new Set();
+
+  /** Shu chekda tovarning allaqachon olingan kodlari MXIK i (birinchisi) — qator IKPU si; hali kod olinmagan bo'lsa ''. */
+  function lineIkpuOf(item) {
+    const mx = state.codeIkpu && typeof state.codeIkpu === 'object' ? state.codeIkpu : {};
+    for (const c of state.pendingCodes || []) if (mx[c]) return mx[c];
+    for (const [c, info] of Object.entries(state.usedCodes || {}))
+      if (info?.receiptId === state.receiptId && info.name === item.name && mx[c]) return mx[c];
+    return '';
   }
 
   /** Подбор button of the visible Реализация form (the one that has the "Товар маркирован" checkbox). */
@@ -1250,6 +1293,27 @@
   const rowsOfItem = (grid, cols, item) =>
     gridRows(grid).filter((l) => norm(cellText(l, colOf(cols, 'item'))) === norm(item.name));
 
+  /**
+   * Tezlashtirish: Подбор dagi shu tovarning ko'rinib turgan kodlari soliq.uz da oldindan, bir vaqtda (dastur tomonida 6 tagacha
+   * parallel) tekshirila boshlaydi. Natijalar keshda turadi — kodlar ketma-ket yurib chiqilganda kutilmaydi. Natija o'zgarmaydi:
+   * oldingi chekda ishlatilgan va xato bazasidagi kodlar so'ralmaydi, javobi noma'lum bo'lsa kodning o'z navbatida qayta so'raladi.
+   */
+  function prefetchVerdicts(grid, cols, item, need) {
+    try {
+      const colCode = colOf(cols, 'markingCode');
+      if (!colCode) return;
+      const limit = Math.min(12, Math.max(4, Math.ceil(need) + 4));
+      let n = 0;
+      for (const line of rowsOfItem(grid, cols, item)) {
+        if (n >= limit) break;
+        const code = cellText(line, colCode);
+        if (!code || state.usedCodes?.[code] || knownBadCode(code)) continue;
+        n++;
+        checkMarkingCode(code).catch(() => {});
+      }
+    } catch { /* oldindan tekshirish ixtiyoriy — xato bo'lsa kodlar odatdagidek bittadan tekshiriladi */ }
+  }
+
   /** Types the item name into "Найти". After a pause the user may have clicked elsewhere: then start over. */
   async function typeSearch(name) {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1333,6 +1397,7 @@
     const first = rowsOfItem(grid, cols, item)[0];
     if (!first) { learnKind(item, 'u'); return 0; }
     learnKind(item, 'm');
+    prefetchVerdicts(grid, cols, item, need);
 
     // Focus the first row, then walk right/left to the "Количество" column
     const firstCell = [...first.querySelectorAll('.gridBox')].find((b) => {
@@ -1406,6 +1471,17 @@
         state.pendingCodes = [];
         throw docError('Avval my.soliq.uz ga yuridik shaxs sifatida kiring: ERI kalitdan birini tanlang, keyin tekshirishni boshlaymiz («Davom» ni bosing)');
       }
+      // soliq.uz ketma-ket ko'p kodni tekshira olmasa — seans tugagan (yoki sayt ishlamayapti): kodlar tashlab ketilmaydi,
+      // ish pauza qilinadi va qayta kirish so'raladi (aks holda chek sotsa bo'ladigan kodlarsiz cho'zilib ketardi)
+      soliqUnknownInRow = checked.verdict === 'unknown' ? soliqUnknownInRow + 1 : 0;
+      // Bir tovar uchun bir marta: qayta kirilgach ham shu tovar kodlari topilmasa — ular haqiqatan topilmaydi, tashlab ketiladi
+      if (soliqUnknownInRow >= SOLIQ_UNKNOWN_LIMIT && !soliqPausedFor.has(norm(item.name))) {
+        soliqUnknownInRow = 0;
+        soliqPausedFor.add(norm(item.name));
+        try { await closePodbor(); } catch { /* yopilmasa ham pauza qilinadi */ }
+        state.pendingCodes = [];
+        throw docError(`my.soliq.uz ketma-ket ${SOLIQ_UNKNOWN_LIMIT} ta kodni tekshira olmadi (${checked.reason || 'javob yo‘q'}) — seans tugagan bo‘lishi mumkin. my.soliq.uz ga qayta kiring, keyin «Davom» ni bosing`);
+      }
       if (checked.verdict !== 'available') {
         const sold = checked.verdict === 'sold';
         const reason = sold
@@ -1414,25 +1490,25 @@
             : `sotilgan${checked.operation ? ` (${checked.operation})` : ''}`
           : `tekshirilmadi${checked.reason ? ` (${checked.reason})` : ''}`;
         noteBadCode(item, code, position, reason);
-        // Sotilgan yoki soliqda umuman topilmagan kod keyingi cheklarda ham olinmaydi — qayta so'ralmasligi uchun bazaga yoziladi
-        const permanent = sold || !!checked.notFound;
-        if (permanent) rememberBadDb(item, code, sold ? reason : 'markirovka topilmadi', checked);
+        // Sotilgan kod keyingi cheklarda ham olinmaydi — qayta so'ralmasligi uchun bazaga yoziladi. «Topilmadi» doimiy emas:
+        // soliq.uz API si kirilgan firma kabineti orqali ishlaydi va boshqa firma bilan kirilganda kodni ko'rmasligi mumkin
+        const permanent = sold;
+        if (permanent) rememberBadDb(item, code, reason, checked);
         log(`↷ ${item.name}: ${position}-kod ${reason}, tashlandi${permanent ? ' (xato bazasiga yozildi)' : ''}.`, permanent ? 'info' : 'warn');
         await cdp({ type: 'key', key: 'ArrowDown' });
         await sleep(T.afterCell);
         continue;
       }
-      // Bir chekdagi tovar bitta IKPU bilan sotiladi: kodning MXIK i tovar IKPU sidan farq qilsa, uni sotib bo'lmaydi —
-      // kod olinmaydi (o'rniga keyingi kod olinadi) va xato bazasiga yoziladi
+      // IKPU 1C dagi bilan solishtirilmaydi: E-POS orqali sotishda IKPU my.soliq.uz dagi (kodning MXIK i) bo'yicha
+      // to'g'rilanadi. Faqat bitta chek qatoridagi kodlar bir xil MXIK da bo'lishi kerak (E-POS da qator bitta IKPU bilan
+      // sotiladi): tovarning shu chekda birinchi olingan kodi IKPU ni belgilaydi, boshqa MXIK li kod shu chekka olinmaydi
+      // (xato bazasiga yozilmaydi — keyingi chekda olinishi mumkin)
       const codeIkpu = ikpuDigits(checked.mxik);
       const itemIkpu = expectedIkpu(item);
-      if (codeIkpu && itemIkpu && codeIkpu !== itemIkpu) {
-        // 1C dagi IKPU hali noma'lum (faqat birinchi kodning MXIK i taxmin) — kodlar bir-biriga zid: avval 1C dan so'raladi
-        if (!state.ikpuByName?.[norm(item.name)] && canLookupIkpu(item))
-          throw Object.assign(new Error('Kodlar turli IKPU da'), { needIkpu: true, codeIkpu, itemIkpu });
-        const reason = `boshqa IKPU (${codeIkpu}, tovarniki ${itemIkpu})`;
+      const lineIkpu = lineIkpuOf(item);
+      if (codeIkpu && lineIkpu && codeIkpu !== lineIkpu) {
+        const reason = `boshqa IKPU (${codeIkpu}, shu chekdagi ${lineIkpu})`;
         noteBadCode(item, code, position, reason);
-        rememberBadDb(item, code, reason, checked);
         if (atLeastOne(cellText(f.line, colQty))) {
           // Pauzadan oldin 1 yozilgan bo'lsa — 0 ga qaytariladi, aks holda o'tkazishga tushadi
           await cdp({ type: 'key', key: 'Enter' });
@@ -1443,7 +1519,7 @@
           await cdp({ type: 'key', key: 'Enter' });
           await waitFor(() => document.activeElement?.tagName !== 'INPUT', 4000, `«${code}» kodidan 1 olib tashlanishi`, { pausable: false });
         }
-        log(`↷ ${item.name}: ${position}-kod ${reason} — olinmadi, keyingisi olinadi (xato bazasiga yozildi).`, 'warn');
+        log(`↷ ${item.name}: ${position}-kod ${reason} — shu chekka olinmadi, keyingisi olinadi.`, 'info');
         await cdp({ type: 'key', key: 'ArrowDown' });
         await sleep(T.afterCell);
         continue;
@@ -2839,9 +2915,10 @@
   chrome.runtime.onConnect?.addListener(onConnect);
 
   // Restore saved state before accepting any user mutation or toolbar action.
-  const stateReady = chrome.storage.local.get([STORE_KEY]).then(async (data) => {
+  const stateReady = chrome.storage.local.get([STORE_KEY, FRESH_KEY]).then(async (data) => {
     if (!alive()) return;
     if (data[STORE_KEY]) state = globalThis.ReceiptStateMigration.migrate(data[STORE_KEY], VERSION, emptyState, globalThis.ReceiptLedger);
+    if (data[FRESH_KEY] && IS_DESKTOP) freshSession();
     // Time between the last save and a page reload is unknown: it is not counted
     if (state.clock) state.clock.since = null;
     // «Bir tovardan» endi sukut bo'yicha bo'sh (cheklovsiz): eski sukut «2» bir marta olib tashlanadi, keyin yozilgani saqlanadi
