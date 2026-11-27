@@ -52,6 +52,16 @@ public sealed class WebTab : UserControl
     /// <summary>Sarlavha o'zgarganda tab nomini yangilash uchun.</summary>
     public event Action<WebTab>? TitleChanged;
 
+    /// <summary>Tabni oldinga chiqarish so'raldi (masalan, my.soliq.uz ga kirish kerak).</summary>
+    public event Action<WebTab>? ActivateRequested;
+
+    public void Activate()
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired) { try { BeginInvoke(() => ActivateRequested?.Invoke(this)); } catch { } return; }
+        ActivateRequested?.Invoke(this);
+    }
+
     /// <summary>Sahifa yangi oyna ochmoqchi bo'lsa — dastur uni yangi tab qilib ochadi.</summary>
     public event Action<WebTab, string>? OpenRequested;
 

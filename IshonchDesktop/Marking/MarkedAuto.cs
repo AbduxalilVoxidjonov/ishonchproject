@@ -517,8 +517,11 @@ public sealed class MarkedAuto : IDisposable
             if (getSoliqTab is not null)
             {
                 Status("my.soliq.uz ga kirilganligi tekshirilmoqda…");
-                if (!await SoliqBridge.IsLoggedInAsync(getSoliqTab))
+                // Kirilmagan bo'lsa — soliq tabi oldinga chiqadi, firma kaliti o'zi tanlanadi, parolni kiritish kutiladi (3 daqiqa)
+                if (!await SoliqBridge.EnsureLoggedInAsync(getSoliqTab, TimeSpan.FromMinutes(3), t => Status(t, "warn"), ct))
                     throw new OneCException(SoliqBridge.NotLoggedInMessage + ".");
+                oneC.Activate(); // kirilgach 1C tabiga qaytiladi
+                Status("my.soliq.uz ga kirildi ✓");
             }
             var runner = new UnmarkedRunner(core, new UnmarkedOptions(0, 1, 1, 0, prefs.Warehouse, false) { InventoryDate = inventoryDate }, (t, l) => Status(t, l), ct);
             gate = runner.Gate;
@@ -610,9 +613,17 @@ public sealed class MarkedAuto : IDisposable
                     // my.soliq.uz seansi tugagan: chek yopilmaydi — foydalanuvchi qayta kirib «Davom» ni bosguncha kutiladi
                     if (s == "Davom" && !paused && Str(ps, "message").Contains("my.soliq.uz"))
                     {
-                        if (!soliqAsked) Status($"{k + 1}-chek: my.soliq.uz seansi tugagan — qayta kiring, keyin panelda «Davom» ni bosing (chek kutib turadi).", "warn");
-                        soliqAsked = true;
                         stoppedSince = null;
+                        if (soliqAsked) return false;
+                        soliqAsked = true;
+                        // Soliq tabi oldinga chiqadi, firma kaliti tanlanadi, parol kutiladi; kirilgach chek o'zi davom etadi
+                        Status($"{k + 1}-chek: my.soliq.uz seansi tugagan — E-IMZO oynasida parolni kiriting (chek kutib turadi).", "warn");
+                        if (getSoliqTab is not null && await SoliqBridge.EnsureLoggedInAsync(getSoliqTab, TimeSpan.FromMinutes(5), t => Status(t, "warn"), ct))
+                        {
+                            oneC.Activate();
+                            Status($"{k + 1}-chek: my.soliq.uz ga kirildi ✓ — davom etilmoqda");
+                            await PanelClickAsync("start", ct);
+                        }
                         return false;
                     }
                     soliqAsked = false;

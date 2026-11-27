@@ -280,3 +280,8 @@ Bosh sahifada **Solishtiruv (ombor va Didox)** tugmasi: o'rnatilgan `Solishtiruv
 - **To'xtab qolgan chek**: tovar terilgan bo'lsa terilgani bilan yakunlanib provesti qilinadi (noaniq o'tkazish 1C hujjatidan tekshiriladi), qolgan summa keyingi chekka qo'shiladi.
 - **Markirovkasiz sotish**: jadval oxiridagi yarim ko'rinadigan qator o'qiladi, oxirgi qatorga Ctrl+End bilan o'tiladi, sichqoncha bilan o'tib bo'lmasa ↓ bilan; miqdor yozishda qator tartib bo'yicha topiladi; natsenka foizi 1C qabul qilmasa qayta yoziladi; xato bo'lsa chek qaytadan quriladi.
 - **Markirovkasiz — inventarizatsiya tez tanlanadi**: shu ishda tanlangan hujjat (sana va raqami bilan) keyingi cheklarda qidirmasdan olinadi.
+## 0.14.1
+
+- **my.soliq.uz ga kirish — firma kaliti o'zi tanlanadi**: kirish sahifasida shu bazaning firma STIR i yozilgan ERI kalit kartochkasining «Kiriş» tugmasi o'zi bosiladi — E-IMZO parol oynasi chiqadi, parolni foydalanuvchi kiritadi (dastur parolga tegmaydi).
+- **Markirovkali avto chek kirishni kutadi**: my.soliq.uz ga kirilmagan bo'lsa soliq tabi oldinga chiqadi, kalit tanlanadi va parol kiritilguncha (3 daqiqagacha) kutiladi; kirilgach 1C tabiga qaytib ish o'zi davom etadi. Ish o'rtasida seans tugasa ham shunday — chek kutib turadi va kirilgach «Davom» o'zi bosiladi.
+- **Kodlar faqat bizning firmanikilari**: hali chakana sotilmagan kod faqat uning oldi-berdi tarixida shu firma (STIR) qatnashgan bo'lsa olinadi; boshqa firmalar orasidagi kodlar «bizning firmada bo'lmagan» deb tashlanadi.

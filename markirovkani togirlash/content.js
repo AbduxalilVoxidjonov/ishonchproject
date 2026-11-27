@@ -1017,7 +1017,7 @@
           if (!response?.ok) return finish({ verdict: 'unknown', reason: response?.error || 'MXIK javob bermadi' });
           finish({ verdict: response.verdict || 'unknown', operation: response.operation || '', reason: response.reason || '',
             notLoggedIn: !!response.notLoggedIn, notFound: !!response.notFound,
-            lastStir: response.lastStir || '', stirMatch: response.stirMatch ?? null,
+            lastStir: response.lastStir || '', stirMatch: response.stirMatch ?? null, foreign: !!response.foreign,
             product: response.history?.product || '', mxik: ikpuDigits(response.history?.mxik),
             steps: response.history?.steps?.length || 0, last: response.history?.last || null });
         });
@@ -1485,7 +1485,9 @@
       if (checked.verdict !== 'available') {
         const sold = checked.verdict === 'sold';
         const reason = sold
-          ? checked.stirMatch === false
+          ? checked.foreign
+            ? `bizning firmada bo‘lmagan (egasi ${checked.lastStir || '?'}${checked.operation ? `, ${checked.operation}` : ''})`
+            : checked.stirMatch === false
             ? `boshqa STIR da (${checked.lastStir || '?'}${checked.operation ? `, ${checked.operation}` : ''})`
             : `sotilgan${checked.operation ? ` (${checked.operation})` : ''}`
           : `tekshirilmadi${checked.reason ? ` (${checked.reason})` : ''}`;

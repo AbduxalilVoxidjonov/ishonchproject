@@ -93,6 +93,31 @@ public static class SoliqBridge
     }
 
     /// <summary>
+    /// Kirilmagan bo'lsa: soliq tabi oldinga chiqariladi va yuridik shaxs kirish sahifasi (qayta) ochiladi — u yerda firma STIR li
+    /// kalitning «Kiriş» tugmasi o'zi bosiladi (SoliqLogin) va E-IMZO parol oynasi chiqadi; foydalanuvchi parolni kiritguncha
+    /// (ko'pi bilan `wait`) kutiladi. Kirilgan bo'lsa true.
+    /// </summary>
+    public static async Task<bool> EnsureLoggedInAsync(Func<Task<WebTab>> getTab, TimeSpan wait, Action<string>? status, CancellationToken ct)
+    {
+        if (await IsLoggedInAsync(getTab)) return true;
+        var tab = await getTab();
+        tab.Activate();
+        status?.Invoke("my.soliq.uz ga kirilmagan — firma kaliti tanlanmoqda, E-IMZO oynasida parolni kiriting…");
+        // Kirish sahifasini qayta yuklash — kalitni tanlash skripti har yuklanishda bir marta ishlaydi
+        if ((tab.Core?.Source ?? "").Contains("/login", StringComparison.OrdinalIgnoreCase)) tab.Core?.Reload();
+        else tab.Navigate(LegalLoginUrl);
+        var until = DateTime.UtcNow + wait;
+        while (DateTime.UtcNow < until)
+        {
+            await Task.Delay(3000, ct);
+            if (tab.Core is not { } core) return false;
+            var onLogin = (core.Source ?? "").Contains("/login", StringComparison.OrdinalIgnoreCase);
+            if (!onLogin && (await core.ExecuteScriptAsync("!!localStorage.getItem('token')")).Trim() == "true") return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Markirovka tarixini sahifaning o'z API si orqali oladi (sahifa ichidan, foydalanuvchi sessiyasi bilan).
     /// null — bu yo'l ishlamadi (kirilmagan, sahifa boshqa joyda, javob tushunarsiz): eski usul ishlatiladi.
     /// </summary>
@@ -163,6 +188,8 @@ public static class SoliqBridge
                         ["operationType"] = S(s, "operationType"),
                         // Ulgurji savdoda kodni oluvchi — buyerTin; boshqa operatsiyalarda bajaruvchi kompaniya
                         ["stir"] = Digits(S(s, "buyerTin")) is { Length: > 0 } bt ? bt : Digits(S(s, "companyTin")),
+                        ["companyTin"] = Digits(S(s, "companyTin")),
+                        ["buyerTin"] = Digits(S(s, "buyerTin")),
                         ["date"] = S(s, "operationDate"),
                         ["address"] = S(s, "address"),
                     });
@@ -190,11 +217,15 @@ public static class SoliqBridge
             // Eng ishonchlisi — kodning hozirgi holati va egasi: muomalada (INTRODUCED) va egasi biz bo'lsa — sotsa bo'ladi
             var owner = Digits(S(data, "ownerTin"));
             var cisStatus = S(data, "cisStatus");
-            // Kod muomaladan chiqarilgan (chakana sotilgan) yoki oxirgi operatsiyasi chakana savdo bo'lsa — tashlanadi;
-            // muomalada (INTRODUCED) bo'lsa egasi boshqa STIR bo'lsa ham olinadi (hali chakana sotilmagan)
+            // Kod muomaladan chiqarilgan (chakana sotilgan) yoki oxirgi operatsiyasi chakana savdo bo'lsa — tashlanadi.
+            // Hali chakana sotilmagan kod faqat uning oldi-berdi tarixida bizning firma (STIR) qatnashgan bo'lsa olinadi
+            // (egasi biz, yoki biror operatsiyada sotuvchi/oluvchi biz) — aks holda bizning firmadan sotib bo'lmaydi
             string verdict;
             var retail = Regex.IsMatch(last["operation"], "chakana|чакана|розн", RegexOptions.IgnoreCase);
+            var involved = ours.Length == 0 || owner == ours || steps.Any(st => st["companyTin"] == ours || st["buyerTin"] == ours);
+            var foreign = false;
             if (Regex.IsMatch(cisStatus, "WITHDRAW|RETIRE|OUT|SOLD", RegexOptions.IgnoreCase) || retail) verdict = "sold";
+            else if (!involved) { verdict = "sold"; foreign = true; }
             else if (cisStatus.Equals("INTRODUCED", StringComparison.OrdinalIgnoreCase)) verdict = "available";
             else
             {
@@ -211,6 +242,7 @@ public static class SoliqBridge
                 stir = ours,
                 stirMatch = ours.Length > 0 ? (bool?)(last["stir"] == ours) : null,
                 cisStatus,
+                foreign,
                 history = JsonSerializer.SerializeToElement(history),
                 fast = true,
             };

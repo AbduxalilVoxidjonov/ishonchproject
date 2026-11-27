@@ -365,7 +365,10 @@ public sealed class MainForm : Form
             if (select) tabs.SelectedTab = existing;
             return existing.Controls.OfType<WebTab>().First();
         }
-        return AddWebTab(new WebTab("soliq — " + (b?.Firm ?? "umumiy"), key, "https://my.soliq.uz/login?type=legal"), key, select);
+        var tab = AddWebTab(new WebTab("soliq — " + (b?.Firm ?? "umumiy"), key, "https://my.soliq.uz/login?type=legal"), key, select);
+        // Kirish sahifasida shu firma STIR li ERI kaliti o'zi tanlanadi — parolni foydalanuvchi kiritadi
+        if (b is { Inn.Length: > 0 }) Marking.SoliqLogin.Attach(tab, b.Inn);
+        return tab;
     }
 
     /// <summary>Tanlangan baza uchun 1C tabini ochadi va o'ng tomonda Markirovkali chek panelini ulaydi.</summary>
@@ -444,6 +447,7 @@ public sealed class MainForm : Form
         if (select) tabs.SelectedTab = page;
 
         page.ToolTipText = web.Title;
+        web.ActivateRequested += _ => { if (!page.IsDisposed && tabs.TabPages.Contains(page)) tabs.SelectedTab = page; };
         web.TitleChanged += w => { if (key != CrmKey) page.Text = Short(w.Title); page.ToolTipText = w.Title; strip.Invalidate(); };
         web.OpenRequested += (w, url) =>
         {
